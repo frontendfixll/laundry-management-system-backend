@@ -8,26 +8,33 @@ const { body, param } = require('express-validator');
 // Validation rules
 const validateTenancyCreation = [
   body('name')
+    .trim()
     .isLength({ min: 2, max: 100 })
     .withMessage('Laundry name must be between 2 and 100 characters'),
   body('slug')
     .optional()
+    .trim()
     .matches(/^[a-z0-9-]+$/)
     .withMessage('Slug can only contain lowercase letters, numbers, and hyphens'),
   body('subdomain')
     .optional()
+    .trim()
     .matches(/^[a-z0-9-]+$/)
     .withMessage('Subdomain can only contain lowercase letters, numbers, and hyphens'),
   body('owner.name')
+    .trim()
     .isLength({ min: 2, max: 50 })
-    .withMessage('Owner name is required'),
+    .withMessage('Owner name must be between 2 and 50 characters'),
   body('owner.email')
+    .trim()
     .isEmail()
+    .normalizeEmail()
     .withMessage('Valid owner email is required'),
   body('owner.phone')
     .optional({ checkFalsy: true })
+    .trim()
     .matches(/^[6-9]\d{9}$/)
-    .withMessage('Valid 10-digit phone number is required')
+    .withMessage('Valid 10-digit Indian phone number is required (starting with 6-9)')
 ];
 
 const validateTenancyUpdate = [

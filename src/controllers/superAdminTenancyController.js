@@ -72,9 +72,12 @@ const tenancyController = {
   // Create new tenancy
   createTenancy: async (req, res) => {
     try {
+      console.log('📝 Create tenancy request body:', JSON.stringify(req.body, null, 2));
+      
       // Check validation errors
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
+        console.log('❌ Validation errors:', errors.array());
         return res.status(400).json({
           success: false,
           message: errors.array()[0].msg,
