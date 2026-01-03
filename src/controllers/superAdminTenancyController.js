@@ -142,7 +142,9 @@ const tenancyController = {
         isEmailVerified: true
       });
       
+      console.log('📝 Creating owner user:', { name: ownerData.name, email: ownerData.email });
       await owner.save();
+      console.log('✅ Owner saved:', owner._id);
       
       // Create tenancy
       const tenancy = new Tenancy({
@@ -153,15 +155,18 @@ const tenancyController = {
         contact,
         owner: owner._id,
         subscription: subscription || {
-          plan: 'trial',
+          plan: 'free',
           status: 'trial',
           trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000) // 14 days trial
         },
         status: 'active',
-        createdBy: req.admin._id
+        createdBy: req.admin?._id || null
       });
       
+      console.log('📝 Creating tenancy:', { name, slug: tenancy.slug, subdomain: tenancy.subdomain, ownerId: owner._id });
+      
       await tenancy.save();
+      console.log('✅ Tenancy saved:', tenancy._id);
       
       // Update owner with tenancy reference
       owner.tenancy = tenancy._id;
@@ -195,8 +200,9 @@ const tenancyController = {
         }
       });
     } catch (error) {
-      console.error('Create tenancy error:', error);
-      res.status(500).json({ success: false, message: 'Failed to create tenancy' });
+      console.error('Create tenancy error:', error.message);
+      console.error('Error stack:', error.stack);
+      res.status(500).json({ success: false, message: 'Failed to create tenancy: ' + error.message });
     }
   },
 
