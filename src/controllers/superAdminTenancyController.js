@@ -2,6 +2,7 @@ const Tenancy = require('../models/Tenancy');
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const { sendEmail, emailTemplates } = require('../config/email');
+const { validationResult } = require('express-validator');
 
 const tenancyController = {
   // Get all tenancies
@@ -71,6 +72,16 @@ const tenancyController = {
   // Create new tenancy
   createTenancy: async (req, res) => {
     try {
+      // Check validation errors
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: errors.array()[0].msg,
+          errors: errors.array()
+        });
+      }
+
       const {
         name,
         slug,

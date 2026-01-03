@@ -25,7 +25,7 @@ const validateTenancyCreation = [
     .isEmail()
     .withMessage('Valid owner email is required'),
   body('owner.phone')
-    .optional()
+    .optional({ checkFalsy: true })
     .matches(/^[6-9]\d{9}$/)
     .withMessage('Valid 10-digit phone number is required')
 ];
