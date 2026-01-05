@@ -23,8 +23,31 @@ const getDashboard = asyncHandler(async (req, res) => {
   const startOfDay = new Date(today.setHours(0, 0, 0, 0));
   const endOfDay = new Date(today.setHours(23, 59, 59, 999));
 
+  // Get tenancy ID from request or user
+  const tenancyId = req.tenancyId || req.user?.tenancy;
+  
+  console.log('🔍 getDashboard - tenancyId:', tenancyId);
+
   // Base query with tenancy filter
-  const baseQuery = addTenancyFilter({}, req.tenancyId);
+  const baseQuery = addTenancyFilter({}, tenancyId);
+
+  // For customer counts, we need to count customers who have orders in this tenancy
+  let totalCustomers = 0;
+  let activeCustomers = 0;
+  
+  if (tenancyId) {
+    // Get customer IDs from orders in this tenancy
+    const customerIds = await Order.distinct('customer', { tenancy: tenancyId });
+    totalCustomers = customerIds.length;
+    activeCustomers = await User.countDocuments({ 
+      _id: { $in: customerIds }, 
+      role: USER_ROLES.CUSTOMER, 
+      isActive: true 
+    });
+  } else {
+    totalCustomers = await User.countDocuments({ role: USER_ROLES.CUSTOMER });
+    activeCustomers = await User.countDocuments({ role: USER_ROLES.CUSTOMER, isActive: true });
+  }
 
   // Get dashboard metrics
   const [
@@ -32,21 +55,17 @@ const getDashboard = asyncHandler(async (req, res) => {
     todayOrders,
     pendingOrders,
     expressOrders,
-    totalCustomers,
-    activeCustomers,
     pendingComplaints,
     totalBranches
   ] = await Promise.all([
     Order.countDocuments(baseQuery),
-    Order.countDocuments(addTenancyFilter({ createdAt: { $gte: startOfDay, $lte: endOfDay } }, req.tenancyId)),
+    Order.countDocuments(addTenancyFilter({ createdAt: { $gte: startOfDay, $lte: endOfDay } }, tenancyId)),
     Order.countDocuments(addTenancyFilter({ 
       status: { $in: [ORDER_STATUS.PLACED, ORDER_STATUS.ASSIGNED_TO_BRANCH] }
-    }, req.tenancyId)),
-    Order.countDocuments(addTenancyFilter({ isExpress: true, status: { $ne: ORDER_STATUS.DELIVERED } }, req.tenancyId)),
-    User.countDocuments(addTenancyFilter({ role: USER_ROLES.CUSTOMER }, req.tenancyId)),
-    User.countDocuments(addTenancyFilter({ role: USER_ROLES.CUSTOMER, isActive: true }, req.tenancyId)),
-    Ticket.countDocuments(addTenancyFilter({ status: { $in: [TICKET_STATUS.OPEN, TICKET_STATUS.IN_PROGRESS] } }, req.tenancyId)),
-    Branch.countDocuments(addTenancyFilter({ isActive: true }, req.tenancyId))
+    }, tenancyId)),
+    Order.countDocuments(addTenancyFilter({ isExpress: true, status: { $ne: ORDER_STATUS.DELIVERED } }, tenancyId)),
+    Ticket.countDocuments(addTenancyFilter({ status: { $in: [TICKET_STATUS.OPEN, TICKET_STATUS.IN_PROGRESS] } }, tenancyId)),
+    Branch.countDocuments(addTenancyFilter({ isActive: true }, tenancyId))
   ]);
 
   // Get recent orders
@@ -103,8 +122,13 @@ const getAllOrders = asyncHandler(async (req, res) => {
 
   const { skip, limit: limitNum, page: pageNum } = getPagination(page, limit);
 
+  // Get tenancy ID from request or user
+  const tenancyId = req.tenancyId || req.user?.tenancy;
+  
+  console.log('🔍 getAllOrders - tenancyId:', tenancyId);
+
   // Build query with tenancy filter
-  const query = addTenancyFilter({}, req.tenancyId);
+  const query = addTenancyFilter({}, tenancyId);
   
   if (status) query.status = status;
   if (branch) query.branch = branch;
@@ -264,14 +288,51 @@ const getCustomers = asyncHandler(async (req, res) => {
   const { page = 1, limit = 20, search, isVIP, isActive } = req.query;
   const { skip, limit: limitNum, page: pageNum } = getPagination(page, limit);
 
-  const query = { role: USER_ROLES.CUSTOMER };
+  // Get tenancy ID from request or user
+  const tenancyId = req.tenancyId || req.user?.tenancy;
+  
+  console.log('🔍 getCustomers - tenancyId:', tenancyId);
+
+  // Base query
+  let query = { role: USER_ROLES.CUSTOMER };
+  
+  // Apply tenancy filter if admin has a tenancy
+  if (tenancyId) {
+    // Get customer IDs who have placed orders in this tenancy
+    const tenancyOrders = await Order.distinct('customer', { tenancy: tenancyId });
+    
+    // Get customers directly associated with this tenancy
+    const directCustomerIds = await User.distinct('_id', { 
+      role: USER_ROLES.CUSTOMER, 
+      tenancy: tenancyId 
+    });
+    
+    // Combine both lists
+    const allCustomerIds = [...new Set([
+      ...tenancyOrders.map(id => id.toString()), 
+      ...directCustomerIds.map(id => id.toString())
+    ])];
+    
+    console.log('📦 Customers in this tenancy:', allCustomerIds.length);
+    
+    // Only show customers that belong to this tenancy
+    // If no customers found, return empty (not all customers!)
+    query = { 
+      role: USER_ROLES.CUSTOMER,
+      _id: { $in: allCustomerIds }
+    };
+  }
   
   if (search) {
-    query.$or = [
-      { name: { $regex: search, $options: 'i' } },
-      { email: { $regex: search, $options: 'i' } },
-      { phone: { $regex: search, $options: 'i' } }
-    ];
+    const searchQuery = {
+      $or: [
+        { name: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } },
+        { phone: { $regex: search, $options: 'i' } }
+      ]
+    };
+    // Combine search with existing query
+    query = { $and: [query, searchQuery] };
   }
   
   if (isVIP !== undefined) query.isVIP = isVIP === 'true';
@@ -284,12 +345,14 @@ const getCustomers = asyncHandler(async (req, res) => {
     .skip(skip)
     .limit(limitNum);
 
-  // Get order counts for each customer
+  // Get order counts for each customer (filtered by tenancy)
+  const orderQuery = req.tenancyId ? { tenancy: req.tenancyId } : {};
+  
   const customersWithStats = await Promise.all(
     customers.map(async (customer) => {
-      const orderCount = await Order.countDocuments({ customer: customer._id });
+      const orderCount = await Order.countDocuments({ ...orderQuery, customer: customer._id });
       const totalSpent = await Order.aggregate([
-        { $match: { customer: customer._id, status: ORDER_STATUS.DELIVERED } },
+        { $match: { ...orderQuery, customer: customer._id, status: ORDER_STATUS.DELIVERED } },
         { $group: { _id: null, total: { $sum: '$pricing.total' } } }
       ]);
       
@@ -312,6 +375,17 @@ const getCustomers = asyncHandler(async (req, res) => {
 // @access  Private (Admin/Center Admin)
 const toggleCustomerStatus = asyncHandler(async (req, res) => {
   const { customerId } = req.params;
+
+  // Verify customer has orders in this tenancy (if tenancy filter applies)
+  if (req.tenancyId) {
+    const hasOrdersInTenancy = await Order.exists({ 
+      customer: customerId, 
+      tenancy: req.tenancyId 
+    });
+    if (!hasOrdersInTenancy) {
+      return sendError(res, 'CUSTOMER_NOT_FOUND', 'Customer not found in your laundry', 404);
+    }
+  }
 
   const customer = await User.findOne({ 
     _id: customerId, 
@@ -340,6 +414,17 @@ const toggleCustomerStatus = asyncHandler(async (req, res) => {
 const tagVIPCustomer = asyncHandler(async (req, res) => {
   const { customerId } = req.params;
   const { isVIP } = req.body;
+
+  // Verify customer has orders in this tenancy (if tenancy filter applies)
+  if (req.tenancyId) {
+    const hasOrdersInTenancy = await Order.exists({ 
+      customer: customerId, 
+      tenancy: req.tenancyId 
+    });
+    if (!hasOrdersInTenancy) {
+      return sendError(res, 'CUSTOMER_NOT_FOUND', 'Customer not found in your laundry', 404);
+    }
+  }
 
   const customer = await User.findOne({ 
     _id: customerId, 
@@ -378,7 +463,13 @@ const getComplaints = asyncHandler(async (req, res) => {
 
   const { skip, limit: limitNum, page: pageNum } = getPagination(page, limit);
 
+  // Add tenancy filter
+  const tenancyId = req.tenancyId || req.user?.tenancy;
   const query = {};
+  
+  if (tenancyId) {
+    query.tenancy = tenancyId;
+  }
   
   if (status) query.status = status;
   if (priority) query.priority = priority;
@@ -743,21 +834,34 @@ const getSupportAgents = asyncHandler(async (req, res) => {
 // @access  Private (Admin)
 const getLogisticsPartners = asyncHandler(async (req, res) => {
   const { status, search } = req.query;
+  const tenancyId = req.tenancyId || req.user?.tenancy;
   
-  // Build query
+  // Build query - show partners belonging to this tenancy OR global partners (no tenancy)
   const query = {};
+  
+  if (tenancyId) {
+    query.$or = [{ tenancy: tenancyId }, { tenancy: null }, { tenancy: { $exists: false } }];
+  }
+  
   if (status === 'active') query.isActive = true;
   else if (status === 'inactive') query.isActive = false;
   
   if (search) {
-    query.$or = [
+    const searchQuery = [
       { companyName: { $regex: search, $options: 'i' } },
       { 'contactPerson.name': { $regex: search, $options: 'i' } }
     ];
+    // Combine with existing $or if present
+    if (query.$or) {
+      query.$and = [{ $or: query.$or }, { $or: searchQuery }];
+      delete query.$or;
+    } else {
+      query.$or = searchQuery;
+    }
   }
 
   const partners = await LogisticsPartner.find(query)
-    .select('companyName contactPerson coverageAreas sla performance isActive rateCard createdAt')
+    .select('companyName contactPerson coverageAreas sla performance isActive rateCard createdAt tenancy')
     .sort({ createdAt: -1 });
 
   // Get active orders count for each partner
@@ -778,6 +882,7 @@ const getLogisticsPartners = asyncHandler(async (req, res) => {
       contactPerson: partner.contactPerson,
       coverageAreas: partner.coverageAreas,
       isActive: partner.isActive,
+      isGlobal: !partner.tenancy, // Flag to indicate if it's a global partner
       sla: {
         pickupTime: partner.sla?.pickupTime || 2,
         deliveryTime: partner.sla?.deliveryTime || 4
@@ -798,6 +903,152 @@ const getLogisticsPartners = asyncHandler(async (req, res) => {
   sendSuccess(res, { partners: partnersWithStats }, 'Logistics partners retrieved successfully');
 });
 
+// @desc    Get single logistics partner
+// @route   GET /api/admin/logistics-partners/:partnerId
+// @access  Private (Admin)
+const getLogisticsPartnerById = asyncHandler(async (req, res) => {
+  const { partnerId } = req.params;
+  const tenancyId = req.tenancyId || req.user?.tenancy;
+
+  const query = { _id: partnerId };
+  // Show partners that belong to this tenancy OR global partners (no tenancy)
+  if (tenancyId) {
+    query.$or = [{ tenancy: tenancyId }, { tenancy: null }, { tenancy: { $exists: false } }];
+  }
+
+  const partner = await LogisticsPartner.findOne(query);
+  
+  if (!partner) {
+    return sendError(res, 'NOT_FOUND', 'Logistics partner not found', 404);
+  }
+
+  sendSuccess(res, { partner }, 'Logistics partner retrieved successfully');
+});
+
+// @desc    Create logistics partner
+// @route   POST /api/admin/logistics-partners
+// @access  Private (Admin with logistics.create permission)
+const createLogisticsPartner = asyncHandler(async (req, res) => {
+  const tenancyId = req.tenancyId || req.user?.tenancy;
+  
+  const { companyName, contactPerson, coverageAreas, sla, rateCard } = req.body;
+
+  // Validation
+  if (!companyName || !contactPerson?.name || !contactPerson?.phone) {
+    return sendError(res, 'VALIDATION_ERROR', 'Company name, contact person name and phone are required', 400);
+  }
+
+  // Check if partner with same name exists in this tenancy
+  const existingPartner = await LogisticsPartner.findOne({
+    companyName: { $regex: new RegExp(`^${companyName}$`, 'i') },
+    $or: [{ tenancy: tenancyId }, { tenancy: null }]
+  });
+
+  if (existingPartner) {
+    return sendError(res, 'DUPLICATE', 'A logistics partner with this name already exists', 400);
+  }
+
+  const partner = new LogisticsPartner({
+    tenancy: tenancyId,
+    companyName,
+    contactPerson,
+    coverageAreas: coverageAreas || [],
+    sla: sla || { pickupTime: 2, deliveryTime: 4 },
+    rateCard: rateCard || { perOrder: 0, perKm: 0, flatRate: 50 },
+    isActive: true
+  });
+
+  await partner.save();
+
+  sendSuccess(res, { partner }, 'Logistics partner created successfully', 201);
+});
+
+// @desc    Update logistics partner
+// @route   PUT /api/admin/logistics-partners/:partnerId
+// @access  Private (Admin with logistics.update permission)
+const updateLogisticsPartner = asyncHandler(async (req, res) => {
+  const { partnerId } = req.params;
+  const tenancyId = req.tenancyId || req.user?.tenancy;
+
+  // Only allow updating partners that belong to this tenancy
+  const partner = await LogisticsPartner.findOne({
+    _id: partnerId,
+    tenancy: tenancyId
+  });
+
+  if (!partner) {
+    return sendError(res, 'NOT_FOUND', 'Logistics partner not found or you do not have permission to update it', 404);
+  }
+
+  const { companyName, contactPerson, coverageAreas, sla, rateCard, isActive } = req.body;
+
+  // Update fields
+  if (companyName) partner.companyName = companyName;
+  if (contactPerson) partner.contactPerson = contactPerson;
+  if (coverageAreas) partner.coverageAreas = coverageAreas;
+  if (sla) partner.sla = sla;
+  if (rateCard) partner.rateCard = rateCard;
+  if (typeof isActive === 'boolean') partner.isActive = isActive;
+
+  await partner.save();
+
+  sendSuccess(res, { partner }, 'Logistics partner updated successfully');
+});
+
+// @desc    Delete logistics partner
+// @route   DELETE /api/admin/logistics-partners/:partnerId
+// @access  Private (Admin with logistics.delete permission)
+const deleteLogisticsPartner = asyncHandler(async (req, res) => {
+  const { partnerId } = req.params;
+  const tenancyId = req.tenancyId || req.user?.tenancy;
+
+  // Only allow deleting partners that belong to this tenancy
+  const partner = await LogisticsPartner.findOne({
+    _id: partnerId,
+    tenancy: tenancyId
+  });
+
+  if (!partner) {
+    return sendError(res, 'NOT_FOUND', 'Logistics partner not found or you do not have permission to delete it', 404);
+  }
+
+  // Check if partner has any active orders
+  const activeOrders = await Order.countDocuments({
+    logisticsPartner: partnerId,
+    status: { $in: ['assigned_to_logistics_pickup', 'out_for_pickup', 'assigned_to_logistics_delivery', 'out_for_delivery'] }
+  });
+
+  if (activeOrders > 0) {
+    return sendError(res, 'HAS_ACTIVE_ORDERS', `Cannot delete partner with ${activeOrders} active orders. Please reassign orders first.`, 400);
+  }
+
+  await LogisticsPartner.findByIdAndDelete(partnerId);
+
+  sendSuccess(res, null, 'Logistics partner deleted successfully');
+});
+
+// @desc    Toggle logistics partner status
+// @route   PATCH /api/admin/logistics-partners/:partnerId/toggle-status
+// @access  Private (Admin with logistics.update permission)
+const toggleLogisticsPartnerStatus = asyncHandler(async (req, res) => {
+  const { partnerId } = req.params;
+  const tenancyId = req.tenancyId || req.user?.tenancy;
+
+  const partner = await LogisticsPartner.findOne({
+    _id: partnerId,
+    tenancy: tenancyId
+  });
+
+  if (!partner) {
+    return sendError(res, 'NOT_FOUND', 'Logistics partner not found or you do not have permission to update it', 404);
+  }
+
+  partner.isActive = !partner.isActive;
+  await partner.save();
+
+  sendSuccess(res, { partner }, `Logistics partner ${partner.isActive ? 'activated' : 'deactivated'} successfully`);
+});
+
 // @desc    Get all payments/transactions
 // @route   GET /api/admin/payments
 // @access  Private (Admin)
@@ -814,8 +1065,11 @@ const getPayments = asyncHandler(async (req, res) => {
 
   const { skip, limit: limitNum, page: pageNum } = getPagination(page, limit);
 
-  // Build query - get payments from orders
-  const query = {};
+  // Get tenancy ID from request or user
+  const tenancyId = req.tenancyId || req.user?.tenancy;
+
+  // Build query - get payments from orders with tenancy filter
+  const query = tenancyId ? { tenancy: tenancyId } : {};
   
   if (status) {
     if (status === 'completed') {
@@ -882,7 +1136,11 @@ const getPaymentStats = asyncHandler(async (req, res) => {
   const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
 
-  // Get stats from orders
+  // Get tenancy ID from request or user
+  const tenancyId = req.tenancyId || req.user?.tenancy;
+  const tenancyMatch = tenancyId ? { tenancy: tenancyId } : {};
+
+  // Get stats from orders with tenancy filter
   const [
     totalCompleted,
     totalPending,
@@ -890,19 +1148,19 @@ const getPaymentStats = asyncHandler(async (req, res) => {
     monthlyRevenue
   ] = await Promise.all([
     Order.aggregate([
-      { $match: { paymentStatus: 'paid' } },
+      { $match: { ...tenancyMatch, paymentStatus: 'paid' } },
       { $group: { _id: null, total: { $sum: '$pricing.total' }, count: { $sum: 1 } } }
     ]),
     Order.aggregate([
-      { $match: { paymentStatus: { $ne: 'paid' }, status: { $ne: 'cancelled' } } },
+      { $match: { ...tenancyMatch, paymentStatus: { $ne: 'paid' }, status: { $ne: 'cancelled' } } },
       { $group: { _id: null, total: { $sum: '$pricing.total' }, count: { $sum: 1 } } }
     ]),
     Order.aggregate([
-      { $match: { paymentStatus: 'paid', createdAt: { $gte: startOfDay } } },
+      { $match: { ...tenancyMatch, paymentStatus: 'paid', createdAt: { $gte: startOfDay } } },
       { $group: { _id: null, total: { $sum: '$pricing.total' } } }
     ]),
     Order.aggregate([
-      { $match: { paymentStatus: 'paid', createdAt: { $gte: startOfMonth } } },
+      { $match: { ...tenancyMatch, paymentStatus: 'paid', createdAt: { $gte: startOfMonth } } },
       { $group: { _id: null, total: { $sum: '$pricing.total' } } }
     ])
   ]);
@@ -929,6 +1187,16 @@ const getPaymentStats = asyncHandler(async (req, res) => {
 const getAnalytics = asyncHandler(async (req, res) => {
   const { timeframe = '30d' } = req.query;
   
+  // Get tenancy and branch filter
+  const tenancyId = req.tenancyId || req.user?.tenancy;
+  const branchId = req.user?.assignedBranch;
+  
+  const baseFilter = {};
+  if (tenancyId) baseFilter.tenancy = tenancyId;
+  if (branchId) baseFilter.branch = branchId;
+  
+  console.log('📊 Analytics filter:', JSON.stringify(baseFilter), 'User:', req.user?.email);
+  
   // Calculate date range
   const now = new Date();
   let startDate;
@@ -950,7 +1218,9 @@ const getAnalytics = asyncHandler(async (req, res) => {
       startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   }
 
-  // Parallel data fetching
+  const dateFilter = { ...baseFilter, createdAt: { $gte: startDate } };
+
+  // Parallel data fetching with tenancy/branch filters
   const [
     totalOrders,
     totalRevenue,
@@ -965,24 +1235,24 @@ const getAnalytics = asyncHandler(async (req, res) => {
     dailyRevenue,
     recentOrders
   ] = await Promise.all([
-    Order.countDocuments(),
-    Order.aggregate([{ $group: { _id: null, total: { $sum: '$pricing.total' } } }]),
-    User.countDocuments({ role: 'customer' }),
-    Branch.countDocuments({ isActive: true }),
-    Order.countDocuments({ createdAt: { $gte: startDate } }),
+    Order.countDocuments(baseFilter),
+    Order.aggregate([{ $match: baseFilter }, { $group: { _id: null, total: { $sum: '$pricing.total' } } }]),
+    User.countDocuments({ role: 'customer', ...(tenancyId ? { tenancy: tenancyId } : {}) }),
+    Branch.countDocuments({ isActive: true, ...(tenancyId ? { tenancy: tenancyId } : {}) }),
+    Order.countDocuments(dateFilter),
     Order.aggregate([
-      { $match: { createdAt: { $gte: startDate } } },
+      { $match: dateFilter },
       { $group: { _id: null, total: { $sum: '$pricing.total' } } }
     ]),
-    User.countDocuments({ role: 'customer', createdAt: { $gte: startDate } }),
-    Order.aggregate([{ $group: { _id: null, avg: { $avg: '$pricing.total' } } }]),
+    User.countDocuments({ role: 'customer', createdAt: { $gte: startDate }, ...(tenancyId ? { tenancy: tenancyId } : {}) }),
+    Order.aggregate([{ $match: baseFilter }, { $group: { _id: null, avg: { $avg: '$pricing.total' } } }]),
     Order.aggregate([
-      { $match: { createdAt: { $gte: startDate } } },
+      { $match: dateFilter },
       { $group: { _id: '$status', count: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } },
       { $sort: { count: -1 } }
     ]),
     Order.aggregate([
-      { $match: { createdAt: { $gte: startDate } } },
+      { $match: dateFilter },
       { $group: { _id: '$branch', totalOrders: { $sum: 1 }, totalRevenue: { $sum: '$pricing.total' } } },
       { $lookup: { from: 'branches', localField: '_id', foreignField: '_id', as: 'branch' } },
       { $unwind: { path: '$branch', preserveNullAndEmptyArrays: true } },
@@ -991,7 +1261,7 @@ const getAnalytics = asyncHandler(async (req, res) => {
       { $limit: 5 }
     ]),
     Order.aggregate([
-      { $match: { createdAt: { $gte: startDate } } },
+      { $match: dateFilter },
       { $group: { 
         _id: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' }, day: { $dayOfMonth: '$createdAt' } },
         revenue: { $sum: '$pricing.total' },
@@ -999,7 +1269,7 @@ const getAnalytics = asyncHandler(async (req, res) => {
       }},
       { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 } }
     ]),
-    Order.find()
+    Order.find(baseFilter)
       .populate('customer', 'name email')
       .populate('branch', 'name code')
       .sort({ createdAt: -1 })
@@ -1051,8 +1321,14 @@ const getStaff = asyncHandler(async (req, res) => {
   const { page = 1, limit = 50, role, search, isActive } = req.query;
   const { skip, limit: limitNum, page: pageNum } = getPagination(page, limit);
 
-  // Query for non-customer users
-  const query = { role: { $ne: 'customer' } };
+  // Get tenancy ID from request or user
+  const tenancyId = req.tenancyId || req.user?.tenancy;
+
+  // Query for non-customer users with tenancy filter
+  const query = { 
+    role: { $in: ['staff', 'admin'] }, // Only staff and admin roles, not superadmin or customer
+    tenancy: tenancyId // Filter by tenancy
+  };
   
   if (role) query.role = role;
   if (isActive !== undefined) query.isActive = isActive === 'true';
@@ -1100,6 +1376,9 @@ const getStaffById = asyncHandler(async (req, res) => {
 const createStaff = asyncHandler(async (req, res) => {
   const { name, email, phone, password, permissions, assignedBranch } = req.body;
 
+  // Get tenancy ID from request or user
+  const tenancyId = req.tenancyId || req.user?.tenancy;
+
   if (!name || !email || !phone || !password) {
     return sendError(res, 'MISSING_DATA', 'Name, email, phone, and password are required', 400);
   }
@@ -1116,7 +1395,8 @@ const createStaff = asyncHandler(async (req, res) => {
     email: email.toLowerCase(),
     phone,
     password,
-    role: 'admin',
+    role: 'staff', // Use 'staff' role instead of 'admin'
+    tenancy: tenancyId, // Assign to same tenancy as creator
     permissions: permissions || {},
     assignedBranch,
     isActive: true,
@@ -1140,7 +1420,16 @@ const updateStaff = asyncHandler(async (req, res) => {
   const { staffId } = req.params;
   const { name, phone, permissions, assignedBranch, isActive } = req.body;
 
-  const staff = await User.findOne({ _id: staffId, role: { $ne: 'customer' } });
+  // Get tenancy ID from request or user
+  const tenancyId = req.tenancyId || req.user?.tenancy;
+
+  // Only allow updating staff from same tenancy
+  const staff = await User.findOne({ 
+    _id: staffId, 
+    role: { $in: ['staff', 'admin'] },
+    tenancy: tenancyId 
+  });
+  
   if (!staff) {
     return sendError(res, 'STAFF_NOT_FOUND', 'Staff member not found', 404);
   }
@@ -1167,7 +1456,15 @@ const updateStaff = asyncHandler(async (req, res) => {
 const deleteStaff = asyncHandler(async (req, res) => {
   const { staffId } = req.params;
 
-  const staff = await User.findOne({ _id: staffId, role: { $ne: 'customer' } });
+  // Get tenancy ID from request or user
+  const tenancyId = req.tenancyId || req.user?.tenancy;
+
+  const staff = await User.findOne({ 
+    _id: staffId, 
+    role: { $in: ['staff', 'admin'] },
+    tenancy: tenancyId 
+  });
+  
   if (!staff) {
     return sendError(res, 'STAFF_NOT_FOUND', 'Staff member not found', 404);
   }
@@ -1190,7 +1487,15 @@ const deleteStaff = asyncHandler(async (req, res) => {
 const reactivateStaff = asyncHandler(async (req, res) => {
   const { staffId } = req.params;
 
-  const staff = await User.findOne({ _id: staffId, role: { $ne: 'customer' } });
+  // Get tenancy ID from request or user
+  const tenancyId = req.tenancyId || req.user?.tenancy;
+
+  const staff = await User.findOne({ 
+    _id: staffId, 
+    role: { $in: ['staff', 'admin'] },
+    tenancy: tenancyId 
+  });
+  
   if (!staff) {
     return sendError(res, 'STAFF_NOT_FOUND', 'Staff member not found', 404);
   }
@@ -1232,7 +1537,15 @@ const getBranches = asyncHandler(async (req, res) => {
   const { page = 1, limit = 10, search, status, city } = req.query;
   const { skip, limit: limitNum, page: pageNum } = getPagination(page, limit);
 
+  // Get tenancy filter
+  const tenancyId = req.tenancyId || req.user?.tenancy;
+  
   const query = {};
+  
+  // Add tenancy filter
+  if (tenancyId) {
+    query.tenancy = tenancyId;
+  }
   
   if (status) {
     if (status === 'active') query.isActive = true;
@@ -1431,6 +1744,11 @@ module.exports = {
   processRefund,
   getSupportAgents,
   getLogisticsPartners,
+  getLogisticsPartnerById,
+  createLogisticsPartner,
+  updateLogisticsPartner,
+  deleteLogisticsPartner,
+  toggleLogisticsPartnerStatus,
   getPayments,
   getPaymentStats,
   getAnalytics,

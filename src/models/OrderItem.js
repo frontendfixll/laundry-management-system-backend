@@ -7,6 +7,19 @@ const orderItemSchema = new mongoose.Schema({
     ref: 'Order',
     required: true
   },
+  // Unique tag/barcode for this specific item
+  tagCode: {
+    type: String,
+    unique: true,
+    sparse: true
+  },
+  tagGeneratedAt: {
+    type: Date
+  },
+  // QR code data (stores the full data encoded in QR)
+  qrData: {
+    type: String
+  },
   itemType: {
     type: String,
     required: true
@@ -99,10 +112,29 @@ const orderItemSchema = new mongoose.Schema({
 // Indexes
 orderItemSchema.index({ order: 1 });
 orderItemSchema.index({ processingStatus: 1 });
+orderItemSchema.index({ tagCode: 1 });
 
-// Calculate total price
-orderItemSchema.pre('save', function(next) {
+// Generate tag code and calculate total price
+orderItemSchema.pre('save', async function(next) {
   this.totalPrice = this.unitPrice * this.quantity;
+  
+  // Generate unique tag code if not exists
+  if (!this.tagCode) {
+    // Format: IT + timestamp(6 digits) + random(4 digits) = 12 character tag
+    const timestamp = Date.now().toString().slice(-6);
+    const random = Math.floor(1000 + Math.random() * 9000);
+    this.tagCode = `IT${timestamp}${random}`;
+    this.tagGeneratedAt = new Date();
+    
+    // Generate QR data (JSON string with item info)
+    this.qrData = JSON.stringify({
+      tagCode: this.tagCode,
+      orderId: this.order.toString(),
+      itemType: this.itemType,
+      service: this.service
+    });
+  }
+  
   next();
 });
 

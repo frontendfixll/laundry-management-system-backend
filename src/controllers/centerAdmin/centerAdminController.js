@@ -20,7 +20,8 @@ const getAdminBranch = async (user) => {
   }
   
   // Fallback: check if user is set as branch manager (legacy)
-  const branch = await getAdminBranch(user);
+  // Find branch where this user is the manager
+  const branch = await Branch.findOne({ manager: user._id });
   return branch;
 };
 
@@ -575,6 +576,9 @@ const addInventoryItem = asyncHandler(async (req, res) => {
     return sendError(res, 'NO_BRANCH', 'No branch assigned', 404);
   }
 
+  // Get tenancy from branch or user
+  const tenancyId = branch.tenancy || req.tenancyId || user.tenancy;
+
   // Map unitCost to costPerUnit (frontend sends unitCost, model expects costPerUnit)
   const cost = costPerUnit || unitCost || 0;
   
@@ -598,9 +602,11 @@ const addInventoryItem = asyncHandler(async (req, res) => {
     }
     item.expiryDate = expiryDate || item.expiryDate;
     item.lastRestocked = new Date();
+    if (tenancyId) item.tenancy = tenancyId;
   } else {
     // Create new
     item = new Inventory({
+      tenancy: tenancyId,
       branch: branch._id,
       itemName,
       currentStock,

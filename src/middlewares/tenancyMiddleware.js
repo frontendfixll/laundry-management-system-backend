@@ -77,7 +77,7 @@ const requireTenancy = async (req, res, next) => {
  */
 const injectTenancyFromUser = async (req, res, next) => {
   try {
-    // If user is authenticated and has tenancy
+    // If user is authenticated and has tenancy (admin/staff users)
     if (req.user && req.user.tenancy) {
       const tenancy = await Tenancy.findById(req.user.tenancy);
       if (tenancy && tenancy.status === 'active') {
@@ -85,6 +85,8 @@ const injectTenancyFromUser = async (req, res, next) => {
         req.tenancyId = tenancy._id;
       }
     }
+    // Customers don't have tenancy field - they can order from any laundry
+    // tenancyId for customers comes from request body/query when needed
     next();
   } catch (error) {
     console.error('Inject tenancy error:', error);

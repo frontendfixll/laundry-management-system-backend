@@ -9,6 +9,13 @@ const ticketSchema = new mongoose.Schema({
     index: true
   },
   
+  // Branch Reference (for branch-level filtering)
+  branch: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Branch',
+    index: true
+  },
+  
   ticketNumber: {
     type: String,
     unique: true

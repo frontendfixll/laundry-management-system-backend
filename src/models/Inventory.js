@@ -6,7 +6,6 @@ const inventorySchema = new mongoose.Schema({
   tenancy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Tenancy',
-    required: true,
     index: true
   },
   
@@ -17,8 +16,8 @@ const inventorySchema = new mongoose.Schema({
   },
   itemName: {
     type: String,
-    enum: Object.values(INVENTORY_ITEMS),
-    required: true
+    required: true,
+    trim: true
   },
   currentStock: {
     type: Number,

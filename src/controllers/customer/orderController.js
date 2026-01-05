@@ -32,7 +32,8 @@ const createOrder = asyncHandler(async (req, res) => {
     specialInstructions,
     branchId,
     serviceType, // 'full_service', 'self_drop_self_pickup', 'self_drop_home_delivery', 'home_pickup_self_pickup'
-    deliveryDetails
+    deliveryDetails,
+    tenancyId // Tenancy ID for tenant-specific orders
   } = req.body;
 
   const customer = await User.findById(req.user._id);
@@ -174,9 +175,12 @@ const createOrder = asyncHandler(async (req, res) => {
   const orderCount = await Order.countDocuments();
   const orderNumber = `ORD${Date.now()}${String(orderCount + 1).padStart(4, '0')}`;
 
+  // Determine tenancy - priority: request body > middleware > user > branch
+  const orderTenancy = tenancyId || req.tenancyId || req.user?.tenancy || branch.tenancy;
+
   // Create order
   const order = await Order.create({
-    tenancy: req.tenancyId || req.user.tenancy, // Add tenancy from middleware or user
+    tenancy: orderTenancy, // Use branch's tenancy if no other tenancy available
     orderNumber,
     customer: req.user._id,
     branch: branch._id,
@@ -272,12 +276,17 @@ const createOrder = asyncHandler(async (req, res) => {
 // @route   GET /api/customer/orders
 // @access  Private (Customer)
 const getOrders = asyncHandler(async (req, res) => {
-  const { page = 1, limit = 10, status } = req.query;
+  const { page = 1, limit = 10, status, tenancyId } = req.query;
   const { skip, limit: limitNum, page: pageNum } = getPagination(page, limit);
 
   const query = { customer: req.user._id };
   if (status) {
     query.status = status;
+  }
+  
+  // Filter by tenancy if provided (for tenant-specific dashboard)
+  if (tenancyId) {
+    query.tenancy = tenancyId;
   }
 
   const total = await Order.countDocuments(query);

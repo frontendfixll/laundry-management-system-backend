@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Tenancy = require('../models/Tenancy');
+const Branch = require('../models/Branch');
 
 // Get tenancy branding by subdomain/slug (public - no auth required)
 router.get('/branding/:identifier', async (req, res) => {
@@ -16,7 +17,7 @@ router.get('/branding/:identifier', async (req, res) => {
       ],
       status: 'active',
       isDeleted: false
-    }).select('name slug subdomain customDomain branding contact businessHours settings.currency settings.language');
+    }).select('name slug subdomain customDomain branding landingPageTemplate contact businessHours settings.currency settings.language');
     
     if (!tenancy) {
       return res.status(404).json({
@@ -24,6 +25,12 @@ router.get('/branding/:identifier', async (req, res) => {
         message: 'Laundry not found'
       });
     }
+    
+    // Get active branches for this tenancy
+    const branches = await Branch.find({
+      tenancy: tenancy._id,
+      isActive: true
+    }).select('_id name code address contact phone').lean();
     
     res.json({
       success: true,
@@ -33,6 +40,7 @@ router.get('/branding/:identifier', async (req, res) => {
         subdomain: tenancy.subdomain,
         customDomain: tenancy.customDomain,
         branding: tenancy.branding,
+        landingPageTemplate: tenancy.branding?.landingPageTemplate || tenancy.landingPageTemplate || 'original',
         contact: {
           email: tenancy.contact?.email,
           phone: tenancy.contact?.phone,
@@ -40,7 +48,9 @@ router.get('/branding/:identifier', async (req, res) => {
         },
         businessHours: tenancy.businessHours,
         currency: tenancy.settings?.currency,
-        language: tenancy.settings?.language
+        language: tenancy.settings?.language,
+        branches: branches,
+        tenancyId: tenancy._id
       }
     });
   } catch (error) {

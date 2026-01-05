@@ -18,6 +18,7 @@ const brandingController = {
         data: {
           branding: tenancy.branding,
           name: tenancy.name,
+          slug: tenancy.slug,
           subdomain: tenancy.subdomain,
           customDomain: tenancy.customDomain
         }
@@ -33,6 +34,11 @@ const brandingController = {
     try {
       const { branding } = req.body;
       
+      console.log('=== UPDATE BRANDING REQUEST ===');
+      console.log('Raw body:', JSON.stringify(req.body, null, 2));
+      console.log('Branding object:', JSON.stringify(branding, null, 2));
+      console.log('landingPageTemplate from request:', branding?.landingPageTemplate);
+      
       const tenancy = await Tenancy.findById(req.user.tenancy);
       
       if (!tenancy) {
@@ -40,6 +46,13 @@ const brandingController = {
           success: false,
           message: 'Tenancy not found'
         });
+      }
+      
+      console.log('Current template in DB:', tenancy.branding?.landingPageTemplate);
+      
+      // Initialize branding if not exists
+      if (!tenancy.branding) {
+        tenancy.branding = {};
       }
       
       // Merge branding updates
@@ -52,11 +65,24 @@ const brandingController = {
       if (branding.theme) {
         tenancy.branding.theme = { ...tenancy.branding.theme, ...branding.theme };
       }
+      
+      // Always update landingPageTemplate if provided
+      if (branding.landingPageTemplate !== undefined) {
+        console.log('Setting landingPageTemplate to:', branding.landingPageTemplate);
+        tenancy.branding.landingPageTemplate = branding.landingPageTemplate;
+      }
+      
       if (branding.customCss !== undefined) {
         tenancy.branding.customCss = branding.customCss;
       }
       
+      // Mark branding as modified to ensure Mongoose saves it
+      tenancy.markModified('branding');
+      
       await tenancy.save();
+      
+      console.log('Saved template:', tenancy.branding?.landingPageTemplate);
+      console.log('=== UPDATE COMPLETE ===');
       
       res.json({
         success: true,

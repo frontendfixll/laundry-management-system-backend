@@ -127,8 +127,27 @@ const getTickets = asyncHandler(async (req, res) => {
 
   const { skip, limit: limitNum, page: pageNum } = getPagination(page, limit);
 
-  // Build query - admins see all tickets
+  // Build base query with tenancy and branch filter
+  const tenancyId = req.tenancyId || req.user?.tenancy;
+  const branchId = req.user?.assignedBranch;
+  
   let query = {};
+  
+  // Add tenancy filter
+  if (tenancyId) {
+    query.tenancy = tenancyId;
+  }
+  
+  // Add branch filter if admin has assigned branch
+  if (branchId) {
+    query.branch = branchId;
+  }
+  
+  // Only show tickets that have a related order (order-based complaints only)
+  query.relatedOrder = { $ne: null };
+  
+  console.log('🎫 GET /admin/support/tickets called');
+  console.log('🎫 User:', req.user?.email, 'Tenancy:', tenancyId, 'Branch:', branchId);
 
   // Apply filters
   if (status) query.status = status;
@@ -149,6 +168,8 @@ const getTickets = asyncHandler(async (req, res) => {
   }
 
   const total = await Ticket.countDocuments(query);
+  console.log('🎫 Query:', JSON.stringify(query), 'Total found:', total);
+  
   const tickets = await Ticket.find(query)
     .populate('raisedBy', 'name email phone')
     .populate('assignedTo', 'name')
@@ -160,6 +181,8 @@ const getTickets = asyncHandler(async (req, res) => {
     .skip(skip)
     .limit(limitNum);
 
+  console.log('🎫 Tickets returned:', tickets.length);
+  
   const response = formatPaginationResponse(tickets, total, pageNum, limitNum);
   sendSuccess(res, response, 'Tickets retrieved successfully');
 });

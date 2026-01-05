@@ -1,27 +1,27 @@
 const express = require('express');
 const router = express.Router();
 const billingController = require('../controllers/superAdmin/billingController');
-const { authenticateSuperAdmin, requirePermission } = require('../middlewares/superAdminAuth');
+const { authenticateSuperAdmin } = require('../middlewares/superAdminAuthSimple');
 
 // All routes require superadmin authentication
 router.use(authenticateSuperAdmin);
 
 // Billing Plans
 router.get('/plans', billingController.getPlans);
-router.post('/plans', requirePermission('settings'), billingController.upsertPlan);
+router.post('/plans', billingController.upsertPlan);
 
 // Invoices
-router.get('/invoices', requirePermission('finances'), billingController.getInvoices);
-router.post('/invoices', requirePermission('finances'), billingController.generateInvoice);
-router.patch('/invoices/:invoiceId/paid', requirePermission('finances'), billingController.markInvoicePaid);
+router.get('/invoices', billingController.getInvoices);
+router.post('/invoices', billingController.generateInvoice);
+router.patch('/invoices/:invoiceId/paid', billingController.markInvoicePaid);
 
 // Payments
-router.get('/payments', requirePermission('finances'), billingController.getPayments);
+router.get('/payments', billingController.getPayments);
 
 // Stats
-router.get('/stats', requirePermission('finances'), billingController.getBillingStats);
+router.get('/stats', billingController.getBillingStats);
 
 // Tenancy subscription
-router.patch('/tenancies/:tenancyId/plan', requirePermission('settings'), billingController.updateTenancyPlan);
+router.patch('/tenancies/:tenancyId/plan', billingController.updateTenancyPlan);
 
 module.exports = router;

@@ -177,7 +177,7 @@ app.use('/api/barcode', barcodeRoutes);
 app.use('/api/orders', publicRoutes);
 
 // Tenancy public routes (no auth required - for branding/theming)
-app.use('/api/tenancy', tenancyPublicRoutes);
+app.use('/api/public/tenancy', tenancyPublicRoutes);
 
 // Invitation public routes (no auth required - for accepting invitations)
 app.use('/api/invitations', invitationPublicRoutes);

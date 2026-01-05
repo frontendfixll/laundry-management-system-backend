@@ -7,7 +7,9 @@ const billingController = {
   // Get all billing plans
   getPlans: async (req, res) => {
     try {
-      const plans = await BillingPlan.find({ isActive: true }).sort({ 'price.monthly': 1 });
+      const { includeInactive } = req.query;
+      const query = includeInactive === 'true' ? {} : { isActive: true };
+      const plans = await BillingPlan.find(query).sort({ 'price.monthly': 1 });
       
       res.json({
         success: true,
@@ -22,11 +24,23 @@ const billingController = {
   // Create/Update billing plan
   upsertPlan: async (req, res) => {
     try {
-      const { name, displayName, price, features } = req.body;
+      const { name, displayName, price, features, isActive } = req.body;
+      
+      const updateData = { 
+        name, 
+        displayName, 
+        price, 
+        features
+      };
+      
+      // Only update isActive if explicitly provided
+      if (typeof isActive === 'boolean') {
+        updateData.isActive = isActive;
+      }
       
       const plan = await BillingPlan.findOneAndUpdate(
         { name },
-        { name, displayName, price, features, isActive: true },
+        updateData,
         { upsert: true, new: true }
       );
       

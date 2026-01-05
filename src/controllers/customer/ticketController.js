@@ -13,8 +13,10 @@ const { TICKET_STATUS, TICKET_CATEGORIES } = require('../../config/constants');
 // @route   POST /api/customer/tickets
 // @access  Private (Customer)
 const createTicket = asyncHandler(async (req, res) => {
-  const { title, description, category, relatedOrderId } = req.body;
+  const { title, description, category, relatedOrderId, tenancyId: bodyTenancyId } = req.body;
   const customerId = req.user._id;
+  // Priority: request body > middleware > user's tenancy
+  const tenancyId = bodyTenancyId || req.tenancyId || req.user?.tenancy;
 
   if (!title || !description || !category) {
     return sendError(res, 'MISSING_FIELDS', 'Title, description and category are required', 400);
@@ -25,13 +27,15 @@ const createTicket = asyncHandler(async (req, res) => {
     return sendError(res, 'INVALID_CATEGORY', 'Invalid ticket category', 400);
   }
 
-  // If related order provided, verify it belongs to customer
+  // If related order provided, verify it belongs to customer and get branch
   let relatedOrder = null;
+  let branchId = null;
   if (relatedOrderId) {
     relatedOrder = await Order.findOne({ _id: relatedOrderId, customer: customerId });
     if (!relatedOrder) {
       return sendError(res, 'ORDER_NOT_FOUND', 'Related order not found', 404);
     }
+    branchId = relatedOrder.branch;
   }
 
   const ticket = await Ticket.create({
@@ -40,6 +44,8 @@ const createTicket = asyncHandler(async (req, res) => {
     category,
     raisedBy: customerId,
     relatedOrder: relatedOrderId || undefined,
+    tenancy: tenancyId,
+    branch: branchId,
     status: TICKET_STATUS.OPEN,
     messages: [{
       sender: customerId,
@@ -61,12 +67,17 @@ const createTicket = asyncHandler(async (req, res) => {
 // @access  Private (Customer)
 const getTickets = asyncHandler(async (req, res) => {
   const customerId = req.user._id;
-  const { page = 1, limit = 10, status } = req.query;
+  const { page = 1, limit = 10, status, tenancyId } = req.query;
   const { skip, limit: limitNum, page: pageNum } = getPagination(page, limit);
 
   let query = { raisedBy: customerId };
   if (status) {
     query.status = status;
+  }
+  
+  // Filter by tenancy if provided (for tenant-specific support page)
+  if (tenancyId) {
+    query.tenancy = tenancyId;
   }
 
   const total = await Ticket.countDocuments(query);

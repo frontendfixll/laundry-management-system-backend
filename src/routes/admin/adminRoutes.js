@@ -1,5 +1,5 @@
 const express = require('express');
-const { protect } = require('../../middlewares/auth');
+const { protect, requirePermission } = require('../../middlewares/auth');
 const { injectTenancyFromUser } = require('../../middlewares/tenancyMiddleware');
 const {
   getDashboard,
@@ -25,6 +25,11 @@ const {
   processRefund,
   getSupportAgents,
   getLogisticsPartners,
+  getLogisticsPartnerById,
+  createLogisticsPartner,
+  updateLogisticsPartner,
+  deleteLogisticsPartner,
+  toggleLogisticsPartnerStatus,
   getPayments,
   getPaymentStats,
   getAnalytics,
@@ -129,6 +134,11 @@ router.put('/refunds/:refundId/process', processRefund);
 // Support agents and logistics partners
 router.get('/support-agents', getSupportAgents);
 router.get('/logistics-partners', getLogisticsPartners);
+router.get('/logistics-partners/:partnerId', getLogisticsPartnerById);
+router.post('/logistics-partners', requirePermission('logistics', 'create'), createLogisticsPartner);
+router.put('/logistics-partners/:partnerId', requirePermission('logistics', 'update'), updateLogisticsPartner);
+router.delete('/logistics-partners/:partnerId', requirePermission('logistics', 'delete'), deleteLogisticsPartner);
+router.patch('/logistics-partners/:partnerId/toggle-status', requirePermission('logistics', 'update'), toggleLogisticsPartnerStatus);
 
 // Payment management routes
 router.get('/payments', getPayments);

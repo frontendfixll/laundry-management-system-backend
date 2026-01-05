@@ -1,9 +1,32 @@
 const Order = require('../../models/Order');
 const User = require('../../models/User');
+const mongoose = require('mongoose');
+
+// Helper to get tenancy and branch filter for admin analytics
+const getAnalyticsFilter = (req) => {
+  const filter = {};
+  
+  // Add tenancy filter
+  const tenancyId = req.tenancyId || req.user?.tenancy;
+  if (tenancyId) {
+    filter.tenancy = new mongoose.Types.ObjectId(tenancyId);
+  }
+  
+  // Add branch filter for admin users with assigned branch
+  const branchId = req.user?.assignedBranch;
+  if (branchId) {
+    filter.branch = new mongoose.Types.ObjectId(branchId);
+  }
+  
+  console.log('📊 Analytics filter:', JSON.stringify(filter), 'User:', req.user?.email);
+  return filter;
+};
 
 // Get weekly orders data (last 7 days)
 const getWeeklyOrders = async (req, res) => {
   try {
+    const analyticsFilter = getAnalyticsFilter(req);
+    
     const today = new Date();
     today.setHours(23, 59, 59, 999);
     
@@ -14,6 +37,7 @@ const getWeeklyOrders = async (req, res) => {
     const orders = await Order.aggregate([
       {
         $match: {
+          ...analyticsFilter,
           createdAt: { $gte: sevenDaysAgo, $lte: today }
         }
       },
@@ -64,7 +88,10 @@ const getWeeklyOrders = async (req, res) => {
 // Get order status distribution
 const getOrderStatusDistribution = async (req, res) => {
   try {
+    const analyticsFilter = getAnalyticsFilter(req);
+    
     const statusCounts = await Order.aggregate([
+      { $match: analyticsFilter },
       {
         $group: {
           _id: '$status',
@@ -108,6 +135,8 @@ const getOrderStatusDistribution = async (req, res) => {
 // Get revenue data (last 7 days)
 const getRevenueData = async (req, res) => {
   try {
+    const analyticsFilter = getAnalyticsFilter(req);
+    
     const today = new Date();
     today.setHours(23, 59, 59, 999);
     
@@ -119,6 +148,7 @@ const getRevenueData = async (req, res) => {
     const revenue = await Order.aggregate([
       {
         $match: {
+          ...analyticsFilter,
           createdAt: { $gte: sevenDaysAgo, $lte: today },
           status: 'delivered',
           paymentStatus: 'paid'
@@ -180,22 +210,18 @@ const getRevenueData = async (req, res) => {
 // Get hourly orders for today (for branch dashboard)
 const getHourlyOrders = async (req, res) => {
   try {
+    const analyticsFilter = getAnalyticsFilter(req);
+    
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    const branchId = req.user?.branch;
-
     const matchQuery = {
+      ...analyticsFilter,
       createdAt: { $gte: today, $lt: tomorrow }
     };
-
-    // If branch user, filter by branch
-    if (branchId) {
-      matchQuery.branch = branchId;
-    }
 
     const hourlyData = await Order.aggregate([
       { $match: matchQuery },
@@ -245,7 +271,10 @@ const getHourlyOrders = async (req, res) => {
 // Get service-wise distribution
 const getServiceDistribution = async (req, res) => {
   try {
+    const analyticsFilter = getAnalyticsFilter(req);
+    
     const serviceData = await Order.aggregate([
+      { $match: analyticsFilter },
       { $unwind: '$items' },
       {
         $group: {

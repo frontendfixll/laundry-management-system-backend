@@ -18,6 +18,11 @@ const brandingSchema = new mongoose.Schema({
     fontFamily: { type: String, default: 'Inter' },
     layout: { type: String, enum: ['modern', 'classic', 'minimal'], default: 'modern' }
   },
+  landingPageTemplate: { 
+    type: String, 
+    enum: ['original', 'minimal', 'freshspin', 'starter'], 
+    default: 'original' 
+  },
   customCss: { type: String, default: '' }
 }, { _id: false });
 

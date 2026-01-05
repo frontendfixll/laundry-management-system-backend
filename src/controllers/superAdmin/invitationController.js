@@ -113,8 +113,11 @@ const invitationController = {
   acceptInvitation: async (req, res) => {
     try {
       const { token, email, password } = req.body;
+      
+      console.log('📧 Accept invitation request for:', email);
 
       if (!token || !email || !password) {
+        console.log('❌ Missing required fields');
         return res.status(400).json({
           success: false,
           message: 'Token, email, and password are required'
@@ -127,14 +130,22 @@ const invitationController = {
         email: email.toLowerCase(),
         emailVerificationToken: hashedToken,
         emailVerificationExpires: { $gt: Date.now() }
-      }).select('+password');
+      }).select('+password +emailVerificationToken +emailVerificationExpires');
 
       if (!user) {
+        console.log('❌ User not found or token invalid/expired for:', email);
+        // Check if user exists but token is wrong
+        const existingUser = await User.findOne({ email: email.toLowerCase() });
+        if (existingUser) {
+          console.log('  - User exists, isActive:', existingUser.isActive, 'isEmailVerified:', existingUser.isEmailVerified);
+        }
         return res.status(400).json({
           success: false,
           message: 'Invalid or expired invitation token'
         });
       }
+
+      console.log('✅ User found:', user.email, 'Current isActive:', user.isActive);
 
       // Update user
       user.password = password;
@@ -143,6 +154,8 @@ const invitationController = {
       user.emailVerificationToken = undefined;
       user.emailVerificationExpires = undefined;
       await user.save();
+      
+      console.log('✅ User updated - isActive:', user.isActive, 'isEmailVerified:', user.isEmailVerified);
 
       // Activate tenancy
       const tenancy = await Tenancy.findById(user.tenancy);

@@ -1,18 +1,18 @@
 const express = require('express');
 const router = express.Router();
 const tenancyAnalyticsController = require('../controllers/superAdmin/tenancyAnalyticsController');
-const { authenticateSuperAdmin, requirePermission } = require('../middlewares/superAdminAuth');
+const { authenticateSuperAdmin } = require('../middlewares/superAdminAuthSimple');
 
 // All routes require superadmin authentication
 router.use(authenticateSuperAdmin);
 
 // Platform-wide analytics
-router.get('/platform', requirePermission('analytics'), tenancyAnalyticsController.getPlatformAnalytics);
+router.get('/platform', tenancyAnalyticsController.getPlatformAnalytics);
 
 // Compare tenancies
-router.post('/compare', requirePermission('analytics'), tenancyAnalyticsController.compareTenancies);
+router.post('/compare', tenancyAnalyticsController.compareTenancies);
 
 // Single tenancy analytics
-router.get('/:tenancyId', requirePermission('analytics'), tenancyAnalyticsController.getTenancyAnalytics);
+router.get('/:tenancyId', tenancyAnalyticsController.getTenancyAnalytics);
 
 module.exports = router;

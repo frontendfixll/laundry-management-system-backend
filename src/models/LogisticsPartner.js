@@ -1,6 +1,13 @@
 const mongoose = require('mongoose');
 
 const logisticsPartnerSchema = new mongoose.Schema({
+  // Tenancy Reference (Multi-tenant support)
+  tenancy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Tenancy',
+    index: true
+    // Optional - if null, it's a global partner (created by SuperAdmin)
+  },
   companyName: {
     type: String,
     required: [true, 'Company name is required'],
@@ -84,6 +91,7 @@ const logisticsPartnerSchema = new mongoose.Schema({
 // Indexes
 logisticsPartnerSchema.index({ 'coverageAreas.pincode': 1 });
 logisticsPartnerSchema.index({ isActive: 1 });
+logisticsPartnerSchema.index({ tenancy: 1 });
 
 // Check if partner covers a pincode
 logisticsPartnerSchema.methods.coversPincode = function(pincode) {
