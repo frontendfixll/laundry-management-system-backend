@@ -3,6 +3,7 @@ const OrderItem = require('../../models/OrderItem');
 const User = require('../../models/User');
 const Address = require('../../models/Address');
 const Branch = require('../../models/Branch');
+const Coupon = require('../../models/Coupon');
 const NotificationService = require('../../services/notificationService');
 const { sendEmail, sendEmailAsync, emailTemplates } = require('../../config/email');
 const { 
@@ -33,7 +34,8 @@ const createOrder = asyncHandler(async (req, res) => {
     branchId,
     serviceType, // 'full_service', 'self_drop_self_pickup', 'self_drop_home_delivery', 'home_pickup_self_pickup'
     deliveryDetails,
-    tenancyId // Tenancy ID for tenant-specific orders
+    tenancyId, // Tenancy ID for tenant-specific orders
+    couponCode // Coupon code to apply
   } = req.body;
 
   const customer = await User.findById(req.user._id);
@@ -169,14 +171,46 @@ const createOrder = asyncHandler(async (req, res) => {
     deliveryCharge = Math.max(0, deliveryCharge - serviceTypeDiscount);
   }
   
-  const pricing = calculateOrderTotal(items, deliveryCharge, serviceTypeDiscount, 0.18); // 18% tax
+  // Apply coupon discount if provided
+  let couponDiscount = 0;
+  let appliedCoupon = null;
+  const orderTenancy = tenancyId || req.tenancyId || req.user?.tenancy || branch.tenancy;
+  
+  if (couponCode && orderTenancy) {
+    const coupon = await Coupon.findValidCoupon(orderTenancy, couponCode);
+    if (coupon) {
+      const canUse = await coupon.canBeUsedBy(req.user._id, totalAmount);
+      if (canUse.valid) {
+        // Check first order only
+        let isEligible = true;
+        if (coupon.firstOrderOnly) {
+          const existingOrders = await Order.countDocuments({
+            customer: req.user._id,
+            tenancy: orderTenancy,
+            status: { $ne: 'cancelled' }
+          });
+          if (existingOrders > 0) isEligible = false;
+        }
+        
+        if (isEligible) {
+          couponDiscount = coupon.calculateDiscount(totalAmount);
+          appliedCoupon = coupon;
+        }
+      }
+    }
+  }
+  
+  const pricing = calculateOrderTotal(items, deliveryCharge, serviceTypeDiscount + couponDiscount, 0.18); // 18% tax
+  
+  // Add coupon info to pricing
+  if (appliedCoupon) {
+    pricing.couponCode = appliedCoupon.code;
+    pricing.couponDiscount = Math.round(couponDiscount);
+  }
 
   // Generate order number
   const orderCount = await Order.countDocuments();
   const orderNumber = `ORD${Date.now()}${String(orderCount + 1).padStart(4, '0')}`;
-
-  // Determine tenancy - priority: request body > middleware > user > branch
-  const orderTenancy = tenancyId || req.tenancyId || req.user?.tenancy || branch.tenancy;
 
   // Create order
   const order = await Order.create({
@@ -239,6 +273,11 @@ const createOrder = asyncHandler(async (req, res) => {
   // Update order with item references
   order.items = createdItems.map(item => item._id);
   await order.save();
+
+  // Record coupon usage if applied
+  if (appliedCoupon) {
+    await appliedCoupon.recordUsage(req.user._id, order._id, couponDiscount);
+  }
 
   // Update customer stats
   customer.totalOrders += 1;

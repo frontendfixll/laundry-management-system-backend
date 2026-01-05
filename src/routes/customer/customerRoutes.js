@@ -32,6 +32,11 @@ const {
   getCategories,
   submitFeedback
 } = require('../../controllers/customer/ticketController');
+const {
+  validateCoupon,
+  getAvailableCoupons,
+  removeCoupon
+} = require('../../controllers/customer/couponController');
 const { addressValidation, validate } = require('../../utils/validation');
 
 const router = express.Router();
@@ -77,6 +82,11 @@ router.route('/tickets')
 router.get('/tickets/:ticketId', getTicketById);
 router.post('/tickets/:ticketId/messages', addMessage);
 router.post('/tickets/:ticketId/feedback', submitFeedback);
+
+// Coupon routes
+router.post('/coupons/validate', validateCoupon);
+router.get('/coupons/available', getAvailableCoupons);
+router.post('/coupons/remove', removeCoupon);
 
 // Profile route
 router.get('/profile', (req, res) => {

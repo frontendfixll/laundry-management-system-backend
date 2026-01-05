@@ -86,6 +86,7 @@ const {
 
 // Branding routes for multi-tenant support
 const brandingRoutes = require('./brandingRoutes');
+const couponRoutes = require('./couponRoutes');
 
 const router = express.Router();
 
@@ -191,5 +192,8 @@ router.delete('/inventory/:itemId', deleteInventoryItem);
 
 // Branding routes (multi-tenant)
 router.use('/tenancy', brandingRoutes);
+
+// Coupon routes
+router.use('/coupons', couponRoutes);
 
 module.exports = router;
