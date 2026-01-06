@@ -117,4 +117,34 @@ router.get('/list', async (req, res) => {
   }
 });
 
+// Get nearby tenancies based on coordinates (new endpoint)
+router.get('/nearby', async (req, res) => {
+  try {
+    const { lat, lng, radius = 10, limit = 20 } = req.query;
+    
+    const query = { status: 'active', isDeleted: false };
+    
+    // For now, just return all active tenancies
+    // In production, you'd use geospatial queries with coordinates
+    const tenancies = await Tenancy.find(query)
+      .select('name slug subdomain branding.logo branding.theme.primaryColor contact.address.city contact.coordinates')
+      .limit(parseInt(limit))
+      .lean();
+    
+    // Add mock distance calculation for demo
+    const tenanciesWithDistance = tenancies.map(tenancy => ({
+      ...tenancy,
+      distance: (Math.random() * 5 + 0.5).toFixed(1), // Mock distance 0.5-5.5 km
+    }));
+    
+    res.json({
+      success: true,
+      data: { tenancies: tenanciesWithDistance }
+    });
+  } catch (error) {
+    console.error('Nearby tenancies error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch nearby tenancies' });
+  }
+});
+
 module.exports = router;

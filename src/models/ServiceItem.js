@@ -14,7 +14,8 @@ const serviceItemSchema = new mongoose.Schema({
   },
   itemId: {
     type: String,
-    required: true
+    required: true,
+    unique: true
   },
   service: {
     type: String,
@@ -41,11 +42,6 @@ const serviceItemSchema = new mongoose.Schema({
   sortOrder: {
     type: Number,
     default: 0
-  },
-  // For branch-created service items
-  createdByBranch: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Branch'
   }
 }, {
   timestamps: true
@@ -55,9 +51,5 @@ const serviceItemSchema = new mongoose.Schema({
 serviceItemSchema.index({ service: 1, isActive: 1 })
 serviceItemSchema.index({ itemId: 1 })
 serviceItemSchema.index({ category: 1 })
-serviceItemSchema.index({ createdByBranch: 1 })
-
-// Compound unique index - itemId should be unique per branch (or global if no branch)
-serviceItemSchema.index({ itemId: 1, createdByBranch: 1 }, { unique: true })
 
 module.exports = mongoose.model('ServiceItem', serviceItemSchema)

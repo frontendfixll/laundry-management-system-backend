@@ -5,7 +5,7 @@ const LogisticsPartner = require('../../models/LogisticsPartner');
 const Ticket = require('../../models/Ticket');
 const Refund = require('../../models/Refund');
 const OrderService = require('../../services/orderService');
-const { addTenancyFilter } = require('../../middlewares/tenancyMiddleware');
+const { addTenancyFilter, addTenancyToDocument } = require('../../middlewares/tenancyMiddleware');
 const { 
   sendSuccess, 
   sendError, 
@@ -54,6 +54,7 @@ const getDashboard = asyncHandler(async (req, res) => {
     totalOrders,
     todayOrders,
     pendingOrders,
+    completedTodayOrders,
     expressOrders,
     pendingComplaints,
     totalBranches
@@ -62,6 +63,10 @@ const getDashboard = asyncHandler(async (req, res) => {
     Order.countDocuments(addTenancyFilter({ createdAt: { $gte: startOfDay, $lte: endOfDay } }, tenancyId)),
     Order.countDocuments(addTenancyFilter({ 
       status: { $in: [ORDER_STATUS.PLACED, ORDER_STATUS.ASSIGNED_TO_BRANCH] }
+    }, tenancyId)),
+    Order.countDocuments(addTenancyFilter({ 
+      status: ORDER_STATUS.DELIVERED,
+      updatedAt: { $gte: startOfDay, $lte: endOfDay }
     }, tenancyId)),
     Order.countDocuments(addTenancyFilter({ isExpress: true, status: { $ne: ORDER_STATUS.DELIVERED } }, tenancyId)),
     Ticket.countDocuments(addTenancyFilter({ status: { $in: [TICKET_STATUS.OPEN, TICKET_STATUS.IN_PROGRESS] } }, tenancyId)),
@@ -92,6 +97,7 @@ const getDashboard = asyncHandler(async (req, res) => {
       totalOrders,
       todayOrders,
       pendingOrders,
+      completedTodayOrders,
       expressOrders,
       totalCustomers,
       activeCustomers,
@@ -600,7 +606,9 @@ const getRefundRequests = asyncHandler(async (req, res) => {
 
   const { skip, limit: limitNum, page: pageNum } = getPagination(page, limit);
 
-  const query = {};
+  // Apply tenancy filtering
+  const tenancyId = req.tenancyId || req.user?.tenancy;
+  const query = addTenancyFilter({}, tenancyId);
   
   if (status) query.status = status;
   if (isEscalated !== undefined) query.isEscalated = isEscalated === 'true';
@@ -639,7 +647,11 @@ const getRefundRequests = asyncHandler(async (req, res) => {
 const getRefundById = asyncHandler(async (req, res) => {
   const { refundId } = req.params;
 
-  const refund = await Refund.findById(refundId)
+  // Apply tenancy filtering
+  const tenancyId = req.tenancyId || req.user?.tenancy;
+  const query = addTenancyFilter({ _id: refundId }, tenancyId);
+
+  const refund = await Refund.findOne(query)
     .populate('order', 'orderNumber status pricing customer branch')
     .populate('customer', 'name email phone')
     .populate('requestedBy', 'name')
@@ -667,7 +679,11 @@ const createRefundRequest = asyncHandler(async (req, res) => {
     return sendError(res, 'MISSING_DATA', 'Order ID, amount, reason, and category are required', 400);
   }
 
-  const order = await Order.findById(orderId).populate('customer');
+  // Apply tenancy filtering for order lookup
+  const tenancyId = req.tenancyId || req.user?.tenancy;
+  const orderQuery = addTenancyFilter({ _id: orderId }, tenancyId);
+
+  const order = await Order.findOne(orderQuery).populate('customer');
   if (!order) {
     return sendError(res, 'ORDER_NOT_FOUND', 'Order not found', 404);
   }
@@ -677,7 +693,7 @@ const createRefundRequest = asyncHandler(async (req, res) => {
     return sendError(res, 'INVALID_AMOUNT', 'Refund amount cannot exceed order total', 400);
   }
 
-  const refund = new Refund({
+  const refund = new Refund(addTenancyToDocument({
     order: orderId,
     customer: order.customer._id,
     ticket: ticketId,
@@ -687,7 +703,7 @@ const createRefundRequest = asyncHandler(async (req, res) => {
     type: amount === order.pricing.total ? 'full' : 'partial',
     requestedBy: req.user._id,
     status: REFUND_STATUS.REQUESTED
-  });
+  }, tenancyId));
 
   await refund.save();
 
@@ -706,7 +722,11 @@ const approveRefund = asyncHandler(async (req, res) => {
   const { notes } = req.body;
   const user = req.user;
 
-  const refund = await Refund.findById(refundId);
+  // Apply tenancy filtering
+  const tenancyId = req.tenancyId || req.user?.tenancy;
+  const query = addTenancyFilter({ _id: refundId }, tenancyId);
+
+  const refund = await Refund.findOne(query);
   if (!refund) {
     return sendError(res, 'REFUND_NOT_FOUND', 'Refund not found', 404);
   }
@@ -741,7 +761,11 @@ const rejectRefund = asyncHandler(async (req, res) => {
     return sendError(res, 'REASON_REQUIRED', 'Rejection reason is required', 400);
   }
 
-  const refund = await Refund.findById(refundId);
+  // Apply tenancy filtering
+  const tenancyId = req.tenancyId || req.user?.tenancy;
+  const query = addTenancyFilter({ _id: refundId }, tenancyId);
+
+  const refund = await Refund.findOne(query);
   if (!refund) {
     return sendError(res, 'REFUND_NOT_FOUND', 'Refund not found', 404);
   }
@@ -769,7 +793,11 @@ const escalateRefund = asyncHandler(async (req, res) => {
     return sendError(res, 'REASON_REQUIRED', 'Escalation reason is required', 400);
   }
 
-  const refund = await Refund.findById(refundId);
+  // Apply tenancy filtering
+  const tenancyId = req.tenancyId || req.user?.tenancy;
+  const query = addTenancyFilter({ _id: refundId }, tenancyId);
+
+  const refund = await Refund.findOne(query);
   if (!refund) {
     return sendError(res, 'REFUND_NOT_FOUND', 'Refund not found', 404);
   }
@@ -797,7 +825,11 @@ const processRefund = asyncHandler(async (req, res) => {
   const { refundId } = req.params;
   const { transactionId } = req.body;
 
-  const refund = await Refund.findById(refundId);
+  // Apply tenancy filtering
+  const tenancyId = req.tenancyId || req.user?.tenancy;
+  const query = addTenancyFilter({ _id: refundId }, tenancyId);
+
+  const refund = await Refund.findOne(query);
   if (!refund) {
     return sendError(res, 'REFUND_NOT_FOUND', 'Refund not found', 404);
   }

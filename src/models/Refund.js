@@ -149,6 +149,7 @@ refundSchema.index({ order: 1 });
 refundSchema.index({ customer: 1 });
 refundSchema.index({ status: 1, createdAt: -1 });
 refundSchema.index({ isEscalated: 1 });
+refundSchema.index({ tenancy: 1, status: 1, createdAt: -1 }); // Compound index for tenancy-based filtering
 
 // Generate refund number
 refundSchema.pre('save', async function(next) {

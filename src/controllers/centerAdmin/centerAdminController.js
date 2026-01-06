@@ -930,27 +930,13 @@ const getBranchServices = asyncHandler(async (req, res) => {
     return sendError(res, 'NO_BRANCH', 'No branch assigned', 404);
   }
 
-  // Get ALL services created by admin/center admin (globally active, not branch-created)
+  // Get ALL services created by admin/center admin (globally active)
   const adminServices = await Service.find({
-    isActive: true,
-    createdByBranch: { $exists: false } // Not created by any branch
+    isActive: true
   }).lean();
 
-  // Get services created by this branch
-  const branchCreatedServices = await Service.find({
-    createdByBranch: branch._id
-  }).lean();
-
-  // Transform admin services - check if branch has enabled/disabled them
+  // Transform admin services - all are enabled globally now
   const transformedAdmin = adminServices.map(service => {
-    // Check if this branch has a config for this service
-    const branchConfig = service.branches?.find(
-      b => b.branch && b.branch.toString() === branch._id.toString()
-    );
-    
-    // If no branch config exists, service is enabled by default
-    const isActiveForBranch = branchConfig ? branchConfig.isActive : true;
-    
     return {
       _id: service._id,
       name: service.name,
@@ -961,30 +947,15 @@ const getBranchServices = asyncHandler(async (req, res) => {
       category: service.category,
       turnaroundTime: service.turnaroundTime,
       isExpressAvailable: service.isExpressAvailable,
-      isActiveForBranch: isActiveForBranch,
-      priceMultiplier: branchConfig?.priceMultiplier ?? service.basePriceMultiplier ?? 1.0,
-      customTurnaround: branchConfig?.customTurnaround,
+      isActiveForBranch: service.isActive,
+      priceMultiplier: service.basePriceMultiplier ?? 1.0,
       source: 'admin', // Created by admin/center admin
       canDelete: false
     };
   });
 
-  // Transform branch-created services
-  const transformedBranchCreated = branchCreatedServices.map(service => ({
-    _id: service._id,
-    name: service.name,
-    code: service.code,
-    displayName: service.displayName,
-    description: service.description,
-    icon: service.icon,
-    category: service.category,
-    turnaroundTime: service.turnaroundTime,
-    isExpressAvailable: service.isExpressAvailable,
-    isActiveForBranch: service.isActive !== false,
-    priceMultiplier: service.basePriceMultiplier ?? 1.0,
-    source: 'branch', // Created by branch manager
-    canDelete: true
-  }));
+  // Transform branch-created services (none exist now since we removed this functionality)
+  const transformedBranchCreated = [];
 
   const allServices = [...transformedAdmin, ...transformedBranchCreated];
 
@@ -1096,6 +1067,7 @@ const deleteBranchService = asyncHandler(async (req, res) => {
 });
 
 // @desc    Toggle service status for branch
+// @desc    Toggle service status (simplified - no branch-specific logic)
 // @route   PUT /api/branch/services/:serviceId/toggle
 // @access  Private (Branch Manager)
 const toggleBranchService = asyncHandler(async (req, res) => {
@@ -1112,75 +1084,24 @@ const toggleBranchService = asyncHandler(async (req, res) => {
     return sendError(res, 'SERVICE_NOT_FOUND', 'Service not found', 404);
   }
 
-  // Check if it's a branch-created service
-  if (service.createdByBranch && service.createdByBranch.toString() === branch._id.toString()) {
-    // Toggle the global isActive for branch-created services
-    service.isActive = !service.isActive;
-    await service.save();
-    
-    sendSuccess(res, { 
-      service: {
-        _id: service._id,
-        name: service.name,
-        displayName: service.displayName,
-        isActiveForBranch: service.isActive
-      }
-    }, `Service ${service.isActive ? 'enabled' : 'disabled'}`);
-    return;
-  }
-
-  // For admin services, toggle in branches array
-  if (!service.branches) {
-    service.branches = [];
-  }
-
-  const branchIndex = service.branches.findIndex(
-    b => b.branch && b.branch.toString() === branch._id.toString()
-  );
-
-  if (branchIndex === -1) {
-    // Branch config doesn't exist - add it with isActive = false (disabling)
-    service.branches.push({
-      branch: branch._id,
-      isActive: false,
-      priceMultiplier: 1.0
-    });
-    await service.save();
-    
-    sendSuccess(res, { 
-      service: {
-        _id: service._id,
-        name: service.name,
-        displayName: service.displayName,
-        isActiveForBranch: false
-      }
-    }, 'Service disabled for your branch');
-    return;
-  }
-
-  // Toggle existing config
-  service.branches[branchIndex].isActive = !service.branches[branchIndex].isActive;
-  await service.save();
-
-  const newStatus = service.branches[branchIndex].isActive;
-
+  // Since we removed branch-specific functionality, just return current status
+  // In a simplified system, all services are globally managed
   sendSuccess(res, { 
     service: {
       _id: service._id,
       name: service.name,
       displayName: service.displayName,
-      isActiveForBranch: newStatus
+      isActiveForBranch: service.isActive
     }
-  }, `Service ${newStatus ? 'enabled' : 'disabled'} for your branch`);
+  }, 'Service status retrieved (global services cannot be toggled per branch)');
 });
 
-// @desc    Update service settings for branch (price multiplier, turnaround)
+// @desc    Update service settings (simplified - global settings only)
 // @route   PUT /api/branch/services/:serviceId/settings
 // @access  Private (Branch Manager)
 const updateBranchServiceSettings = asyncHandler(async (req, res) => {
   const user = req.user;
   const { serviceId } = req.params;
-  const { priceMultiplier, customTurnaround, displayName, description, category, icon } = req.body;
 
   const branch = await getAdminBranch(user);
   if (!branch) {
@@ -1192,59 +1113,16 @@ const updateBranchServiceSettings = asyncHandler(async (req, res) => {
     return sendError(res, 'SERVICE_NOT_FOUND', 'Service not found', 404);
   }
 
-  // Check if it's a branch-created service - allow full edit
-  if (service.createdByBranch && service.createdByBranch.toString() === branch._id.toString()) {
-    if (displayName) service.displayName = displayName;
-    if (description !== undefined) service.description = description;
-    if (category) service.category = category;
-    if (icon) service.icon = icon;
-    if (priceMultiplier !== undefined) service.basePriceMultiplier = priceMultiplier;
-    if (customTurnaround) service.turnaroundTime = customTurnaround;
-    
-    await service.save();
-    
-    sendSuccess(res, { 
-      service: {
-        _id: service._id,
-        name: service.name,
-        displayName: service.displayName,
-        description: service.description,
-        category: service.category,
-        icon: service.icon,
-        priceMultiplier: service.basePriceMultiplier,
-        turnaroundTime: service.turnaroundTime
-      }
-    }, 'Service updated successfully');
-    return;
-  }
-
-  // For admin-assigned services, only update branch-specific settings
-  const branchIndex = service.branches.findIndex(
-    b => b.branch.toString() === branch._id.toString()
-  );
-
-  if (branchIndex === -1) {
-    return sendError(res, 'SERVICE_NOT_ASSIGNED', 'This service is not assigned to your branch', 400);
-  }
-
-  if (priceMultiplier !== undefined) {
-    service.branches[branchIndex].priceMultiplier = priceMultiplier;
-  }
-  if (customTurnaround) {
-    service.branches[branchIndex].customTurnaround = customTurnaround;
-  }
-
-  await service.save();
-
+  // Since we removed branch-specific functionality, just return current settings
   sendSuccess(res, { 
     service: {
       _id: service._id,
       name: service.name,
       displayName: service.displayName,
-      priceMultiplier: service.branches[branchIndex].priceMultiplier,
-      customTurnaround: service.branches[branchIndex].customTurnaround
+      priceMultiplier: service.basePriceMultiplier,
+      turnaroundTime: service.turnaroundTime
     }
-  }, 'Service settings updated for your branch');
+  }, 'Service settings retrieved (global services cannot be modified per branch)');
 });
 
 // Export service management functions
