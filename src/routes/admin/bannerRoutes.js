@@ -1,12 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const bannerController = require('../../controllers/admin/bannerController');
-const { protect, authorize } = require('../../middlewares/auth');
+const { protect, restrictTo } = require('../../middlewares/auth');
 const { upload } = require('../../services/imageUploadService');
 
 // Apply authentication and authorization middleware
 router.use(protect);
-router.use(authorize('ADMIN', 'OPERATIONS_ADMIN'));
+router.use(restrictTo('admin', 'ADMIN', 'OPERATIONS_ADMIN'));
 
 // Banner CRUD routes
 router.get('/', bannerController.getTenantBanners);

@@ -1,11 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const bannerController = require('../../controllers/superAdmin/bannerController');
-const { protect, authorize } = require('../../middlewares/auth');
+const { protectSuperAdmin } = require('../../middlewares/auth');
 
 // Apply authentication and authorization middleware
-router.use(protect);
-router.use(authorize('SUPERADMIN'));
+router.use(protectSuperAdmin);
 
 // Banner management routes
 router.get('/', bannerController.getAllBanners);
