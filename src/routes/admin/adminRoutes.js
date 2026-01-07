@@ -202,6 +202,10 @@ router.use('/tenancy', brandingRoutes);
 const adminBranchRoutes = require('./adminBranches');
 router.use('/branches-management', adminBranchRoutes);
 
+// Branch-Service management routes (new - allows admins to manage services per branch)
+const branchServiceRoutes = require('./branchServiceRoutes');
+router.use('/branches', branchServiceRoutes);
+
 // Coupon routes
 router.use('/coupons', couponRoutes);
 

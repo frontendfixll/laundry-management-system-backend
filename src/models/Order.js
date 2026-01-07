@@ -229,8 +229,27 @@ orderSchema.index({ pickupDate: 1 });
 // Generate order number and barcode
 orderSchema.pre('save', async function(next) {
   if (!this.orderNumber) {
-    const count = await mongoose.model('Order').countDocuments();
-    this.orderNumber = `ORD${Date.now()}${String(count + 1).padStart(4, '0')}`;
+    // Generate shorter order number: ORD + YYMMDD + 3-digit daily counter
+    const today = new Date();
+    const year = today.getFullYear().toString().slice(-2);
+    const month = (today.getMonth() + 1).toString().padStart(2, '0');
+    const day = today.getDate().toString().padStart(2, '0');
+    const dateStr = year + month + day;
+    
+    // Get today's order count for this tenancy
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const todayEnd = new Date(todayStart);
+    todayEnd.setDate(todayEnd.getDate() + 1);
+    
+    const todayCount = await mongoose.model('Order').countDocuments({
+      tenancy: this.tenancy,
+      createdAt: { 
+        $gte: todayStart, 
+        $lt: todayEnd 
+      }
+    });
+    
+    this.orderNumber = `ORD${dateStr}${String(todayCount + 1).padStart(3, '0')}`;
   }
   
   // Generate unique barcode if not exists

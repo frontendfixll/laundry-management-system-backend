@@ -122,6 +122,37 @@ const getServiceTypes = asyncHandler(async (req, res) => {
 });
 
 // @desc    Get all active branches for customer selection
+// @route   GET /api/services/branches
+// @access  Public
+const getBranches = asyncHandler(async (req, res) => {
+  const branches = await Branch.find({ 
+    isActive: true 
+  })
+  .select('name code address phone coordinates serviceableRadius')
+  .sort({ name: 1 })
+  .lean();
+
+  // Format branches for customer use
+  const formattedBranches = branches.map(branch => ({
+    _id: branch._id,
+    name: branch.name,
+    code: branch.code,
+    address: {
+      addressLine1: branch.address?.addressLine1 || branch.address?.street,
+      city: branch.address?.city,
+      pincode: branch.address?.pincode
+    },
+    phone: branch.phone || branch.contact?.phone,
+    coordinates: branch.coordinates,
+    serviceableRadius: branch.serviceableRadius
+  }));
+
+  sendSuccess(res, {
+    branches: formattedBranches,
+    totalBranches: formattedBranches.length
+  }, 'Branches retrieved successfully');
+});
+
 // @desc    Get public pricing for landing page
 // @route   GET /api/services/pricing
 // @access  Public
@@ -175,5 +206,6 @@ module.exports = {
   getAvailableTimeSlots,
   checkServiceAvailability,
   getServiceTypes,
+  getBranches,
   getPublicPricing
 };

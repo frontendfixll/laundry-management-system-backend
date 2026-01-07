@@ -191,6 +191,7 @@ app.use('/api/service-items', serviceItemsRoutes);
 app.use('/api/delivery', deliveryRoutes);
 app.use('/api/admin/services', adminServiceRoutes);
 app.use('/api/admin/branches', branchServiceRoutes);
+app.use('/api/branches', branchServiceRoutes); // Public access for customer endpoints
 app.use('/api/barcode', barcodeRoutes);
 
 // Public routes (no auth required - for QR code scanning)

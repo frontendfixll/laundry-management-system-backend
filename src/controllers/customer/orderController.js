@@ -208,9 +208,27 @@ const createOrder = asyncHandler(async (req, res) => {
     pricing.couponDiscount = Math.round(couponDiscount);
   }
 
-  // Generate order number
-  const orderCount = await Order.countDocuments();
-  const orderNumber = `ORD${Date.now()}${String(orderCount + 1).padStart(4, '0')}`;
+  // Generate shorter order number: ORD + YYMMDD + 3-digit daily counter
+  const today = new Date();
+  const year = today.getFullYear().toString().slice(-2);
+  const month = (today.getMonth() + 1).toString().padStart(2, '0');
+  const day = today.getDate().toString().padStart(2, '0');
+  const dateStr = year + month + day;
+  
+  // Get today's order count for this tenancy
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const todayEnd = new Date(todayStart);
+  todayEnd.setDate(todayEnd.getDate() + 1);
+  
+  const todayCount = await Order.countDocuments({
+    tenancy: orderTenancy,
+    createdAt: { 
+      $gte: todayStart, 
+      $lt: todayEnd 
+    }
+  });
+  
+  const orderNumber = `ORD${dateStr}${String(todayCount + 1).padStart(3, '0')}`;
 
   // Create order
   const order = await Order.create({
