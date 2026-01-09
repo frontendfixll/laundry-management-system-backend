@@ -145,10 +145,11 @@ const calculateOrderTotal = (items, deliveryCharge = 0, discount = 0, taxRate = 
     }
   });
 
-  const discountAmount = (subtotal * discount) / 100;
+  // Discount is now passed as actual amount (in rupees), not percentage
+  const discountAmount = Math.min(discount, subtotal + deliveryCharge + expressCharge); // Cap discount at max total
   const taxableAmount = subtotal + deliveryCharge + expressCharge - discountAmount;
-  const tax = taxableAmount * taxRate;
-  const total = taxableAmount + tax;
+  const tax = Math.max(0, taxableAmount * taxRate); // Ensure tax is not negative
+  const total = Math.max(0, taxableAmount + tax); // Ensure total is not negative
 
   return {
     subtotal: Math.round(subtotal),
