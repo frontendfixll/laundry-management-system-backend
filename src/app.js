@@ -77,6 +77,8 @@ const allowedOrigins = [
   'http://localhost:3003',
   process.env.FRONTEND_URL,
   process.env.SUPERADMIN_URL,
+  // Allow all Vercel preview deployments
+  /^https:\/\/.*\.vercel\.app$/,
   // Allow all subdomains of your domain
   /^https:\/\/[\w-]+\.laundry$/,
   /^http:\/\/[\w-]+\.laundry$/
