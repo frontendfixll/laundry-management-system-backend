@@ -9,7 +9,7 @@ const crypto = require('crypto');
 // Register new user
 const register = async (req, res) => {
   try {
-    const { name, email, phone, password, tenancySlug } = req.body;
+    const { name, email, phone, password, tenancySlug, referralCode } = req.body;
 
     // Check if user already exists
     const existingUser = await User.findOne({
@@ -43,6 +43,9 @@ const register = async (req, res) => {
       isEmailVerified: false
     };
 
+    // Determine tenancy
+    let tenancyId = null;
+    
     // If tenancy slug provided, associate customer with tenancy
     if (tenancySlug) {
       const Tenancy = require('../models/Tenancy');
@@ -52,6 +55,7 @@ const register = async (req, res) => {
       });
       if (tenancy) {
         userData.tenancy = tenancy._id;
+        tenancyId = tenancy._id;
       }
     }
 
@@ -63,6 +67,45 @@ const register = async (req, res) => {
     
     // Save user
     await user.save();
+    
+    // Handle referral code if provided
+    let referralApplied = false;
+    let referralReward = null;
+    
+    if (referralCode) {
+      try {
+        const { Referral } = require('../models/Referral');
+        
+        // Find the referral by code
+        const referral = await Referral.findOne({
+          code: referralCode.toUpperCase(),
+          status: 'pending'
+        }).populate('program');
+        
+        if (referral && referral.isValid()) {
+          // Check if program is still active
+          if (referral.program && referral.program.isValid()) {
+            // Record signup - link referee to referrer
+            referral.signups += 1;
+            referral.referee = user._id;
+            await referral.save();
+            
+            referralApplied = true;
+            referralReward = referral.program.refereeReward;
+            
+            // Store referral info in user for later reward processing
+            user.referredBy = referral.referrer;
+            user.referralCode = referralCode.toUpperCase();
+            await user.save();
+            
+            console.log(`✅ Referral signup recorded: ${referralCode} -> ${user.email}`);
+          }
+        }
+      } catch (refError) {
+        console.error('Referral processing error:', refError);
+        // Don't fail registration if referral fails
+      }
+    }
 
     // Send verification email
     const emailOptions = emailTemplates.verification(verificationToken, email);
@@ -80,7 +123,13 @@ const register = async (req, res) => {
         userId: user._id,
         email: user.email,
         name: user.name,
-        emailSent: emailResult.success
+        emailSent: emailResult.success,
+        referralApplied,
+        referralReward: referralApplied ? {
+          type: referralReward?.type,
+          value: referralReward?.value,
+          message: `You'll receive ${referralReward?.type === 'credit' ? '₹' : ''}${referralReward?.value}${referralReward?.type === 'discount' ? '%' : ''} ${referralReward?.type} on your first order!`
+        } : null
       }
     });
 

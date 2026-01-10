@@ -186,6 +186,19 @@ const userSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  // Loyalty points (from loyalty program)
+  loyaltyPoints: {
+    type: Number,
+    default: 0
+  },
+  // Wallet for referral credits
+  wallet: {
+    balance: {
+      type: Number,
+      default: 0
+    },
+    lastUpdated: Date
+  },
   totalOrders: {
     type: Number,
     default: 0
@@ -215,6 +228,19 @@ const userSchema = new mongoose.Schema({
   // Timestamps
   lastLogin: Date,
   phoneVerified: {
+    type: Boolean,
+    default: false
+  },
+  // Referral tracking
+  referredBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  referralCode: {
+    type: String,
+    uppercase: true
+  },
+  referralRewardClaimed: {
     type: Boolean,
     default: false
   }
