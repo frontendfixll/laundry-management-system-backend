@@ -5,9 +5,16 @@ const { sendSuccess, sendError, asyncHandler } = require('../../utils/helpers');
 
 // @desc    Get all services for a specific branch with their enabled status
 // @route   GET /api/admin/branches/:branchId/services
-// @access  Private (Admin)
+// @access  Private (Admin/Branch Admin)
 const getBranchServices = asyncHandler(async (req, res) => {
   const { branchId } = req.params;
+  
+  // For branch_admin, verify they can only access their assigned branch
+  if (req.user.role === 'branch_admin') {
+    if (!req.user.assignedBranch || req.user.assignedBranch.toString() !== branchId) {
+      return sendError(res, 'FORBIDDEN', 'You can only access your assigned branch', 403);
+    }
+  }
   
   // Verify branch exists and belongs to user's tenancy
   const branch = await Branch.findOne({ 
@@ -190,9 +197,16 @@ const bulkUpdateBranchServices = asyncHandler(async (req, res) => {
 
 // @desc    Toggle service status for a branch
 // @route   PATCH /api/admin/branches/:branchId/services/:serviceId/toggle
-// @access  Private (Admin)
+// @access  Private (Admin/Branch Admin)
 const toggleBranchService = asyncHandler(async (req, res) => {
   const { branchId, serviceId } = req.params;
+  
+  // For branch_admin, verify they can only access their assigned branch
+  if (req.user.role === 'branch_admin') {
+    if (!req.user.assignedBranch || req.user.assignedBranch.toString() !== branchId) {
+      return sendError(res, 'FORBIDDEN', 'You can only manage your assigned branch', 403);
+    }
+  }
   
   // Verify branch exists and belongs to user's tenancy
   const branch = await Branch.findOne({ 

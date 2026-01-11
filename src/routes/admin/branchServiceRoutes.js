@@ -8,6 +8,7 @@ const {
   getEnabledBranchServices
 } = require('../../controllers/admin/branchServiceController');
 const { protectAny, restrictTo } = require('../../middlewares/auth');
+const { injectTenancyFromUser } = require('../../middlewares/tenancyMiddleware');
 const { body, param } = require('express-validator');
 
 // Validation rules
@@ -33,27 +34,28 @@ router.get('/:branchId/services/enabled', getEnabledBranchServices);
 
 // All other routes require authentication
 router.use(protectAny);
+router.use(injectTenancyFromUser);
 
-// Admin routes (require admin or superadmin role)
+// Admin routes (require admin, branch_admin, or superadmin role)
 router.get('/:branchId/services', 
-  restrictTo('admin', 'superadmin'), 
+  restrictTo('admin', 'branch_admin', 'superadmin'), 
   getBranchServices
 );
 
 router.put('/:branchId/services/:serviceId', 
-  restrictTo('admin', 'superadmin'),
+  restrictTo('admin', 'branch_admin', 'superadmin'),
   validateBranchServiceUpdate,
   updateBranchService
 );
 
 router.put('/:branchId/services/bulk', 
-  restrictTo('admin', 'superadmin'),
+  restrictTo('admin', 'branch_admin', 'superadmin'),
   validateBulkUpdate,
   bulkUpdateBranchServices
 );
 
 router.patch('/:branchId/services/:serviceId/toggle', 
-  restrictTo('admin', 'superadmin'),
+  restrictTo('admin', 'branch_admin', 'superadmin'),
   toggleBranchService
 );
 

@@ -161,11 +161,15 @@ const calculateOrderTotal = (items, deliveryCharge = 0, discount = 0, taxRate = 
   };
 };
 
-// Generate order number
+// Generate order number (shorter format: ORD + YYMMDD + random 3 digits)
 const generateOrderNumber = () => {
-  const timestamp = Date.now();
+  const today = new Date();
+  const year = today.getFullYear().toString().slice(-2);
+  const month = (today.getMonth() + 1).toString().padStart(2, '0');
+  const day = today.getDate().toString().padStart(2, '0');
+  const dateStr = year + month + day;
   const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-  return `ORD${timestamp}${random}`;
+  return `ORD${dateStr}${random}`;
 };
 
 // Generate ticket number
@@ -244,6 +248,34 @@ const asyncHandler = (fn) => (req, res, next) => {
   Promise.resolve(fn(req, res, next)).catch(next);
 };
 
+// Get branch filter for branch_admin users
+// Returns branch ID if user is branch_admin, null otherwise
+const getBranchFilter = (user) => {
+  if (user.role === 'branch_admin' && user.assignedBranch) {
+    return user.assignedBranch;
+  }
+  return null;
+};
+
+// Add branch filter to query for branch_admin users
+const addBranchFilter = (query, user) => {
+  const branchId = getBranchFilter(user);
+  if (branchId) {
+    query.branch = branchId;
+  }
+  return query;
+};
+
+// Get user's branch info
+const getUserBranchInfo = async (user) => {
+  if (user.role === 'branch_admin' && user.assignedBranch) {
+    const Branch = require('../models/Branch');
+    const branch = await Branch.findById(user.assignedBranch).select('name code address');
+    return branch;
+  }
+  return null;
+};
+
 module.exports = {
   generateToken,
   sendResponse,
@@ -263,5 +295,8 @@ module.exports = {
   generateOTP,
   maskPhone,
   maskEmail,
-  asyncHandler
+  asyncHandler,
+  getBranchFilter,
+  addBranchFilter,
+  getUserBranchInfo
 };

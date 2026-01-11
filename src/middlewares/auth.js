@@ -167,7 +167,7 @@ const restrictTo = (...roles) => {
   };
 };
 
-// Check specific RBAC permission for admin users
+// Check specific RBAC permission for admin/branch_admin users
 const requirePermission = (module, action) => {
   return (req, res, next) => {
     // SuperAdmin has all permissions
@@ -175,8 +175,8 @@ const requirePermission = (module, action) => {
       return next();
     }
     
-    // Only admin role has RBAC permissions
-    if (req.user.role !== 'admin') {
+    // Only admin and branch_admin roles have RBAC permissions
+    if (req.user.role !== 'admin' && req.user.role !== 'branch_admin') {
       return res.status(403).json({
         success: false,
         message: 'Admin access required'
@@ -204,6 +204,42 @@ const requireEmailVerification = (req, res, next) => {
       requiresEmailVerification: true
     });
   }
+  next();
+};
+
+// Restrict branch_admin to only access their assigned branch data
+const restrictToBranch = (req, res, next) => {
+  // SuperAdmin and tenancy admin can access all branches
+  if (req.isSuperAdmin || req.user.role === 'admin') {
+    return next();
+  }
+  
+  // Branch admin must have an assigned branch
+  if (req.user.role === 'branch_admin') {
+    if (!req.user.assignedBranch) {
+      return res.status(403).json({
+        success: false,
+        message: 'Branch admin must be assigned to a branch'
+      });
+    }
+    
+    // Get branch ID from request (params, query, or body)
+    const requestedBranchId = req.params.branchId || req.query.branchId || req.body.branchId;
+    
+    // If a specific branch is requested, verify it matches assigned branch
+    if (requestedBranchId && requestedBranchId.toString() !== req.user.assignedBranch.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You can only access your assigned branch.'
+      });
+    }
+    
+    // Inject branch filter for queries
+    req.branchFilter = { branch: req.user.assignedBranch };
+    return next();
+  }
+  
+  // Other roles don't have branch restrictions at this level
   next();
 };
 
@@ -316,6 +352,7 @@ module.exports = {
   protectAny,
   protectSuperAdmin,
   restrictTo,
+  restrictToBranch,
   requirePermission,
   requireEmailVerification,
   optionalAuth

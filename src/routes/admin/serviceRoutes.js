@@ -12,14 +12,14 @@ const { protectAny, restrictTo } = require('../../middlewares/auth')
 // All routes require authentication (protectAny accepts both user and superadmin tokens)
 router.use(protectAny)
 
-// Service CRUD routes (admin role handles service management)
+// Service CRUD routes (admin and branch_admin can manage services)
 router.route('/')
-  .get(restrictTo('admin', 'superadmin'), getServices)
+  .get(restrictTo('admin', 'branch_admin', 'superadmin'), getServices)
   .post(restrictTo('admin', 'superadmin'), createService)
 
 router.route('/:id')
-  .get(restrictTo('admin', 'superadmin'), getService)
-  .put(restrictTo('admin', 'superadmin'), updateService)
+  .get(restrictTo('admin', 'branch_admin', 'superadmin'), getService)
+  .put(restrictTo('admin', 'branch_admin', 'superadmin'), updateService)
   .delete(restrictTo('superadmin'), deleteService)
 
 module.exports = router

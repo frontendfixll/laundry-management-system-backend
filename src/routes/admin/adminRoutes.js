@@ -100,6 +100,21 @@ const router = express.Router();
 router.use(protect);
 router.use(injectTenancyFromUser);
 
+// Middleware to allow branch_admin to access admin routes
+// Branch admin will have data filtered by their assigned branch
+const allowBranchAdmin = (req, res, next) => {
+  if (req.user.role === 'admin' || req.user.role === 'branch_admin') {
+    return next();
+  }
+  return res.status(403).json({
+    success: false,
+    message: 'Access denied. Admin or Branch Admin role required.'
+  });
+};
+
+// Apply branch admin access to all routes
+router.use(allowBranchAdmin);
+
 // Dashboard routes
 router.get('/dashboard', getDashboard);
 

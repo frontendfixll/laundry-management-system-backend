@@ -88,6 +88,18 @@ const adminPermissionsSchema = new mongoose.Schema({
     create: { type: Boolean, default: false },
     update: { type: Boolean, default: false },
     delete: { type: Boolean, default: false }
+  },
+  branches: {
+    view: { type: Boolean, default: false },
+    create: { type: Boolean, default: false },
+    update: { type: Boolean, default: false },
+    delete: { type: Boolean, default: false }
+  },
+  branchAdmins: {
+    view: { type: Boolean, default: false },
+    create: { type: Boolean, default: false },
+    update: { type: Boolean, default: false },
+    delete: { type: Boolean, default: false }
   }
 }, { _id: false });
 
@@ -126,7 +138,7 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['admin', 'staff', 'customer'],  // admin = laundry admin, staff = laundry staff
+    enum: ['admin', 'branch_admin', 'staff', 'customer'],  // admin = tenancy admin, branch_admin = single branch admin, staff = laundry staff
     default: 'customer'
   },
   isActive: {
@@ -294,19 +306,19 @@ userSchema.methods.generatePasswordResetToken = function() {
   return token;
 };
 
-// Check if admin has specific permission
+// Check if admin/branch_admin has specific permission
 userSchema.methods.hasPermission = function(module, action) {
-  if (this.role !== 'admin') return false;
+  if (this.role !== 'admin' && this.role !== 'branch_admin') return false;
   return this.permissions?.[module]?.[action] === true;
 };
 
 // Get all permissions for a module
 userSchema.methods.getModulePermissions = function(module) {
-  if (this.role !== 'admin') return {};
+  if (this.role !== 'admin' && this.role !== 'branch_admin') return {};
   return this.permissions?.[module] || {};
 };
 
-// Default admin permissions (all enabled)
+// Default admin permissions (all enabled - tenancy level)
 userSchema.statics.getDefaultAdminPermissions = function() {
   return {
     orders: { view: true, create: true, update: true, delete: true, assign: true, cancel: true, process: true },
@@ -319,7 +331,28 @@ userSchema.statics.getDefaultAdminPermissions = function() {
     performance: { view: true, create: true, update: true, delete: true, export: true },
     analytics: { view: true },
     settings: { view: true, create: true, update: true, delete: true },
-    coupons: { view: true, create: true, update: true, delete: true }
+    coupons: { view: true, create: true, update: true, delete: true },
+    branches: { view: true, create: true, update: true, delete: true },
+    branchAdmins: { view: true, create: true, update: true, delete: true }
+  };
+};
+
+// Default branch admin permissions (branch level only)
+userSchema.statics.getDefaultBranchAdminPermissions = function() {
+  return {
+    orders: { view: true, create: true, update: true, delete: false, assign: true, cancel: false, process: true },
+    staff: { view: true, create: true, update: true, delete: false, assignShift: true, manageAttendance: true },
+    inventory: { view: true, create: true, update: true, delete: false, restock: true, writeOff: false },
+    services: { view: true, create: false, update: true, delete: false, toggle: true, updatePricing: true },
+    customers: { view: true, create: false, update: false, delete: false },
+    logistics: { view: true, create: false, update: false, delete: false, assign: true, track: true },
+    tickets: { view: true, create: false, update: true, delete: false, assign: true, resolve: true, escalate: false },
+    performance: { view: true, create: false, update: false, delete: false, export: true },
+    analytics: { view: true },
+    settings: { view: true, create: false, update: false, delete: false },
+    coupons: { view: true, create: false, update: false, delete: false },
+    branches: { view: false, create: false, update: false, delete: false },
+    branchAdmins: { view: false, create: false, update: false, delete: false }
   };
 };
 

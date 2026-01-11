@@ -11,13 +11,15 @@ const {
   sendError, 
   asyncHandler,
   getPagination,
-  formatPaginationResponse
+  formatPaginationResponse,
+  addBranchFilter,
+  getUserBranchInfo
 } = require('../../utils/helpers');
 const { ORDER_STATUS, USER_ROLES, TICKET_STATUS, REFUND_STATUS, REFUND_LIMITS } = require('../../config/constants');
 
 // @desc    Get admin dashboard data
 // @route   GET /api/admin/dashboard
-// @access  Private (Admin/Center Admin)
+// @access  Private (Admin/Branch Admin)
 const getDashboard = asyncHandler(async (req, res) => {
   const today = new Date();
   const startOfDay = new Date(today.setHours(0, 0, 0, 0));
@@ -26,18 +28,28 @@ const getDashboard = asyncHandler(async (req, res) => {
   // Get tenancy ID from request or user
   const tenancyId = req.tenancyId || req.user?.tenancy;
   
-  console.log('🔍 getDashboard - tenancyId:', tenancyId);
+  // Get branch info for branch_admin
+  const branchInfo = await getUserBranchInfo(req.user);
+  const isBranchAdmin = req.user.role === 'branch_admin';
+  
+  console.log('🔍 getDashboard - tenancyId:', tenancyId, 'isBranchAdmin:', isBranchAdmin);
 
   // Base query with tenancy filter
-  const baseQuery = addTenancyFilter({}, tenancyId);
+  let baseQuery = addTenancyFilter({}, tenancyId);
+  
+  // Add branch filter for branch_admin
+  if (isBranchAdmin) {
+    baseQuery = addBranchFilter(baseQuery, req.user);
+  }
 
-  // For customer counts, we need to count customers who have orders in this tenancy
+  // For customer counts, we need to count customers who have orders in this tenancy/branch
   let totalCustomers = 0;
   let activeCustomers = 0;
   
   if (tenancyId) {
-    // Get customer IDs from orders in this tenancy
-    const customerIds = await Order.distinct('customer', { tenancy: tenancyId });
+    // Get customer IDs from orders in this tenancy (and branch for branch_admin)
+    const customerQuery = isBranchAdmin ? { tenancy: tenancyId, branch: req.user.assignedBranch } : { tenancy: tenancyId };
+    const customerIds = await Order.distinct('customer', customerQuery);
     totalCustomers = customerIds.length;
     activeCustomers = await User.countDocuments({ 
       _id: { $in: customerIds }, 
@@ -49,6 +61,15 @@ const getDashboard = asyncHandler(async (req, res) => {
     activeCustomers = await User.countDocuments({ role: USER_ROLES.CUSTOMER, isActive: true });
   }
 
+  // Build queries with branch filter for branch_admin
+  const buildQuery = (additionalFilters = {}) => {
+    let query = addTenancyFilter(additionalFilters, tenancyId);
+    if (isBranchAdmin) {
+      query = addBranchFilter(query, req.user);
+    }
+    return query;
+  };
+
   // Get dashboard metrics
   const [
     totalOrders,
@@ -57,20 +78,24 @@ const getDashboard = asyncHandler(async (req, res) => {
     completedTodayOrders,
     expressOrders,
     pendingComplaints,
-    totalBranches
+    totalBranches,
+    totalStaff
   ] = await Promise.all([
     Order.countDocuments(baseQuery),
-    Order.countDocuments(addTenancyFilter({ createdAt: { $gte: startOfDay, $lte: endOfDay } }, tenancyId)),
-    Order.countDocuments(addTenancyFilter({ 
+    Order.countDocuments(buildQuery({ createdAt: { $gte: startOfDay, $lte: endOfDay } })),
+    Order.countDocuments(buildQuery({ 
       status: { $in: [ORDER_STATUS.PLACED, ORDER_STATUS.ASSIGNED_TO_BRANCH] }
-    }, tenancyId)),
-    Order.countDocuments(addTenancyFilter({ 
+    })),
+    Order.countDocuments(buildQuery({ 
       status: ORDER_STATUS.DELIVERED,
       updatedAt: { $gte: startOfDay, $lte: endOfDay }
-    }, tenancyId)),
-    Order.countDocuments(addTenancyFilter({ isExpress: true, status: { $ne: ORDER_STATUS.DELIVERED } }, tenancyId)),
-    Ticket.countDocuments(addTenancyFilter({ status: { $in: [TICKET_STATUS.OPEN, TICKET_STATUS.IN_PROGRESS] } }, tenancyId)),
-    Branch.countDocuments(addTenancyFilter({ isActive: true }, tenancyId))
+    })),
+    Order.countDocuments(buildQuery({ isExpress: true, status: { $ne: ORDER_STATUS.DELIVERED } })),
+    Ticket.countDocuments(buildQuery({ status: { $in: [TICKET_STATUS.OPEN, TICKET_STATUS.IN_PROGRESS] } })),
+    isBranchAdmin ? 1 : Branch.countDocuments(addTenancyFilter({ isActive: true }, tenancyId)),
+    isBranchAdmin 
+      ? User.countDocuments({ tenancy: tenancyId, assignedBranch: req.user.assignedBranch, role: 'staff', isActive: true })
+      : User.countDocuments({ tenancy: tenancyId, role: 'staff', isActive: true })
   ]);
 
   // Get recent orders
@@ -102,10 +127,19 @@ const getDashboard = asyncHandler(async (req, res) => {
       totalCustomers,
       activeCustomers,
       pendingComplaints,
-      totalBranches
+      totalBranches,
+      totalStaff
     },
     recentOrders,
-    statusDistribution
+    statusDistribution,
+    // Include branch info for branch_admin
+    branchInfo: branchInfo ? {
+      _id: branchInfo._id,
+      name: branchInfo.name,
+      code: branchInfo.code,
+      address: branchInfo.address
+    } : null,
+    isBranchAdmin
   };
 
   sendSuccess(res, dashboardData, 'Dashboard data retrieved successfully');
@@ -113,7 +147,7 @@ const getDashboard = asyncHandler(async (req, res) => {
 
 // @desc    Get all orders for admin
 // @route   GET /api/admin/orders
-// @access  Private (Admin/Center Admin)
+// @access  Private (Admin/Branch Admin)
 const getAllOrders = asyncHandler(async (req, res) => {
   const { 
     page = 1, 
@@ -130,14 +164,22 @@ const getAllOrders = asyncHandler(async (req, res) => {
 
   // Get tenancy ID from request or user
   const tenancyId = req.tenancyId || req.user?.tenancy;
+  const isBranchAdmin = req.user.role === 'branch_admin';
   
-  console.log('🔍 getAllOrders - tenancyId:', tenancyId);
+  console.log('🔍 getAllOrders - tenancyId:', tenancyId, 'isBranchAdmin:', isBranchAdmin);
 
   // Build query with tenancy filter
-  const query = addTenancyFilter({}, tenancyId);
+  let query = addTenancyFilter({}, tenancyId);
+  
+  // For branch_admin, always filter by their assigned branch
+  if (isBranchAdmin) {
+    query = addBranchFilter(query, req.user);
+  } else if (branch) {
+    // For admin, allow filtering by branch if specified
+    query.branch = branch;
+  }
   
   if (status) query.status = status;
-  if (branch) query.branch = branch;
   if (isExpress !== undefined) query.isExpress = isExpress === 'true';
   
   if (startDate || endDate) {
@@ -1348,21 +1390,28 @@ const getAnalytics = asyncHandler(async (req, res) => {
 
 // @desc    Get all staff members
 // @route   GET /api/admin/staff
-// @access  Private (Admin)
+// @access  Private (Admin/Branch Admin)
 const getStaff = asyncHandler(async (req, res) => {
   const { page = 1, limit = 50, role, search, isActive } = req.query;
   const { skip, limit: limitNum, page: pageNum } = getPagination(page, limit);
 
   // Get tenancy ID from request or user
   const tenancyId = req.tenancyId || req.user?.tenancy;
+  const isBranchAdmin = req.user.role === 'branch_admin';
 
   // Query for non-customer users with tenancy filter
   const query = { 
-    role: { $in: ['staff', 'admin'] }, // Only staff and admin roles, not superadmin or customer
+    role: { $in: ['staff', 'admin', 'branch_admin'] }, // Staff, admin, and branch_admin roles
     tenancy: tenancyId // Filter by tenancy
   };
   
-  if (role) query.role = role;
+  // For branch_admin, only show staff from their branch
+  if (isBranchAdmin) {
+    query.assignedBranch = req.user.assignedBranch;
+    query.role = 'staff'; // Branch admin can only see staff, not other admins
+  }
+  
+  if (role && !isBranchAdmin) query.role = role;
   if (isActive !== undefined) query.isActive = isActive === 'true';
   
   if (search) {

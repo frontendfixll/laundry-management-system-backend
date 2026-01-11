@@ -287,14 +287,22 @@ const login = async (req, res) => {
       });
     }
 
-    // Check tenancy status for admin users
-    if (user.role === 'admin' && user.tenancy) {
+    // Check tenancy status for admin/branch_admin users
+    if ((user.role === 'admin' || user.role === 'branch_admin') && user.tenancy) {
       if (user.tenancy.status !== 'active') {
         return res.status(403).json({
           success: false,
           message: 'Your laundry portal is currently inactive. Please contact support.'
         });
       }
+    }
+
+    // Validate branch_admin has assigned branch
+    if (user.role === 'branch_admin' && !user.assignedBranch) {
+      return res.status(400).json({
+        success: false,
+        message: 'Branch admin account must have an assigned branch. Please contact your admin.'
+      });
     }
 
     // Validate admin has assigned branch (for legacy support)

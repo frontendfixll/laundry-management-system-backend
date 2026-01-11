@@ -46,6 +46,9 @@ const adminBannerRoutes = require('./routes/admin/bannerRoutes');
 const superAdminBannerRoutes = require('./routes/superAdmin/bannerRoutes');
 const customerBannerRoutes = require('./routes/customer/bannerRoutes');
 
+// Branch Admin routes
+const branchAdminRoutes = require('./routes/admin/branchAdminRoutes');
+
 const servicePricesRoutes = require('./routes/servicePrices');
 const serviceItemsRoutes = require('./routes/serviceItems');
 const deliveryRoutes = require('./routes/delivery');
@@ -212,6 +215,7 @@ app.use('/api/superadmin/promotional', superAdminPromotionalRoutes);
 app.use('/api/superadmin/campaigns', superAdminCampaignRoutes);
 app.use('/api/admin/campaigns', adminCampaignRoutes);
 app.use('/api/admin/banners', adminBannerRoutes);
+app.use('/api/admin/branch-admins', branchAdminRoutes);
 app.use('/api/superadmin/banners', superAdminBannerRoutes);
 app.use('/api/customer/banners', customerBannerRoutes);
 app.use('/api/superadmin/services', adminServiceRoutes);

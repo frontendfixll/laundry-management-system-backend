@@ -1,15 +1,16 @@
-// User Roles (Simplified - center_admin and branch_manager merged into admin)
+// User Roles
 const USER_ROLES = {
-  SUPERADMIN: 'superadmin',  // Platform owner (separate model)
-  ADMIN: 'admin',            // Branch manager with RBAC permissions
-  STAFF: 'staff',            // Workers (washer, ironer, etc.)
-  CUSTOMER: 'customer'       // End users
+  SUPERADMIN: 'superadmin',      // Platform owner (separate model)
+  ADMIN: 'admin',                // Tenancy admin - manages entire tenancy
+  BRANCH_ADMIN: 'branch_admin',  // Branch admin - manages single branch only
+  STAFF: 'staff',                // Workers (washer, ironer, etc.)
+  CUSTOMER: 'customer'           // End users
 };
 
 // Legacy role mappings for backward compatibility
 const LEGACY_ROLE_MAP = {
   'center_admin': 'admin',
-  'branch_manager': 'admin'
+  'branch_manager': 'branch_admin'
 };
 
 // Order Status
