@@ -370,6 +370,16 @@ const getProfile = async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
     
+    // Get tenancy slug if customer has tenancy
+    let tenancySlug = null;
+    if (user.tenancy) {
+      const Tenancy = require('../models/Tenancy');
+      const tenancy = await Tenancy.findById(user.tenancy).select('slug');
+      if (tenancy) {
+        tenancySlug = tenancy.slug;
+      }
+    }
+
     res.status(200).json({
       success: true,
       data: {
@@ -387,7 +397,9 @@ const getProfile = async (req, res) => {
           totalOrders: user.totalOrders,
           isVIP: user.isVIP,
           lastLogin: user.lastLogin,
-          createdAt: user.createdAt
+          createdAt: user.createdAt,
+          tenancy: user.tenancy,
+          tenancySlug: tenancySlug
         }
       }
     });
