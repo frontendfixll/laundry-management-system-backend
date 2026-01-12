@@ -231,6 +231,10 @@ router.use('/referrals', referralRoutes);
 router.use('/loyalty', loyaltyRoutes);
 router.use('/campaigns', campaignRoutes);
 
+// Review routes
+const reviewRoutes = require('./reviews');
+router.use('/reviews', reviewRoutes);
+
 // Fix customer tenancy route
 const fixCustomerTenancyRoute = require('./fixCustomerTenancy');
 router.use('/utils', fixCustomerTenancyRoute);

@@ -224,6 +224,10 @@ app.use('/api/superadmin/branch-services', branchServiceRoutes);
 // Center Admin routes (previously branch manager)
 app.use('/api/center-admin', centerAdminRoutes);
 
+// Branch Admin Review routes
+const branchAdminReviewRoutes = require('./routes/centerAdmin/reviews');
+app.use('/api/branch-admin/reviews', branchAdminReviewRoutes);
+
 // Legacy routes for backward compatibility
 app.use('/api/branch', centerAdminRoutes);
 

@@ -183,6 +183,24 @@ class AdminBranchController {
         })
       }
 
+      // Sync status and isActive fields
+      if (req.body.status) {
+        if (req.body.status === 'active') {
+          req.body.isActive = true
+        } else if (req.body.status === 'inactive') {
+          req.body.isActive = false
+        }
+      }
+      
+      // If isActive is explicitly set, sync status
+      if (typeof req.body.isActive === 'boolean') {
+        if (req.body.isActive && (!req.body.status || req.body.status === 'inactive')) {
+          req.body.status = 'active'
+        } else if (!req.body.isActive) {
+          req.body.status = 'inactive'
+        }
+      }
+
       // Update branch
       Object.assign(branch, req.body)
       branch.lastModifiedBy = req.user._id

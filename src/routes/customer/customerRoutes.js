@@ -67,6 +67,9 @@ const {
 } = require('../../controllers/customer/campaignController');
 const { addressValidation, validate } = require('../../utils/validation');
 
+// Review routes
+const reviewRoutes = require('./reviews');
+
 const router = express.Router();
 
 // Apply authentication and tenancy injection to all routes
@@ -143,6 +146,9 @@ router.get('/discounts/active', getActiveDiscounts);
 router.get('/campaigns/active', getActiveCampaigns);
 router.get('/campaigns/:campaignId', getCampaignDetails);
 router.post('/campaigns/:campaignId/claim', claimCampaignOffer);
+
+// Review routes
+router.use('/reviews', reviewRoutes);
 
 // Profile route
 router.get('/profile', (req, res) => {

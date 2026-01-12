@@ -347,6 +347,41 @@ const protectSuperAdmin = async (req, res, next) => {
   }
 };
 
+// Alias for protect middleware (for consistency with route naming)
+const authenticateToken = protect;
+
+// Require admin role
+const requireAdmin = (req, res, next) => {
+  if (req.isSuperAdmin) {
+    return next();
+  }
+  
+  if (req.user.role !== 'admin' && req.user.role !== 'branch_admin') {
+    return res.status(403).json({
+      success: false,
+      message: 'Admin access required'
+    });
+  }
+  
+  next();
+};
+
+// Require branch admin role (for branch-specific operations)
+const requireBranchAdmin = (req, res, next) => {
+  if (req.isSuperAdmin) {
+    return next();
+  }
+  
+  if (req.user.role !== 'admin' && req.user.role !== 'branch_admin') {
+    return res.status(403).json({
+      success: false,
+      message: 'Branch admin access required'
+    });
+  }
+  
+  next();
+};
+
 module.exports = {
   protect,
   protectAny,
@@ -355,5 +390,8 @@ module.exports = {
   restrictToBranch,
   requirePermission,
   requireEmailVerification,
-  optionalAuth
+  optionalAuth,
+  authenticateToken,
+  requireAdmin,
+  requireBranchAdmin
 };
