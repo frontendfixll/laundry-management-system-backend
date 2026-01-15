@@ -5,7 +5,7 @@ mongoose.connect(process.env.MONGODB_URI).then(async () => {
   const SuperAdmin = require('./src/models/SuperAdmin');
   
   // Check if superadmin exists
-  const existing = await SuperAdmin.findOne({ email: 'superadmin@laundrypro.com' });
+  const existing = await SuperAdmin.findOne({ email: 'superadmin@LaundryLobby.com' });
   
   if (existing) {
     console.log('SuperAdmin already exists:', existing.email);
@@ -17,7 +17,7 @@ mongoose.connect(process.env.MONGODB_URI).then(async () => {
     // Create new superadmin
     const superAdmin = new SuperAdmin({
       name: 'Super Admin',
-      email: 'superadmin@laundrypro.com',
+      email: 'superadmin@LaundryLobby.com',
       password: 'SuperAdmin@123',
       role: 'superadmin',
       isActive: true,
@@ -36,7 +36,7 @@ mongoose.connect(process.env.MONGODB_URI).then(async () => {
     
     await superAdmin.save();
     console.log('SuperAdmin created successfully!');
-    console.log('Email: superadmin@laundrypro.com');
+    console.log('Email: superadmin@LaundryLobby.com');
     console.log('Password: SuperAdmin@123');
   }
   

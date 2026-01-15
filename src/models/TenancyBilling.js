@@ -4,17 +4,33 @@ const billingPlanSchema = new mongoose.Schema({
   name: {
     type: String,
     required: true,
-    enum: ['free', 'basic', 'pro', 'enterprise']
+    unique: true,
+    lowercase: true,
+    trim: true
   },
   displayName: {
     type: String,
     required: true
   },
+  description: {
+    type: String,
+    default: ''
+  },
   price: {
     monthly: { type: Number, default: 0 },
     yearly: { type: Number, default: 0 }
   },
+  
+  // Dynamic features - supports any feature key with boolean or number value
+  // Example: { campaigns: true, loyalty_points: false, max_orders: 500 }
   features: {
+    type: Map,
+    of: mongoose.Schema.Types.Mixed,
+    default: new Map()
+  },
+  
+  // Legacy features for backward compatibility (will be migrated to features Map)
+  legacyFeatures: {
     maxOrders: { type: Number, default: 100 },
     maxStaff: { type: Number, default: 5 },
     maxCustomers: { type: Number, default: 500 },
@@ -26,8 +42,88 @@ const billingPlanSchema = new mongoose.Schema({
     prioritySupport: { type: Boolean, default: false },
     customBranding: { type: Boolean, default: true }
   },
-  isActive: { type: Boolean, default: true }
+  
+  // Trial settings
+  trialDays: { type: Number, default: 60 }, // 2 months trial
+  
+  // Highlight this plan on pricing page
+  isPopular: { type: Boolean, default: false },
+  
+  // Badge text (e.g., "Most Popular", "Best Value")
+  badge: { type: String, default: '' },
+  
+  isDefault: { type: Boolean, default: false }, // Default plans can't be deleted
+  isCustom: { type: Boolean, default: false },  // Custom plans created by superadmin
+  showOnMarketing: { type: Boolean, default: true }, // Show on public pricing page
+  isActive: { type: Boolean, default: true },
+  
+  // Sort order for display
+  sortOrder: { type: Number, default: 0 },
+  
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'SuperAdmin'
+  }
 }, { timestamps: true });
+
+// Virtual to get features as plain object (for API responses)
+billingPlanSchema.virtual('featuresObject').get(function() {
+  if (this.features instanceof Map) {
+    return Object.fromEntries(this.features);
+  }
+  return this.features || {};
+});
+
+// Method to get a specific feature value
+billingPlanSchema.methods.getFeature = function(key, defaultValue = false) {
+  if (this.features instanceof Map) {
+    return this.features.has(key) ? this.features.get(key) : defaultValue;
+  }
+  return this.features?.[key] ?? defaultValue;
+};
+
+// Method to set a feature value
+billingPlanSchema.methods.setFeature = function(key, value) {
+  if (!(this.features instanceof Map)) {
+    this.features = new Map();
+  }
+  this.features.set(key, value);
+};
+
+// Method to check if plan has a boolean feature enabled
+billingPlanSchema.methods.hasFeature = function(key) {
+  return this.getFeature(key, false) === true;
+};
+
+// Ensure features is always a Map when saving
+billingPlanSchema.pre('save', function(next) {
+  if (this.features && !(this.features instanceof Map)) {
+    this.features = new Map(Object.entries(this.features));
+  }
+  next();
+});
+
+// Transform for JSON output
+billingPlanSchema.set('toJSON', {
+  virtuals: true,
+  transform: function(doc, ret) {
+    // Convert features Map to plain object for JSON
+    if (ret.features instanceof Map) {
+      ret.features = Object.fromEntries(ret.features);
+    }
+    return ret;
+  }
+});
+
+billingPlanSchema.set('toObject', {
+  virtuals: true,
+  transform: function(doc, ret) {
+    if (ret.features instanceof Map) {
+      ret.features = Object.fromEntries(ret.features);
+    }
+    return ret;
+  }
+});
 
 const invoiceSchema = new mongoose.Schema({
   tenancy: {
@@ -47,7 +143,6 @@ const invoiceSchema = new mongoose.Schema({
   },
   plan: {
     type: String,
-    enum: ['free', 'basic', 'pro', 'enterprise'],
     required: true
   },
   billingCycle: {

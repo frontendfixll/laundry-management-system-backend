@@ -258,11 +258,11 @@ class CenterAdminAuthController {
         const emailResult = await sendEmail({
           from: process.env.EMAIL_USER,
           to: admin.email,
-          subject: 'Password Reset Request - LaundryPro Admin',
+          subject: 'Password Reset Request - LaundryLobby Admin',
           html: `
             <div style="font-family: 'Roboto', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
               <div style="text-align: center; margin-bottom: 30px;">
-                <h1 style="color: #7c3aed; font-family: 'Poppins', sans-serif;">LaundryPro</h1>
+                <h1 style="color: #7c3aed; font-family: 'Poppins', sans-serif;">LaundryLobby</h1>
               </div>
               
               <h2 style="color: #1f2937; font-family: 'Poppins', sans-serif;">Password Reset Request</h2>
@@ -300,7 +300,7 @@ class CenterAdminAuthController {
               <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;" />
               
               <p style="color: #9ca3af; font-size: 12px; text-align: center;">
-                This is an automated message from LaundryPro. Please do not reply to this email.
+                This is an automated message from LaundryLobby. Please do not reply to this email.
               </p>
             </div>
           `

@@ -146,6 +146,41 @@ const tenancyController = {
       await owner.save();
       console.log('✅ Owner saved:', owner._id);
       
+      // Build subscription object with proper trialEndsAt calculation
+      const trialDays = subscription?.trialDays || 14;
+      
+      // Get features from billing plan if planId or plan name provided
+      let planFeatures = subscription?.features || {};
+      const planName = subscription?.plan || 'free';
+      
+      // If features not provided, fetch from BillingPlan
+      if (Object.keys(planFeatures).length === 0) {
+        const { BillingPlan } = require('../models/TenancyBilling');
+        const billingPlan = await BillingPlan.findOne({ name: planName });
+        if (billingPlan) {
+          planFeatures = billingPlan.features instanceof Map 
+            ? Object.fromEntries(billingPlan.features)
+            : billingPlan.features || {};
+          console.log('📝 Loaded features from plan:', planName, planFeatures);
+        }
+      }
+      
+      const subscriptionData = {
+        plan: planName,
+        status: subscription?.status || 'trial',
+        features: planFeatures,
+        trialEndsAt: new Date(Date.now() + trialDays * 24 * 60 * 60 * 1000),
+        startDate: new Date(),
+        billingCycle: subscription?.billingCycle || 'monthly'
+      };
+      
+      // If planId is provided, add it
+      if (subscription?.planId) {
+        subscriptionData.planId = subscription.planId;
+      }
+      
+      console.log('📝 Subscription data:', JSON.stringify(subscriptionData, null, 2));
+      
       // Create tenancy
       const tenancy = new Tenancy({
         name,
@@ -154,11 +189,7 @@ const tenancyController = {
         subdomain: subdomain || slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
         contact,
         owner: owner._id,
-        subscription: subscription || {
-          plan: 'free',
-          status: 'trial',
-          trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000) // 14 days trial
-        },
+        subscription: subscriptionData,
         status: 'active',
         createdBy: req.admin?._id || null
       });
@@ -217,15 +248,32 @@ const tenancyController = {
       delete updates.createdBy;
       delete updates.stats;
       
+      // Get existing tenancy first
+      const existingTenancy = await Tenancy.findById(id);
+      if (!existingTenancy) {
+        return res.status(404).json({ success: false, message: 'Tenancy not found' });
+      }
+      
+      // Handle subscription.features merge properly
+      if (updates.subscription?.features) {
+        // Merge existing subscription with new updates
+        updates.subscription = {
+          ...existingTenancy.subscription.toObject(),
+          ...updates.subscription,
+          features: {
+            ...existingTenancy.subscription.features,
+            ...updates.subscription.features
+          }
+        };
+      }
+      
       const tenancy = await Tenancy.findByIdAndUpdate(
         id,
         { $set: updates },
         { new: true, runValidators: true }
       ).populate('owner', 'name email phone');
       
-      if (!tenancy) {
-        return res.status(404).json({ success: false, message: 'Tenancy not found' });
-      }
+      console.log('✅ Tenancy updated:', id, 'Features:', tenancy.subscription?.features);
       
       res.json({
         success: true,
@@ -320,6 +368,47 @@ const tenancyController = {
     } catch (error) {
       console.error('Update subscription error:', error);
       res.status(500).json({ success: false, message: 'Failed to update subscription' });
+    }
+  },
+
+  // Update tenancy features/permissions
+  updateFeatures: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { features } = req.body;
+      
+      if (!features || typeof features !== 'object') {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Features object is required' 
+        });
+      }
+      
+      const tenancy = await Tenancy.findById(id);
+      if (!tenancy) {
+        return res.status(404).json({ success: false, message: 'Tenancy not found' });
+      }
+      
+      // Update features in subscription
+      tenancy.subscription.features = {
+        ...tenancy.subscription.features,
+        ...features
+      };
+      
+      await tenancy.save();
+      
+      console.log('✅ Features updated for tenancy:', id, features);
+      
+      res.json({
+        success: true,
+        message: 'Features updated successfully',
+        data: { 
+          tenancy: await Tenancy.findById(id).populate('owner', 'name email phone')
+        }
+      });
+    } catch (error) {
+      console.error('Update features error:', error);
+      res.status(500).json({ success: false, message: 'Failed to update features' });
     }
   },
 

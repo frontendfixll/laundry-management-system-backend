@@ -1,4 +1,4 @@
-# LaundryPro API Testing Guide
+# LaundryLobby API Testing Guide
 
 ## Server Status
 Backend server running on: http://localhost:5000

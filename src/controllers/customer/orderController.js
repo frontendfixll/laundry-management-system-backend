@@ -580,7 +580,7 @@ const getOrders = asyncHandler(async (req, res) => {
 
   const total = await Order.countDocuments(query);
   const orders = await Order.find(query)
-    .populate('branch', 'name code')
+    .populate('branch', 'name code tenancy')
     .populate('items')
     .sort({ createdAt: -1 })
     .skip(skip)
@@ -600,7 +600,7 @@ const getOrderById = asyncHandler(async (req, res) => {
     _id: orderId,
     customer: req.user._id
   })
-    .populate('branch', 'name code address contact')
+    .populate('branch', 'name code address contact tenancy')
     .populate('items')
     .populate('logisticsPartner', 'companyName contactPerson')
     .populate('statusHistory.updatedBy', 'name role');

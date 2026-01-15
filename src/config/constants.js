@@ -265,6 +265,7 @@ const INVENTORY_ITEMS = {
 
 // Notification Types
 const NOTIFICATION_TYPES = {
+  // Order notifications (Customer + Admin)
   ORDER_PLACED: 'order_placed',
   ORDER_ASSIGNED: 'order_assigned',
   ORDER_PICKED: 'order_picked',
@@ -273,12 +274,61 @@ const NOTIFICATION_TYPES = {
   ORDER_OUT_FOR_DELIVERY: 'order_out_for_delivery',
   ORDER_DELIVERED: 'order_delivered',
   ORDER_CANCELLED: 'order_cancelled',
+  
+  // Inventory (Admin + Branch Admin)
   LOW_INVENTORY: 'low_inventory',
+  INVENTORY_RESTOCKED: 'inventory_restocked',
+  
+  // Support (Admin + Branch Admin)
   NEW_COMPLAINT: 'new_complaint',
+  TICKET_ASSIGNED: 'ticket_assigned',
+  TICKET_RESOLVED: 'ticket_resolved',
+  
+  // Payment (Admin + SuperAdmin)
   REFUND_REQUEST: 'refund_request',
+  PAYMENT_RECEIVED: 'payment_received',
+  PAYMENT_FAILED: 'payment_failed',
+  
+  // Rewards (Customer)
   REWARD_POINTS: 'reward_points',
   MILESTONE_ACHIEVED: 'milestone_achieved',
-  VIP_UPGRADE: 'vip_upgrade'
+  VIP_UPGRADE: 'vip_upgrade',
+  
+  // Leads (SuperAdmin)
+  NEW_LEAD: 'new_lead',
+  LEAD_CONVERTED: 'lead_converted',
+  
+  // Tenancy (SuperAdmin)
+  NEW_TENANCY_SIGNUP: 'new_tenancy_signup',
+  TENANCY_SUBSCRIPTION_EXPIRING: 'tenancy_subscription_expiring',
+  TENANCY_SUBSCRIPTION_EXPIRED: 'tenancy_subscription_expired',
+  TENANCY_PAYMENT_RECEIVED: 'tenancy_payment_received',
+  
+  // Staff (Admin + Branch Admin)
+  NEW_STAFF_ADDED: 'new_staff_added',
+  STAFF_REMOVED: 'staff_removed',
+  
+  // Branch (Admin)
+  NEW_BRANCH_CREATED: 'new_branch_created',
+  BRANCH_ADMIN_ASSIGNED: 'branch_admin_assigned',
+  
+  // System (All)
+  SYSTEM_ALERT: 'system_alert',
+  ANNOUNCEMENT: 'announcement',
+  
+  // Campaign/Promo (Customer)
+  NEW_CAMPAIGN: 'new_campaign',
+  COUPON_EXPIRING: 'coupon_expiring',
+  WALLET_CREDITED: 'wallet_credited'
+};
+
+// Recipient types for notifications
+const RECIPIENT_TYPES = {
+  CUSTOMER: 'customer',
+  ADMIN: 'admin',
+  BRANCH_ADMIN: 'branch_admin',
+  SUPERADMIN: 'superadmin',
+  STAFF: 'staff'
 };
 
 // Consumption Rates (per service)
@@ -336,6 +386,7 @@ module.exports = {
   WORKER_TYPES,
   INVENTORY_ITEMS,
   NOTIFICATION_TYPES,
+  RECIPIENT_TYPES,
   CONSUMPTION_RATES,
   REFUND_LIMITS,
   OPENROUTE_CONFIG,

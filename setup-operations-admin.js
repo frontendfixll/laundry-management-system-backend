@@ -12,11 +12,11 @@ async function setupOperationsAdmin() {
     console.log('✅ Connected to MongoDB');
 
     // Check if admin already exists
-    const existingAdmin = await User.findOne({ email: 'opsadmin@laundrypro.com' });
+    const existingAdmin = await User.findOne({ email: 'opsadmin@LaundryLobby.com' });
     
     if (existingAdmin) {
       console.log('⚠️ Operations Admin already exists!');
-      console.log('Email: opsadmin@laundrypro.com');
+      console.log('Email: opsadmin@LaundryLobby.com');
       console.log('Password: Admin@123456');
     } else {
       // Create operations admin
@@ -24,7 +24,7 @@ async function setupOperationsAdmin() {
       
       const admin = new User({
         name: 'Operations Admin',
-        email: 'opsadmin@laundrypro.com',
+        email: 'opsadmin@LaundryLobby.com',
         phone: '9999888877',
         password: hashedPassword,
         role: 'admin',
@@ -35,7 +35,7 @@ async function setupOperationsAdmin() {
       await admin.save();
       console.log('✅ Operations Admin created successfully!');
       console.log('\n📋 Login Credentials:');
-      console.log('Email: opsadmin@laundrypro.com');
+      console.log('Email: opsadmin@LaundryLobby.com');
       console.log('Password: Admin@123456');
     }
 

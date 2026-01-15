@@ -1,6 +1,8 @@
 const express = require('express');
 const { protect, requirePermission } = require('../../middlewares/auth');
 const { injectTenancyFromUser } = require('../../middlewares/tenancyMiddleware');
+const { checkLimit } = require('../../middlewares/subscriptionLimits');
+const User = require('../../models/User');
 const {
   getDashboard,
   getAllOrders,
@@ -118,6 +120,29 @@ router.use(allowBranchAdmin);
 // Dashboard routes
 router.get('/dashboard', getDashboard);
 
+// Subscription usage stats
+const { getUsageStats } = require('../../middlewares/subscriptionLimits');
+router.get('/subscription/usage', getUsageStats);
+
+// Plan usage route
+const { getPlanUsage } = require('../../middlewares/planLimits');
+router.get('/plan-usage', async (req, res) => {
+  try {
+    const tenancyId = req.admin?.tenancy || req.user?.tenancy;
+    if (!tenancyId) {
+      return res.status(400).json({ success: false, message: 'No tenancy found' });
+    }
+    const usage = await getPlanUsage(tenancyId);
+    if (!usage) {
+      return res.status(404).json({ success: false, message: 'Could not fetch plan usage' });
+    }
+    res.json({ success: true, data: usage });
+  } catch (error) {
+    console.error('Get plan usage error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch plan usage' });
+  }
+});
+
 // Analytics routes for charts
 router.get('/analytics/weekly-orders', getWeeklyOrders);
 router.get('/analytics/order-status', getOrderStatusDistribution);
@@ -172,7 +197,14 @@ router.get('/analytics', getAnalytics);
 // Staff management routes
 router.get('/staff', getStaff);
 router.get('/staff/:staffId', getStaffById);
-router.post('/staff', createStaff);
+router.post('/staff', 
+  checkLimit('max_staff', User, (req) => ({ 
+    tenancy: req.user.tenancy, 
+    role: { $in: ['admin', 'branch_admin', 'staff'] },
+    isActive: true 
+  })),
+  createStaff
+);
 router.put('/staff/:staffId', updateStaff);
 router.delete('/staff/:staffId', deleteStaff);
 router.put('/staff/:staffId/reactivate', reactivateStaff);
@@ -238,5 +270,9 @@ router.use('/reviews', reviewRoutes);
 // Fix customer tenancy route
 const fixCustomerTenancyRoute = require('./fixCustomerTenancy');
 router.use('/utils', fixCustomerTenancyRoute);
+
+// Role management routes (RBAC)
+const roleRoutes = require('./roleRoutes');
+router.use('/roles', roleRoutes);
 
 module.exports = router;

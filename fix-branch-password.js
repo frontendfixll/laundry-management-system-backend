@@ -24,14 +24,14 @@ async function fixPassword() {
 
     // Update directly in database
     const result = await User.updateOne(
-      { email: 'branchmanager@laundrypro.com' },
+      { email: 'branchmanager@LaundryLobby.com' },
       { $set: { password: hashedPassword } }
     );
     
     console.log('Update result:', result);
 
     // Verify from database
-    const manager = await User.findOne({ email: 'branchmanager@laundrypro.com' }).select('+password');
+    const manager = await User.findOne({ email: 'branchmanager@LaundryLobby.com' }).select('+password');
     console.log('\nVerifying from DB:');
     console.log('- Stored hash:', manager.password);
     console.log('- Hashes match:', manager.password === hashedPassword);
@@ -42,7 +42,7 @@ async function fixPassword() {
     console.log('\n========================================');
     console.log('🔐 LOGIN CREDENTIALS');
     console.log('========================================');
-    console.log('Email:    branchmanager@laundrypro.com');
+    console.log('Email:    branchmanager@LaundryLobby.com');
     console.log('Password: Branch@123456');
     console.log('========================================\n');
 

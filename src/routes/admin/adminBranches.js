@@ -2,6 +2,8 @@ const express = require('express')
 const router = express.Router()
 const adminBranchController = require('../../controllers/admin/branchController')
 const { injectTenancyFromUser } = require('../../middlewares/tenancyMiddleware')
+const { checkLimit } = require('../../middlewares/subscriptionLimits')
+const Branch = require('../../models/Branch')
 const { body, param } = require('express-validator')
 
 // Validation rules
@@ -69,6 +71,10 @@ router.get('/:branchId',
 // Create new branch
 router.post('/',
   validateBranchCreation,
+  checkLimit('max_branches', Branch, (req) => ({ 
+    tenancy: req.user.tenancy, 
+    isActive: true 
+  })),
   adminBranchController.createBranch
 )
 

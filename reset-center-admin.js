@@ -15,7 +15,7 @@ async function resetCenterAdmin() {
     
     // Update password
     const result = await CenterAdmin.updateOne(
-      { email: 'admin@laundrypro.com' },
+      { email: 'admin@LaundryLobby.com' },
       { 
         $set: { 
           password: hashedPassword,
@@ -34,7 +34,7 @@ async function resetCenterAdmin() {
 
     console.log('\n📋 Login Credentials:')
     console.log('URL: http://localhost:3002/auth/center-admin-login')
-    console.log('Email: admin@laundrypro.com')
+    console.log('Email: admin@LaundryLobby.com')
     console.log('Password: Admin@123456')
 
   } catch (error) {

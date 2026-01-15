@@ -17,21 +17,21 @@ async function setupBranchManager() {
     if (!branch) {
       // Create a branch if none exists
       branch = await Branch.create({
-        name: 'LaundryPro Main Branch',
+        name: 'LaundryLobby Main Branch',
         code: 'MAIN001',
         address: {
           addressLine1: '123 Main Street',
           city: 'Delhi',
           pincode: '110001'
         },
-        contact: { phone: '9876543210', email: 'main@laundrypro.com' },
+        contact: { phone: '9876543210', email: 'main@LaundryLobby.com' },
         isActive: true
       });
       console.log('✅ Created branch:', branch.name);
     }
 
     // Check if branch manager already exists
-    let manager = await User.findOne({ email: 'branchmanager@laundrypro.com' });
+    let manager = await User.findOne({ email: 'branchmanager@LaundryLobby.com' });
 
     if (manager) {
       console.log('⚠️  Branch Manager already exists');
@@ -40,7 +40,7 @@ async function setupBranchManager() {
       
       manager = await User.create({
         name: 'Branch Manager',
-        email: 'branchmanager@laundrypro.com',
+        email: 'branchmanager@LaundryLobby.com',
         phone: '9876500001',
         password: hashedPassword,
         role: 'branch_manager',
@@ -60,7 +60,7 @@ async function setupBranchManager() {
     console.log('🔐 BRANCH MANAGER LOGIN CREDENTIALS');
     console.log('========================================');
     console.log('URL:      http://localhost:3002/auth/login');
-    console.log('Email:    branchmanager@laundrypro.com');
+    console.log('Email:    branchmanager@LaundryLobby.com');
     console.log('Password: Branch@123456');
     console.log('Branch:  ', branch.name, `(${branch.code})`);
     console.log('========================================\n');

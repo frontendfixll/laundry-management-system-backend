@@ -11,7 +11,7 @@ async function testLogin() {
     console.log('✅ Connected to MongoDB');
 
     // Find branch manager
-    const manager = await User.findOne({ email: 'branchmanager@laundrypro.com' }).select('+password');
+    const manager = await User.findOne({ email: 'branchmanager@LaundryLobby.com' }).select('+password');
 
     if (!manager) {
       console.log('❌ Branch Manager not found!');
@@ -44,7 +44,7 @@ async function testLogin() {
       await manager.save();
       
       // Verify again
-      const updatedManager = await User.findOne({ email: 'branchmanager@laundrypro.com' }).select('+password');
+      const updatedManager = await User.findOne({ email: 'branchmanager@LaundryLobby.com' }).select('+password');
       const isMatchNow = await comparePassword(testPassword, updatedManager.password);
       console.log('- Password match after reset:', isMatchNow);
     }

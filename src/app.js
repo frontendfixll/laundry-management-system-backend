@@ -22,6 +22,7 @@ const superAdminAuthRoutes = require('./routes/superAdminAuthRoutes');
 const superAdminDashboardRoutes = require('./routes/superAdminDashboardRoutes');
 const superAdminBranchRoutes = require('./routes/superAdminBranches');
 const superAdminRoleRoutes = require('./routes/superAdminRoles');
+const superAdminRBACRoutes = require('./routes/superAdmin/rbacRoutes');
 const superAdminPricingRoutes = require('./routes/superAdminPricing');
 const superAdminFinancialRoutes = require('./routes/superAdminFinancial');
 const superAdminRiskRoutes = require('./routes/superAdminRisk');
@@ -58,6 +59,8 @@ const barcodeRoutes = require('./routes/barcode');
 const publicRoutes = require('./routes/publicRoutes');
 const tenancyPublicRoutes = require('./routes/tenancyPublicRoutes');
 const invitationPublicRoutes = require('./routes/invitationPublicRoutes');
+const leadPublicRoutes = require('./routes/leadPublicRoutes');
+const leadSuperadminRoutes = require('./routes/leadSuperadminRoutes');
 
 // Subdomain routing middleware
 const { subdomainRouter } = require('./middlewares/subdomainMiddleware');
@@ -78,8 +81,10 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3002',
   'http://localhost:3003',
+  'http://localhost:3004', // Marketing frontend
   process.env.FRONTEND_URL,
   process.env.SUPERADMIN_URL,
+  process.env.MARKETING_URL,
   // Allow all Vercel preview deployments
   /^https:\/\/.*\.vercel\.app$/,
   // Allow all subdomains of your domain
@@ -196,6 +201,7 @@ app.use('/api/superadmin/auth', superAdminAuthRoutes);
 app.use('/api/superadmin/dashboard', superAdminDashboardRoutes);
 app.use('/api/superadmin/branches', superAdminBranchRoutes);
 app.use('/api/superadmin/roles', superAdminRoleRoutes);
+app.use('/api/superadmin/rbac', superAdminRBACRoutes);
 app.use('/api/superadmin/pricing', superAdminPricingRoutes);
 app.use('/api/superadmin/financial', superAdminFinancialRoutes);
 app.use('/api/superadmin/risk', superAdminRiskRoutes);
@@ -213,6 +219,7 @@ app.use('/api/superadmin/billing', superAdminBillingRoutes);
 app.use('/api/superadmin/tenancy-analytics', superAdminTenancyAnalyticsRoutes);
 app.use('/api/superadmin/promotional', superAdminPromotionalRoutes);
 app.use('/api/superadmin/campaigns', superAdminCampaignRoutes);
+app.use('/api/superadmin/leads', leadSuperadminRoutes);
 app.use('/api/admin/campaigns', adminCampaignRoutes);
 app.use('/api/admin/banners', adminBannerRoutes);
 app.use('/api/admin/branch-admins', branchAdminRoutes);
@@ -247,6 +254,37 @@ app.use('/api/public/tenancy', tenancyPublicRoutes);
 
 // Invitation public routes (no auth required - for accepting invitations)
 app.use('/api/invitations', invitationPublicRoutes);
+
+// Lead public routes (no auth required - for marketing site lead capture)
+app.use('/api/public/leads', leadPublicRoutes);
+
+// Billing public routes (no auth required - for pricing page)
+const billingPublicRoutes = require('./routes/billingPublicRoutes');
+app.use('/api/public/billing', billingPublicRoutes);
+
+// Payment link routes
+const paymentLinkSuperadminRoutes = require('./routes/paymentLinkSuperadminRoutes');
+const paymentLinkPublicRoutes = require('./routes/paymentLinkPublicRoutes');
+app.use('/api/superadmin/payment-links', paymentLinkSuperadminRoutes);
+app.use('/api/public/pay', paymentLinkPublicRoutes);
+
+// Feature definition routes
+const featureRoutes = require('./routes/featureRoutes');
+app.use('/api/superadmin/features', featureRoutes);
+
+// Public features route (for pricing page)
+const featureController = require('./controllers/featureController');
+app.get('/api/public/features', featureController.getPublicFeatures);
+
+// Self-service signup routes
+const signupPublicRoutes = require('./routes/signupPublicRoutes');
+app.use('/api/public/signup', signupPublicRoutes);
+
+// Notification routes (with SSE for real-time)
+const notificationRoutes = require('./routes/notificationRoutes');
+const superAdminNotificationRoutes = require('./routes/superAdminNotificationRoutes');
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/superadmin/notifications', superAdminNotificationRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {

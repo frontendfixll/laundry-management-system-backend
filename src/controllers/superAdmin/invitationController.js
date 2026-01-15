@@ -65,12 +65,12 @@ const invitationController = {
       try {
         await sendEmail({
           to: email,
-          subject: `You're invited to manage ${tenancy.name} on LaundryPro`,
+          subject: `You're invited to manage ${tenancy.name} on LaundryLobby`,
           html: `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-              <h2 style="color: #3B82F6;">Welcome to LaundryPro!</h2>
+              <h2 style="color: #3B82F6;">Welcome to LaundryLobby!</h2>
               <p>Hi ${name},</p>
-              <p>You've been invited to manage <strong>${tenancy.name}</strong> on the LaundryPro platform.</p>
+              <p>You've been invited to manage <strong>${tenancy.name}</strong> on the LaundryLobby platform.</p>
               <p>Click the button below to set up your account and start managing your laundry business:</p>
               <div style="text-align: center; margin: 30px 0;">
                 <a href="${inviteUrl}" style="background-color: #3B82F6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
@@ -80,7 +80,7 @@ const invitationController = {
               <p style="color: #666; font-size: 14px;">This invitation expires in 7 days.</p>
               <p style="color: #666; font-size: 14px;">If you didn't expect this invitation, you can safely ignore this email.</p>
               <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
-              <p style="color: #999; font-size: 12px;">LaundryPro - Professional Laundry Management Platform</p>
+              <p style="color: #999; font-size: 12px;">LaundryLobby - Professional Laundry Management Platform</p>
             </div>
           `
         });
@@ -217,12 +217,12 @@ const invitationController = {
       try {
         await sendEmail({
           to: user.email,
-          subject: `Reminder: You're invited to manage ${tenancy?.name || 'your laundry'} on LaundryPro`,
+          subject: `Reminder: You're invited to manage ${tenancy?.name || 'your laundry'} on LaundryLobby`,
           html: `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
               <h2 style="color: #3B82F6;">Invitation Reminder</h2>
               <p>Hi ${user.name},</p>
-              <p>This is a reminder that you've been invited to manage <strong>${tenancy?.name || 'your laundry business'}</strong> on LaundryPro.</p>
+              <p>This is a reminder that you've been invited to manage <strong>${tenancy?.name || 'your laundry business'}</strong> on LaundryLobby.</p>
               <div style="text-align: center; margin: 30px 0;">
                 <a href="${inviteUrl}" style="background-color: #3B82F6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
                   Accept Invitation

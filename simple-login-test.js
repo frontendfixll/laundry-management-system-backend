@@ -68,7 +68,7 @@ setTimeout(async () => {
   try {
     const axios = require('axios')
     const response = await axios.post(`http://localhost:${PORT}/test-login`, {
-      email: 'admin@laundrypro.com',
+      email: 'admin@LaundryLobby.com',
       password: 'Admin@123456'
     })
     

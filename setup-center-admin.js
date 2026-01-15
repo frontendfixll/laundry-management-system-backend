@@ -19,7 +19,7 @@ async function setupCenterAdmin() {
     // Create center admin
     const centerAdmin = new CenterAdmin({
       name: 'Center Admin',
-      email: 'admin@laundrypro.com',
+      email: 'admin@LaundryLobby.com',
       password: 'Admin@123456', // This will be hashed automatically
       role: 'center_admin',
       permissions: {
@@ -43,7 +43,7 @@ async function setupCenterAdmin() {
     await AuditLog.logAction({
       userId: centerAdmin._id,
       userType: 'system',
-      userEmail: 'system@laundrypro.com',
+      userEmail: 'system@LaundryLobby.com',
       action: 'create_center_admin',
       category: 'system',
       description: 'Initial center admin account created',

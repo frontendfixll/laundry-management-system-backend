@@ -182,6 +182,11 @@ const userSchema = new mongoose.Schema({
     type: adminPermissionsSchema,
     default: () => ({})
   },
+  // Reference to Role model for RBAC
+  roleId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Role'
+  },
   // Staff/Worker specific fields
   workerType: {
     type: String,
@@ -267,7 +272,14 @@ userSchema.index({ role: 1 });
 
 // Hash password before saving
 userSchema.pre('save', async function(next) {
+  // Skip if password not modified
   if (!this.isModified('password')) return next();
+  
+  // Skip hashing if already hashed (for signup flow where password is pre-hashed)
+  if (this.$skipPasswordHash) {
+    delete this.$skipPasswordHash;
+    return next();
+  }
   
   this.password = await bcrypt.hash(this.password, 12);
   next();

@@ -1,329 +1,267 @@
-const mongoose = require('mongoose')
+const mongoose = require('mongoose');
 
-const permissionSchema = new mongoose.Schema({
-  module: {
-    type: String,
-    required: true,
-    enum: ['orders', 'customers', 'inventory', 'reports', 'settings', 'staff', 'finances', 'analytics']
-  },
-  actions: [{
-    type: String,
-    enum: ['create', 'read', 'update', 'delete', 'approve', 'export']
-  }],
-  restrictions: {
-    maxAmount: { type: Number }, // For financial operations
-    maxDiscount: { type: Number }, // For discount permissions
-    timeRestriction: { type: String }, // e.g., "business_hours_only"
-    branchRestriction: { type: Boolean, default: false } // Restrict to own branch only
-  }
-})
+/**
+ * Permission schema for each module
+ * Each module can have view, create, edit, delete permissions
+ */
+const modulePermissionSchema = new mongoose.Schema({
+  view: { type: Boolean, default: false },
+  create: { type: Boolean, default: false },
+  edit: { type: Boolean, default: false },
+  delete: { type: Boolean, default: false }
+}, { _id: false });
 
+/**
+ * Role Schema
+ * Defines roles with granular permissions for each module
+ */
 const roleSchema = new mongoose.Schema({
   name: {
     type: String,
     required: true,
-    unique: true,
     trim: true
   },
-  displayName: {
+  slug: {
     type: String,
-    required: true
+    required: true,
+    lowercase: true,
+    trim: true
   },
   description: {
     type: String,
-    required: true
+    default: ''
   },
-  level: {
-    type: Number,
+  
+  // Tenancy this role belongs to
+  tenancy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Tenancy',
     required: true,
-    min: 1,
-    max: 10 // 1 = highest authority, 10 = lowest
-  },
-  category: {
-    type: String,
-    enum: ['management', 'operations', 'support', 'custom'],
-    required: true
+    index: true
   },
   
-  // Permissions
-  permissions: [permissionSchema],
-  
-  // Role Settings
-  settings: {
-    canCreateUsers: { type: Boolean, default: false },
-    canAssignRoles: { type: Boolean, default: false },
-    canModifyBranch: { type: Boolean, default: false },
-    canViewReports: { type: Boolean, default: false },
-    canExportData: { type: Boolean, default: false },
-    requireApproval: { type: Boolean, default: false }, // For sensitive operations
-    sessionTimeout: { type: Number, default: 8 }, // Hours
-    maxConcurrentSessions: { type: Number, default: 3 }
+  // Permissions for each module
+  permissions: {
+    // Core modules
+    orders: { type: modulePermissionSchema, default: () => ({}) },
+    customers: { type: modulePermissionSchema, default: () => ({}) },
+    inventory: { type: modulePermissionSchema, default: () => ({}) },
+    services: { type: modulePermissionSchema, default: () => ({}) },
+    
+    // Branch management
+    branches: { type: modulePermissionSchema, default: () => ({}) },
+    staff: { type: modulePermissionSchema, default: () => ({}) },
+    
+    // Marketing & Programs
+    coupons: { type: modulePermissionSchema, default: () => ({}) },
+    campaigns: { type: modulePermissionSchema, default: () => ({}) },
+    banners: { type: modulePermissionSchema, default: () => ({}) },
+    loyalty: { type: modulePermissionSchema, default: () => ({}) },
+    referrals: { type: modulePermissionSchema, default: () => ({}) },
+    wallet: { type: modulePermissionSchema, default: () => ({}) },
+    
+    // Operations
+    logistics: { type: modulePermissionSchema, default: () => ({}) },
+    tickets: { type: modulePermissionSchema, default: () => ({}) },
+    
+    // Finance & Reports
+    payments: { type: modulePermissionSchema, default: () => ({}) },
+    refunds: { type: modulePermissionSchema, default: () => ({}) },
+    performance: { type: modulePermissionSchema, default: () => ({}) },
+    
+    // Settings
+    settings: { type: modulePermissionSchema, default: () => ({}) },
+    branding: { type: modulePermissionSchema, default: () => ({}) }
   },
   
-  // Financial Limits
-  financialLimits: {
-    maxRefundAmount: { type: Number, default: 0 },
-    maxDiscountPercent: { type: Number, default: 0 },
-    maxOrderValue: { type: Number, default: 0 },
-    canProcessPayments: { type: Boolean, default: false },
-    canViewFinancials: { type: Boolean, default: false }
+  // Is this a system default role (cannot be deleted)
+  isDefault: {
+    type: Boolean,
+    default: false
   },
   
-  // Operational Limits
-  operationalLimits: {
-    maxOrdersPerDay: { type: Number },
-    canCancelOrders: { type: Boolean, default: false },
-    canModifyOrders: { type: Boolean, default: false },
-    canAssignDrivers: { type: Boolean, default: false },
-    canManageInventory: { type: Boolean, default: false }
-  },
-  
-  // System Access
-  systemAccess: {
-    dashboardAccess: { type: Boolean, default: true },
-    mobileAppAccess: { type: Boolean, default: true },
-    apiAccess: { type: Boolean, default: false },
-    adminPanelAccess: { type: Boolean, default: false }
-  },
-  
-  // Role Status
+  // Is role active
   isActive: {
     type: Boolean,
     default: true
   },
-  isSystemRole: {
-    type: Boolean,
-    default: false // System roles cannot be deleted
+  
+  // Color for UI display
+  color: {
+    type: String,
+    default: '#6366f1' // indigo
   },
   
-  // Hierarchy
-  parentRole: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Role'
-  },
-  childRoles: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Role'
-  }],
-  
-  // Usage Statistics
-  stats: {
-    userCount: { type: Number, default: 0 },
-    createdAt: { type: Date, default: Date.now },
-    lastUsed: { type: Date }
-  },
-  
-  // Creation Info
   createdBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  lastModifiedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   }
-}, {
-  timestamps: true
-})
+}, { 
+  timestamps: true 
+});
 
-// Indexes
-roleSchema.index({ name: 1 })
-roleSchema.index({ level: 1 })
-roleSchema.index({ category: 1 })
-roleSchema.index({ isActive: 1 })
+// Compound index for unique role name per tenancy
+roleSchema.index({ tenancy: 1, slug: 1 }, { unique: true });
 
-// Virtual for permission count
-roleSchema.virtual('permissionCount').get(function() {
-  return this.permissions.length
-})
-
-// Method to check if role has specific permission
+/**
+ * Check if role has specific permission
+ */
 roleSchema.methods.hasPermission = function(module, action) {
-  const permission = this.permissions.find(p => p.module === module)
-  return permission && permission.actions.includes(action)
-}
+  if (!this.permissions[module]) return false;
+  return this.permissions[module][action] === true;
+};
 
-// Method to add permission
-roleSchema.methods.addPermission = function(module, actions, restrictions = {}) {
-  const existingPermission = this.permissions.find(p => p.module === module)
-  
-  if (existingPermission) {
-    // Merge actions
-    const newActions = [...new Set([...existingPermission.actions, ...actions])]
-    existingPermission.actions = newActions
-    existingPermission.restrictions = { ...existingPermission.restrictions, ...restrictions }
-  } else {
-    this.permissions.push({ module, actions, restrictions })
-  }
-  
-  return this.save()
-}
+/**
+ * Get all enabled permissions as flat array
+ */
+roleSchema.methods.getEnabledPermissions = function() {
+  const enabled = [];
+  Object.entries(this.permissions).forEach(([module, perms]) => {
+    Object.entries(perms).forEach(([action, value]) => {
+      if (value === true) {
+        enabled.push(`${module}.${action}`);
+      }
+    });
+  });
+  return enabled;
+};
 
-// Method to remove permission
-roleSchema.methods.removePermission = function(module, action = null) {
-  if (action) {
-    const permission = this.permissions.find(p => p.module === module)
-    if (permission) {
-      permission.actions = permission.actions.filter(a => a !== action)
-      if (permission.actions.length === 0) {
-        this.permissions = this.permissions.filter(p => p.module !== module)
+/**
+ * Static method to get default roles for a new tenancy
+ */
+roleSchema.statics.getDefaultRoles = function(tenancyId, createdBy) {
+  return [
+    {
+      name: 'Admin',
+      slug: 'admin',
+      description: 'Full access to all features',
+      tenancy: tenancyId,
+      isDefault: true,
+      color: '#dc2626', // red
+      createdBy,
+      permissions: {
+        orders: { view: true, create: true, edit: true, delete: true },
+        customers: { view: true, create: true, edit: true, delete: true },
+        inventory: { view: true, create: true, edit: true, delete: true },
+        services: { view: true, create: true, edit: true, delete: true },
+        branches: { view: true, create: true, edit: true, delete: true },
+        staff: { view: true, create: true, edit: true, delete: true },
+        coupons: { view: true, create: true, edit: true, delete: true },
+        campaigns: { view: true, create: true, edit: true, delete: true },
+        banners: { view: true, create: true, edit: true, delete: true },
+        loyalty: { view: true, create: true, edit: true, delete: true },
+        referrals: { view: true, create: true, edit: true, delete: true },
+        wallet: { view: true, create: true, edit: true, delete: true },
+        logistics: { view: true, create: true, edit: true, delete: true },
+        tickets: { view: true, create: true, edit: true, delete: true },
+        payments: { view: true, create: true, edit: true, delete: true },
+        refunds: { view: true, create: true, edit: true, delete: true },
+        performance: { view: true, create: true, edit: true, delete: true },
+        settings: { view: true, create: true, edit: true, delete: true },
+        branding: { view: true, create: true, edit: true, delete: true }
+      }
+    },
+    {
+      name: 'Manager',
+      slug: 'manager',
+      description: 'Manage daily operations',
+      tenancy: tenancyId,
+      isDefault: true,
+      color: '#2563eb', // blue
+      createdBy,
+      permissions: {
+        orders: { view: true, create: true, edit: true, delete: false },
+        customers: { view: true, create: true, edit: true, delete: false },
+        inventory: { view: true, create: true, edit: true, delete: false },
+        services: { view: true, create: false, edit: false, delete: false },
+        branches: { view: true, create: false, edit: false, delete: false },
+        staff: { view: true, create: true, edit: true, delete: false },
+        coupons: { view: true, create: true, edit: true, delete: false },
+        campaigns: { view: true, create: false, edit: false, delete: false },
+        banners: { view: true, create: false, edit: false, delete: false },
+        loyalty: { view: true, create: false, edit: false, delete: false },
+        referrals: { view: true, create: false, edit: false, delete: false },
+        wallet: { view: true, create: false, edit: false, delete: false },
+        logistics: { view: true, create: true, edit: true, delete: false },
+        tickets: { view: true, create: true, edit: true, delete: false },
+        payments: { view: true, create: false, edit: false, delete: false },
+        refunds: { view: true, create: true, edit: false, delete: false },
+        performance: { view: true, create: false, edit: false, delete: false },
+        settings: { view: false, create: false, edit: false, delete: false },
+        branding: { view: false, create: false, edit: false, delete: false }
+      }
+    },
+    {
+      name: 'Staff',
+      slug: 'staff',
+      description: 'Basic order processing',
+      tenancy: tenancyId,
+      isDefault: true,
+      color: '#16a34a', // green
+      createdBy,
+      permissions: {
+        orders: { view: true, create: true, edit: true, delete: false },
+        customers: { view: true, create: true, edit: false, delete: false },
+        inventory: { view: true, create: false, edit: false, delete: false },
+        services: { view: true, create: false, edit: false, delete: false },
+        branches: { view: false, create: false, edit: false, delete: false },
+        staff: { view: false, create: false, edit: false, delete: false },
+        coupons: { view: true, create: false, edit: false, delete: false },
+        campaigns: { view: false, create: false, edit: false, delete: false },
+        banners: { view: false, create: false, edit: false, delete: false },
+        loyalty: { view: true, create: false, edit: false, delete: false },
+        referrals: { view: false, create: false, edit: false, delete: false },
+        wallet: { view: false, create: false, edit: false, delete: false },
+        logistics: { view: true, create: false, edit: false, delete: false },
+        tickets: { view: true, create: true, edit: false, delete: false },
+        payments: { view: false, create: false, edit: false, delete: false },
+        refunds: { view: false, create: false, edit: false, delete: false },
+        performance: { view: false, create: false, edit: false, delete: false },
+        settings: { view: false, create: false, edit: false, delete: false },
+        branding: { view: false, create: false, edit: false, delete: false }
+      }
+    },
+    {
+      name: 'Accountant',
+      slug: 'accountant',
+      description: 'Financial operations only',
+      tenancy: tenancyId,
+      isDefault: true,
+      color: '#ca8a04', // yellow
+      createdBy,
+      permissions: {
+        orders: { view: true, create: false, edit: false, delete: false },
+        customers: { view: true, create: false, edit: false, delete: false },
+        inventory: { view: false, create: false, edit: false, delete: false },
+        services: { view: false, create: false, edit: false, delete: false },
+        branches: { view: false, create: false, edit: false, delete: false },
+        staff: { view: false, create: false, edit: false, delete: false },
+        coupons: { view: false, create: false, edit: false, delete: false },
+        campaigns: { view: false, create: false, edit: false, delete: false },
+        banners: { view: false, create: false, edit: false, delete: false },
+        loyalty: { view: false, create: false, edit: false, delete: false },
+        referrals: { view: false, create: false, edit: false, delete: false },
+        wallet: { view: true, create: false, edit: false, delete: false },
+        logistics: { view: false, create: false, edit: false, delete: false },
+        tickets: { view: false, create: false, edit: false, delete: false },
+        payments: { view: true, create: true, edit: true, delete: false },
+        refunds: { view: true, create: true, edit: true, delete: false },
+        performance: { view: true, create: false, edit: false, delete: false },
+        settings: { view: false, create: false, edit: false, delete: false },
+        branding: { view: false, create: false, edit: false, delete: false }
       }
     }
-  } else {
-    this.permissions = this.permissions.filter(p => p.module !== module)
-  }
-  
-  return this.save()
-}
+  ];
+};
 
-// Method to check if role can perform action with restrictions
-roleSchema.methods.canPerformAction = function(module, action, context = {}) {
-  const permission = this.permissions.find(p => p.module === module)
-  
-  if (!permission || !permission.actions.includes(action)) {
-    return { allowed: false, reason: 'Permission not granted' }
-  }
-  
-  const restrictions = permission.restrictions
-  
-  // Check amount restrictions
-  if (restrictions.maxAmount && context.amount > restrictions.maxAmount) {
-    return { 
-      allowed: false, 
-      reason: `Amount exceeds limit of ₹${restrictions.maxAmount}` 
-    }
-  }
-  
-  // Check discount restrictions
-  if (restrictions.maxDiscount && context.discount > restrictions.maxDiscount) {
-    return { 
-      allowed: false, 
-      reason: `Discount exceeds limit of ${restrictions.maxDiscount}%` 
-    }
-  }
-  
-  // Check time restrictions
-  if (restrictions.timeRestriction === 'business_hours_only') {
-    const now = new Date()
-    const hour = now.getHours()
-    if (hour < 9 || hour > 18) {
-      return { 
-        allowed: false, 
-        reason: 'Action only allowed during business hours (9 AM - 6 PM)' 
-      }
-    }
-  }
-  
-  // Check branch restrictions
-  if (restrictions.branchRestriction && context.userBranch !== context.targetBranch) {
-    return { 
-      allowed: false, 
-      reason: 'Action restricted to own branch only' 
-    }
-  }
-  
-  return { allowed: true }
-}
+/**
+ * Create default roles for a tenancy
+ */
+roleSchema.statics.createDefaultRoles = async function(tenancyId, createdBy) {
+  const defaultRoles = this.getDefaultRoles(tenancyId, createdBy);
+  return await this.insertMany(defaultRoles);
+};
 
-// Static method to create default roles
-roleSchema.statics.createDefaultRoles = async function(createdBy) {
-  const defaultRoles = [
-    {
-      name: 'admin',
-      displayName: 'Admin',
-      description: 'Full control over branch operations',
-      level: 2,
-      category: 'management',
-      permissions: [
-        { module: 'orders', actions: ['create', 'read', 'update', 'delete'] },
-        { module: 'customers', actions: ['create', 'read', 'update'] },
-        { module: 'staff', actions: ['create', 'read', 'update', 'delete'] },
-        { module: 'inventory', actions: ['create', 'read', 'update', 'delete'] },
-        { module: 'reports', actions: ['read', 'export'] },
-        { module: 'finances', actions: ['read'], restrictions: { maxAmount: 5000 } },
-        { module: 'settings', actions: ['read', 'update'] }
-      ],
-      settings: {
-        canCreateUsers: true,
-        canViewReports: true,
-        canExportData: true,
-        canModifyBranch: true
-      },
-      financialLimits: {
-        maxRefundAmount: 1000,
-        maxDiscountPercent: 15,
-        canViewFinancials: true
-      },
-      isSystemRole: true,
-      createdBy
-    },
-    {
-      name: 'supervisor',
-      displayName: 'Supervisor',
-      description: 'Supervises daily operations and staff',
-      level: 3,
-      category: 'operations',
-      permissions: [
-        { module: 'orders', actions: ['create', 'read', 'update'] },
-        { module: 'customers', actions: ['read', 'update'] },
-        { module: 'staff', actions: ['read'] },
-        { module: 'inventory', actions: ['read', 'update'] }
-      ],
-      financialLimits: {
-        maxRefundAmount: 500,
-        maxDiscountPercent: 10
-      },
-      isSystemRole: true,
-      createdBy
-    },
-    {
-      name: 'staff',
-      displayName: 'Staff Member',
-      description: 'Basic operational access',
-      level: 4,
-      category: 'operations',
-      permissions: [
-        { module: 'orders', actions: ['read', 'update'] },
-        { module: 'customers', actions: ['read'] },
-        { module: 'inventory', actions: ['read'] }
-      ],
-      financialLimits: {
-        maxRefundAmount: 200,
-        maxDiscountPercent: 5
-      },
-      isSystemRole: true,
-      createdBy
-    },
-    {
-      name: 'driver',
-      displayName: 'Delivery Driver',
-      description: 'Pickup and delivery operations',
-      level: 5,
-      category: 'operations',
-      permissions: [
-        { module: 'orders', actions: ['read', 'update'] }
-      ],
-      operationalLimits: {
-        canCancelOrders: false,
-        canModifyOrders: false
-      },
-      isSystemRole: true,
-      createdBy
-    }
-  ]
-  
-  const createdRoles = []
-  for (const roleData of defaultRoles) {
-    const existingRole = await this.findOne({ name: roleData.name })
-    if (!existingRole) {
-      const role = new this(roleData)
-      await role.save()
-      createdRoles.push(role)
-    }
-  }
-  
-  return createdRoles
-}
+const Role = mongoose.model('Role', roleSchema);
 
-module.exports = mongoose.model('Role', roleSchema)
+module.exports = Role;

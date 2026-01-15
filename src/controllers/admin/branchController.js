@@ -145,7 +145,10 @@ class AdminBranchController {
       return res.status(201).json({
         success: true,
         message: 'Branch created successfully',
-        data: { branch }
+        data: { 
+          branch,
+          subscriptionLimit: req.subscriptionLimit // Include limit info in response
+        }
       })
     } catch (error) {
       console.error('❌ Create branch error:', error)

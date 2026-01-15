@@ -1,5 +1,6 @@
 const { BillingPlan, TenancyInvoice, TenancyPayment } = require('../../models/TenancyBilling');
 const Tenancy = require('../../models/Tenancy');
+const FeatureDefinition = require('../../models/FeatureDefinition');
 
 const billingController = {
   // ============ BILLING PLANS ============
@@ -9,11 +10,18 @@ const billingController = {
     try {
       const { includeInactive } = req.query;
       const query = includeInactive === 'true' ? {} : { isActive: true };
-      const plans = await BillingPlan.find(query).sort({ 'price.monthly': 1 });
+      const plans = await BillingPlan.find(query).sort({ sortOrder: 1, 'price.monthly': 1 });
+      
+      // Get feature definitions for reference
+      const featureDefinitions = await FeatureDefinition.find({ isActive: true })
+        .sort({ category: 1, sortOrder: 1 });
       
       res.json({
         success: true,
-        data: { plans }
+        data: { 
+          plans,
+          featureDefinitions
+        }
       });
     } catch (error) {
       console.error('Get plans error:', error);
@@ -21,22 +29,104 @@ const billingController = {
     }
   },
 
+  // Create new custom billing plan
+  createPlan: async (req, res) => {
+    try {
+      const { 
+        name, 
+        displayName, 
+        description, 
+        price, 
+        features, 
+        showOnMarketing,
+        isPopular,
+        badge,
+        trialDays,
+        sortOrder
+      } = req.body;
+      
+      // Generate slug from name
+      const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+      
+      // Check if plan with this name already exists
+      const existing = await BillingPlan.findOne({ name: slug });
+      if (existing) {
+        return res.status(400).json({
+          success: false,
+          message: 'A plan with this name already exists'
+        });
+      }
+      
+      // Convert features object to Map if needed
+      let featuresMap = features;
+      if (features && !(features instanceof Map)) {
+        featuresMap = new Map(Object.entries(features));
+      }
+      
+      const plan = await BillingPlan.create({
+        name: slug,
+        displayName: displayName || name,
+        description: description || '',
+        price: price || { monthly: 0, yearly: 0 },
+        features: featuresMap || new Map(),
+        isCustom: true,
+        isDefault: false,
+        showOnMarketing: showOnMarketing !== false,
+        isPopular: isPopular || false,
+        badge: badge || '',
+        trialDays: trialDays || 60,
+        sortOrder: sortOrder || 0,
+        isActive: true,
+        createdBy: req.admin?._id || req.admin?.id
+      });
+      
+      res.status(201).json({
+        success: true,
+        message: 'Custom plan created successfully',
+        data: { plan }
+      });
+    } catch (error) {
+      console.error('Create plan error:', error);
+      res.status(500).json({ success: false, message: 'Failed to create plan' });
+    }
+  },
+
   // Create/Update billing plan
   upsertPlan: async (req, res) => {
     try {
-      const { name, displayName, price, features, isActive } = req.body;
+      const { 
+        name, 
+        displayName, 
+        price, 
+        features, 
+        isActive, 
+        showOnMarketing,
+        isPopular,
+        badge,
+        trialDays,
+        sortOrder
+      } = req.body;
+      
+      // Convert features object to Map if needed
+      let featuresMap = features;
+      if (features && !(features instanceof Map)) {
+        featuresMap = new Map(Object.entries(features));
+      }
       
       const updateData = { 
         name, 
         displayName, 
         price, 
-        features
+        features: featuresMap
       };
       
-      // Only update isActive if explicitly provided
-      if (typeof isActive === 'boolean') {
-        updateData.isActive = isActive;
-      }
+      // Only update optional fields if explicitly provided
+      if (typeof isActive === 'boolean') updateData.isActive = isActive;
+      if (typeof showOnMarketing === 'boolean') updateData.showOnMarketing = showOnMarketing;
+      if (typeof isPopular === 'boolean') updateData.isPopular = isPopular;
+      if (badge !== undefined) updateData.badge = badge;
+      if (trialDays !== undefined) updateData.trialDays = trialDays;
+      if (sortOrder !== undefined) updateData.sortOrder = sortOrder;
       
       const plan = await BillingPlan.findOneAndUpdate(
         { name },
@@ -52,6 +142,49 @@ const billingController = {
     } catch (error) {
       console.error('Upsert plan error:', error);
       res.status(500).json({ success: false, message: 'Failed to save plan' });
+    }
+  },
+
+  // Delete a custom billing plan
+  deletePlan: async (req, res) => {
+    try {
+      const { name } = req.params;
+      
+      const plan = await BillingPlan.findOne({ name });
+      
+      if (!plan) {
+        return res.status(404).json({
+          success: false,
+          message: 'Plan not found'
+        });
+      }
+      
+      // Don't allow deleting default plans
+      if (plan.isDefault || ['free', 'basic', 'pro', 'enterprise'].includes(plan.name)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Cannot delete default plans'
+        });
+      }
+      
+      // Check if any tenancy is using this plan
+      const tenancyCount = await Tenancy.countDocuments({ 'subscription.plan': name });
+      if (tenancyCount > 0) {
+        return res.status(400).json({
+          success: false,
+          message: `Cannot delete plan. ${tenancyCount} tenancies are using this plan.`
+        });
+      }
+      
+      await BillingPlan.deleteOne({ name });
+      
+      res.json({
+        success: true,
+        message: 'Plan deleted successfully'
+      });
+    } catch (error) {
+      console.error('Delete plan error:', error);
+      res.status(500).json({ success: false, message: 'Failed to delete plan' });
     }
   },
 
@@ -319,8 +452,27 @@ const billingController = {
         return res.status(400).json({ success: false, message: 'Invalid plan' });
       }
       
+      // Convert features Map to plain object for tenancy
+      let features = {};
+      if (billingPlan.features instanceof Map) {
+        features = Object.fromEntries(billingPlan.features);
+      } else if (billingPlan.features) {
+        features = billingPlan.features;
+      }
+      
       tenancy.subscription.plan = plan;
-      tenancy.subscription.features = billingPlan.features;
+      tenancy.subscription.features = features;
+      
+      // Update subscription dates if upgrading
+      if (billingCycle) {
+        const now = new Date();
+        tenancy.subscription.startDate = now;
+        tenancy.subscription.endDate = billingCycle === 'yearly'
+          ? new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000)
+          : new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+        tenancy.subscription.status = 'active';
+      }
+      
       await tenancy.save();
       
       res.json({

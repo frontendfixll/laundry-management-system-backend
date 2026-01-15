@@ -9,7 +9,7 @@ async function resetPassword() {
     
     const CenterAdmin = require('./src/models/CenterAdmin');
     
-    const admin = await CenterAdmin.findOne({ email: 'admin@laundrypro.com' });
+    const admin = await CenterAdmin.findOne({ email: 'admin@LaundryLobby.com' });
     if (admin) {
       // Set password directly - the pre-save hook will hash it
       admin.password = 'Admin@123456';
@@ -17,13 +17,13 @@ async function resetPassword() {
       admin.lockUntil = undefined;
       await admin.save();
       console.log('✅ Password reset successfully');
-      console.log('📧 Email: admin@laundrypro.com');
+      console.log('📧 Email: admin@LaundryLobby.com');
       console.log('🔑 Password: Admin@123456');
     } else {
       console.log('Admin not found, creating new one...');
       await CenterAdmin.create({
         name: 'Center Admin',
-        email: 'admin@laundrypro.com',
+        email: 'admin@LaundryLobby.com',
         password: 'Admin@123456', // Will be hashed by pre-save hook
         role: 'center_admin',
         permissions: {
@@ -37,7 +37,7 @@ async function resetPassword() {
         isActive: true
       });
       console.log('✅ Admin created');
-      console.log('📧 Email: admin@laundrypro.com');
+      console.log('📧 Email: admin@LaundryLobby.com');
       console.log('🔑 Password: Admin@123456');
     }
   } catch (error) {

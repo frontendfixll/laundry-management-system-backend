@@ -131,6 +131,14 @@ router.patch('/:id/subscription',
   tenancyController.updateSubscription
 );
 
+// Update tenancy features/permissions
+router.patch('/:id/features',
+  param('id').isMongoId().withMessage('Valid tenancy ID is required'),
+  body('features').isObject().withMessage('Features object is required'),
+  logAdminAction('update_tenancy_features', 'tenancies'),
+  tenancyController.updateFeatures
+);
+
 // Delete tenancy (soft delete)
 router.delete('/:id',
   param('id').isMongoId().withMessage('Valid tenancy ID is required'),

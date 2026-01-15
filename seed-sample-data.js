@@ -16,7 +16,7 @@ async function seedSampleData() {
     // Create sample branches in different cities
     const branches = [
       {
-        name: 'LaundryPro Delhi Central',
+        name: 'LaundryLobby Delhi Central',
         code: 'DEL001',
         address: {
           addressLine1: 'Connaught Place',
@@ -27,7 +27,7 @@ async function seedSampleData() {
         isActive: true
       },
       {
-        name: 'LaundryPro Mumbai Bandra',
+        name: 'LaundryLobby Mumbai Bandra',
         code: 'MUM001',
         address: {
           addressLine1: 'Bandra West',
@@ -38,7 +38,7 @@ async function seedSampleData() {
         isActive: true
       },
       {
-        name: 'LaundryPro Bangalore Koramangala',
+        name: 'LaundryLobby Bangalore Koramangala',
         code: 'BLR001',
         address: {
           addressLine1: 'Koramangala 4th Block',
@@ -49,7 +49,7 @@ async function seedSampleData() {
         isActive: true
       },
       {
-        name: 'LaundryPro Chennai T Nagar',
+        name: 'LaundryLobby Chennai T Nagar',
         code: 'CHE001',
         address: {
           addressLine1: 'T Nagar',
@@ -60,7 +60,7 @@ async function seedSampleData() {
         isActive: true
       },
       {
-        name: 'LaundryPro Hyderabad Hitech City',
+        name: 'LaundryLobby Hyderabad Hitech City',
         code: 'HYD001',
         address: {
           addressLine1: 'Hitech City',

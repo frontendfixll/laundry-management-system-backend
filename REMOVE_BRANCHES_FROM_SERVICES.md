@@ -5,29 +5,29 @@ The user requested to remove the branches option from the services section, simp
 
 ## Changes Made
 
-### 1. Mobile App (LaundryProExpo)
+### 1. Mobile App (LaundryLobbyExpo)
 
 **Removed Branch Selection Flow:**
-- **Deleted**: `LaundryProExpo/src/screens/order/BranchSelectionScreen.js`
-- **Updated**: `LaundryProExpo/src/screens/services/ServicesScreen.js`
+- **Deleted**: `LaundryLobbyExpo/src/screens/order/BranchSelectionScreen.js`
+- **Updated**: `LaundryLobbyExpo/src/screens/services/ServicesScreen.js`
   - Removed `selectedBranch` and `fetchBranchServices` references
   - Simplified service loading to use global service items only
 
 **Updated Service Store:**
-- **File**: `LaundryProExpo/src/store/serviceStore.js`
+- **File**: `LaundryLobbyExpo/src/store/serviceStore.js`
   - Removed `branches` state and `fetchBranches()` function
   - Removed `fetchBranchServices()` function
   - Simplified `fetchServiceItems()` to only fetch global items
   - Removed branch-specific service item fetching
 
 **Updated API Configuration:**
-- **File**: `LaundryProExpo/src/config/api.js`
+- **File**: `LaundryLobbyExpo/src/config/api.js`
   - Removed `BRANCHES` and `BRANCH_SERVICES` endpoints
   - Removed `BY_BRANCH` service items endpoint
   - Simplified to only global service endpoints
 
 **Updated Service Type Selection:**
-- **File**: `LaundryProExpo/src/screens/order/ServiceTypeSelectionScreen.js`
+- **File**: `LaundryLobbyExpo/src/screens/order/ServiceTypeSelectionScreen.js`
   - Removed `laundry` (branch) parameter handling
   - Removed `setSelectedBranch` calls
   - Simplified order summary to not show branch name
@@ -178,7 +178,7 @@ db.serviceitems.updateMany(
 
 ## Files Modified
 
-### Mobile App (LaundryProExpo)
+### Mobile App (LaundryLobbyExpo)
 - `src/screens/services/ServicesScreen.js`
 - `src/store/serviceStore.js`
 - `src/config/api.js`

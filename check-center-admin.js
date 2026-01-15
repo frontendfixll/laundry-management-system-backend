@@ -8,7 +8,7 @@ async function checkCenterAdmin() {
 
     const User = mongoose.connection.collection('users')
     
-    const centerAdmin = await User.findOne({ email: 'branch@laundrypro.com' })
+    const centerAdmin = await User.findOne({ email: 'branch@LaundryLobby.com' })
     
     if (centerAdmin) {
       console.log('\n✅ Center Admin found:')
@@ -17,7 +17,7 @@ async function checkCenterAdmin() {
       console.log('isActive:', centerAdmin.isActive)
       console.log('isEmailVerified:', centerAdmin.isEmailVerified)
     } else {
-      console.log('\n❌ Center Admin not found with email: branch@laundrypro.com')
+      console.log('\n❌ Center Admin not found with email: branch@LaundryLobby.com')
       
       // Check all users with center_admin role
       const allCenterAdmins = await User.find({ role: 'center_admin' }).toArray()

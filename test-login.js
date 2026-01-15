@@ -12,7 +12,7 @@ async function testLogin() {
     console.log('✅ Connected to MongoDB')
 
     // Find center admin
-    const admin = await CenterAdmin.findOne({ email: 'admin@laundrypro.com' })
+    const admin = await CenterAdmin.findOne({ email: 'admin@LaundryLobby.com' })
     if (!admin) {
       console.log('❌ Center admin not found!')
       return
@@ -38,7 +38,7 @@ async function testLogin() {
     const response = await request(app)
       .post('/api/center-admin/auth/login')
       .send({
-        email: 'admin@laundrypro.com',
+        email: 'admin@LaundryLobby.com',
         password: 'Admin@123456'
       })
 

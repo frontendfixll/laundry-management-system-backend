@@ -23,11 +23,11 @@ async function testEmail() {
   try {
     const result = await sendEmail({
       to: testEmailAddress,
-      subject: 'LaundryPro - Email Test ✅',
+      subject: 'LaundryLobby - Email Test ✅',
       html: `
         <div style="font-family: Arial, sans-serif; padding: 20px;">
           <h2 style="color: #4CAF50;">✅ Email is Working!</h2>
-          <p>This is a test email from your LaundryPro local setup.</p>
+          <p>This is a test email from your LaundryLobby local setup.</p>
           <p>Sent at: ${new Date().toLocaleString()}</p>
           <hr>
           <p style="color: #666; font-size: 12px;">

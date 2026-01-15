@@ -1,4 +1,4 @@
-# Gmail SMTP Setup Guide for LaundryPro
+# Gmail SMTP Setup Guide for LaundryLobby
 
 ## Current Issue
 The email service is configured but Gmail is rejecting the credentials with error:
@@ -24,7 +24,7 @@ This means you need to set up a Gmail App Password for the application.
 3. You might need to sign in again
 4. Select "Mail" as the app
 5. Select "Other (Custom name)" as the device
-6. Enter "LaundryPro" as the name
+6. Enter "LaundryLobby" as the name
 7. Click "Generate"
 8. **Copy the 16-character password** (it will look like: `abcd efgh ijkl mnop`)
 

@@ -10,7 +10,7 @@ async function fixCenterAdmin() {
     
     // Update the center admin
     const result = await User.updateOne(
-      { email: 'branch@laundrypro.com' },
+      { email: 'branch@LaundryLobby.com' },
       { 
         $set: { 
           role: 'center_admin',
@@ -23,7 +23,7 @@ async function fixCenterAdmin() {
     console.log('Updated:', result.modifiedCount, 'document(s)')
     
     // Verify
-    const updated = await User.findOne({ email: 'branch@laundrypro.com' })
+    const updated = await User.findOne({ email: 'branch@LaundryLobby.com' })
     console.log('\n✅ Center Admin updated:')
     console.log('Email:', updated.email)
     console.log('Role:', updated.role)

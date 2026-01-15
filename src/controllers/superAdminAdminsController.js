@@ -44,11 +44,14 @@ const countPermissions = (permissions) => {
 }
 
 const centerAdminAdminsController = {
-  // Get all admins (only 'admin' role now - center_admin merged)
+  // Get all admins (only branch admins - not tenancy owners)
   getAllAdmins: async (req, res) => {
     try {
+      // Only fetch admins who are assigned to a branch (branch admins)
+      // Tenancy owners are managed in the Tenancies section
       const admins = await User.find({ 
-        role: 'admin'  // Simplified - only admin role
+        role: 'admin',
+        assignedBranch: { $exists: true, $ne: null }  // Only branch admins
       })
       .select('-password')
       .populate('assignedBranch', 'name code')
@@ -385,7 +388,7 @@ const centerAdminAdminsController = {
       await invitation.save()
 
       // Send invitation email
-      const inviterName = req.admin.name || 'LaundryPro Admin'
+      const inviterName = req.admin.name || 'LaundryLobby Admin'
       const emailOptions = emailTemplates.adminInvitation(invitation, inviterName)
       const emailResult = await sendEmail(emailOptions)
 
@@ -469,7 +472,7 @@ const centerAdminAdminsController = {
       await invitation.save()
 
       // Resend email
-      const inviterName = req.admin.name || 'LaundryPro Admin'
+      const inviterName = req.admin.name || 'LaundryLobby Admin'
       const emailOptions = emailTemplates.adminInvitation(invitation, inviterName)
       const emailResult = await sendEmail(emailOptions)
 

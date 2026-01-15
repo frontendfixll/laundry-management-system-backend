@@ -12,7 +12,7 @@ class CenterAdminSettingsController {
       // System configuration (this would typically come from a Settings model)
       const systemSettings = {
         general: {
-          systemName: 'LaundryPro Management System',
+          systemName: 'LaundryLobby Management System',
           timezone: 'Asia/Kolkata',
           currency: 'INR',
           language: 'en',

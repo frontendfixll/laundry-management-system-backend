@@ -5,11 +5,11 @@
 const billingEmailTemplates = {
   // Invoice Generated
   invoiceGenerated: (data) => ({
-    subject: `Invoice #${data.invoiceNumber} - LaundryPro Platform`,
+    subject: `Invoice #${data.invoiceNumber} - LaundryLobby Platform`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="text-align: center; margin-bottom: 30px;">
-          <h1 style="color: #3B82F6; margin: 0;">LaundryPro</h1>
+          <h1 style="color: #3B82F6; margin: 0;">LaundryLobby</h1>
           <p style="color: #666; margin: 5px 0;">Platform Invoice</p>
         </div>
         
@@ -51,7 +51,7 @@ const billingEmailTemplates = {
         
         <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
         <p style="color: #999; font-size: 12px; text-align: center;">
-          LaundryPro Platform | Questions? Contact support@laundrypro.com
+          LaundryLobby Platform | Questions? Contact support@LaundryLobby.com
         </p>
       </div>
     `
@@ -81,7 +81,7 @@ const billingEmailTemplates = {
         
         <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
         <p style="color: #999; font-size: 12px; text-align: center;">
-          LaundryPro Platform | Questions? Contact support@laundrypro.com
+          LaundryLobby Platform | Questions? Contact support@LaundryLobby.com
         </p>
       </div>
     `
@@ -116,7 +116,7 @@ const billingEmailTemplates = {
         
         <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
         <p style="color: #999; font-size: 12px; text-align: center;">
-          LaundryPro Platform | Questions? Contact support@laundrypro.com
+          LaundryLobby Platform | Questions? Contact support@LaundryLobby.com
         </p>
       </div>
     `
@@ -124,11 +124,11 @@ const billingEmailTemplates = {
 
   // Subscription Expiring Soon
   subscriptionExpiring: (data) => ({
-    subject: `Your LaundryPro subscription expires in ${data.daysRemaining} days`,
+    subject: `Your LaundryLobby subscription expires in ${data.daysRemaining} days`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="text-align: center; margin-bottom: 30px;">
-          <h1 style="color: #3B82F6; margin: 0;">LaundryPro</h1>
+          <h1 style="color: #3B82F6; margin: 0;">LaundryLobby</h1>
         </div>
         
         <div style="background: #FEF3C7; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
@@ -150,7 +150,7 @@ const billingEmailTemplates = {
         
         <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
         <p style="color: #999; font-size: 12px; text-align: center;">
-          LaundryPro Platform | Questions? Contact support@laundrypro.com
+          LaundryLobby Platform | Questions? Contact support@LaundryLobby.com
         </p>
       </div>
     `
@@ -183,7 +183,7 @@ const billingEmailTemplates = {
         
         <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
         <p style="color: #999; font-size: 12px; text-align: center;">
-          LaundryPro Platform | Questions? Contact support@laundrypro.com
+          LaundryLobby Platform | Questions? Contact support@LaundryLobby.com
         </p>
       </div>
     `

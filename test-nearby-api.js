@@ -36,7 +36,7 @@ async function testProductionAPI() {
   try {
     console.log('\n🌐 Testing production API endpoint...');
     
-    const prodUrl = 'https://laundrypro-backend-605c.onrender.com/api/public/tenancy/nearby';
+    const prodUrl = 'https://LaundryLobby-backend-605c.onrender.com/api/public/tenancy/nearby';
     const params = {
       lat: 26.8633253,
       lng: 75.7737141,

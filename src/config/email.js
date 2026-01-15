@@ -45,7 +45,7 @@ const sendViaBrevo = async (emailOptions) => {
   const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
   sendSmtpEmail.sender = { 
     email: process.env.EMAIL_FROM || process.env.EMAIL_USER,
-    name: 'LaundryPro'
+    name: 'LaundryLobby'
   };
   sendSmtpEmail.to = [{ email: emailOptions.to }];
   sendSmtpEmail.subject = emailOptions.subject;
@@ -142,18 +142,18 @@ const emailTemplates = {
   verification: (token, userEmail) => ({
     from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
     to: userEmail,
-    subject: 'Verify your LaundryPro account',
+    subject: 'Verify your LaundryLobby account',
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="text-align: center; margin-bottom: 30px;">
-          <h1 style="color: #14b8a6; margin: 0;">LaundryPro</h1>
+          <h1 style="color: #14b8a6; margin: 0;">LaundryLobby</h1>
           <p style="color: #6b7280; margin: 5px 0;">Premium Laundry & Dry Cleaning Service</p>
         </div>
         
         <div style="background: #f8fafc; padding: 30px; border-radius: 10px; margin-bottom: 20px;">
-          <h2 style="color: #1f2937; margin-bottom: 20px;">Welcome to LaundryPro!</h2>
+          <h2 style="color: #1f2937; margin-bottom: 20px;">Welcome to LaundryLobby!</h2>
           <p style="color: #4b5563; line-height: 1.6; margin-bottom: 25px;">
-            Thank you for registering with LaundryPro. Please verify your email address by clicking the button below.
+            Thank you for registering with LaundryLobby. Please verify your email address by clicking the button below.
           </p>
           
           <div style="text-align: center; margin: 30px 0;">
@@ -181,11 +181,11 @@ const emailTemplates = {
   orderConfirmation: (order, user, items = []) => ({
     from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
     to: user.email,
-    subject: `✅ Order Confirmed - ${order.orderNumber} | LaundryPro`,
+    subject: `✅ Order Confirmed - ${order.orderNumber} | LaundryLobby`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="background: linear-gradient(135deg, #14b8a6, #06b6d4); padding: 25px; border-radius: 12px 12px 0 0; text-align: center;">
-          <h1 style="color: white; margin: 0;">LaundryPro</h1>
+          <h1 style="color: white; margin: 0;">LaundryLobby</h1>
         </div>
         
         <div style="background: #10b981; padding: 20px; text-align: center;">
@@ -213,7 +213,7 @@ const emailTemplates = {
         </div>
         
         <div style="text-align: center; padding: 15px; color: #9ca3af; font-size: 12px;">
-          © ${new Date().getFullYear()} LaundryPro
+          © ${new Date().getFullYear()} LaundryLobby
         </div>
       </div>
     `
@@ -226,7 +226,7 @@ const emailTemplates = {
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="text-align: center; margin-bottom: 20px;">
-          <h1 style="color: #14b8a6; margin: 0;">LaundryPro</h1>
+          <h1 style="color: #14b8a6; margin: 0;">LaundryLobby</h1>
         </div>
         
         <div style="background: #f8fafc; padding: 25px; border-radius: 10px;">
@@ -247,11 +247,11 @@ const emailTemplates = {
   adminInvitation: (invitation, inviterName) => ({
     from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
     to: invitation.email,
-    subject: "You're invited to join LaundryPro as Admin",
+    subject: "You're invited to join LaundryLobby as Admin",
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="text-align: center; margin-bottom: 20px;">
-          <h1 style="color: #14b8a6; margin: 0;">LaundryPro</h1>
+          <h1 style="color: #14b8a6; margin: 0;">LaundryLobby</h1>
         </div>
         
         <div style="background: #f8fafc; padding: 25px; border-radius: 10px;">

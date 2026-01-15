@@ -15,7 +15,7 @@ const resetAdminPassword = async () => {
     const User = mongoose.connection.collection('users');
 
     // Find admin user
-    const admin = await User.findOne({ email: 'admin@laundrypro.com' });
+    const admin = await User.findOne({ email: 'admin@LaundryLobby.com' });
     
     if (!admin) {
       console.log('❌ Admin user not found!');
@@ -34,7 +34,7 @@ const resetAdminPassword = async () => {
     const hashedPassword = await bcrypt.hash(newPassword, 12);
 
     await User.updateOne(
-      { email: 'admin@laundrypro.com' },
+      { email: 'admin@LaundryLobby.com' },
       { 
         $set: { 
           password: hashedPassword,
@@ -47,7 +47,7 @@ const resetAdminPassword = async () => {
     console.log('\n✅ Password reset successful!');
     console.log('\n' + '='.repeat(50));
     console.log('\n🔐 NEW LOGIN CREDENTIALS:');
-    console.log('   Email: admin@laundrypro.com');
+    console.log('   Email: admin@LaundryLobby.com');
     console.log('   Password: admin123');
     console.log('\n🔗 Login URL: http://localhost:3000/auth/login');
     console.log('='.repeat(50));

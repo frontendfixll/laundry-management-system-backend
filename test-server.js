@@ -15,7 +15,7 @@ async function testServer() {
     // Test center admin login endpoint
     try {
       const loginResponse = await axios.post('http://localhost:3002/api/center-admin/auth/login', {
-        email: 'admin@laundrypro.com',
+        email: 'admin@LaundryLobby.com',
         password: 'Admin@123456'
       })
       console.log('✅ Login endpoint working:', loginResponse.status)

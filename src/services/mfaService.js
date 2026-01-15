@@ -40,7 +40,7 @@ class MFAService {
       const html = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center;">
-            <h1 style="color: white; margin: 0;">LaundryPro Admin</h1>
+            <h1 style="color: white; margin: 0;">LaundryLobby Admin</h1>
           </div>
           
           <div style="padding: 30px; background: #f8f9fa;">
@@ -59,7 +59,7 @@ class MFAService {
             
             <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
               <p style="color: #999; font-size: 12px; margin: 0;">
-                This is an automated message from LaundryPro Admin System.
+                This is an automated message from LaundryLobby Admin System.
               </p>
             </div>
           </div>

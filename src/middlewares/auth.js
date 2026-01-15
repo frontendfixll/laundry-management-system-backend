@@ -20,8 +20,10 @@ const protect = async (req, res, next) => {
     try {
       const decoded = verifyAccessToken(token);
       
-      // Get user from User model
-      const user = await User.findById(decoded.userId).select('-password');
+      // Get user from User model with roleId populated
+      const user = await User.findById(decoded.userId)
+        .select('-password')
+        .populate('roleId', 'name slug permissions isActive color');
       
       if (!user) {
         return res.status(401).json({
@@ -83,7 +85,9 @@ const protectAny = async (req, res, next) => {
       
       // Try as regular user (admin, staff, customer)
       if (decoded.userId) {
-        const user = await User.findById(decoded.userId).select('-password');
+        const user = await User.findById(decoded.userId)
+          .select('-password')
+          .populate('roleId', 'name slug permissions isActive color');
         if (user && user.isActive) {
           req.user = user;
           req.isSuperAdmin = false;
@@ -169,7 +173,7 @@ const restrictTo = (...roles) => {
 
 // Check specific RBAC permission for admin/branch_admin users
 const requirePermission = (module, action) => {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     // SuperAdmin has all permissions
     if (req.isSuperAdmin) {
       return next();
@@ -183,7 +187,31 @@ const requirePermission = (module, action) => {
       });
     }
     
-    // Check if user has the specific permission
+    // If user has roleId, check permissions from Role model
+    if (req.user.roleId) {
+      try {
+        const Role = require('../models/Role');
+        const role = await Role.findById(req.user.roleId);
+        
+        if (role && role.isActive) {
+          // Map 'edit' action to 'edit' in Role model (Role uses edit, User uses update)
+          const roleAction = action === 'update' ? 'edit' : action;
+          
+          if (role.hasPermission(module, roleAction)) {
+            return next();
+          }
+          
+          return res.status(403).json({
+            success: false,
+            message: `Permission denied: ${module}.${action}`
+          });
+        }
+      } catch (err) {
+        console.error('Role permission check error:', err);
+      }
+    }
+    
+    // Fallback to user's direct permissions
     if (!req.user.hasPermission(module, action)) {
       return res.status(403).json({
         success: false,

@@ -24,7 +24,7 @@ const testBrevoEmail = async () => {
   
   const result = await sendEmail({
     to: testEmail,
-    subject: '🧪 Brevo Test - LaundryPro',
+    subject: '🧪 Brevo Test - LaundryLobby',
     html: `
       <div style="font-family: Arial; padding: 20px; text-align: center;">
         <h1 style="color: #14b8a6;">✅ Brevo Working!</h1>

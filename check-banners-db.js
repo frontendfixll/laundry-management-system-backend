@@ -6,7 +6,7 @@ const Banner = require('./src/models/Banner');
 async function checkBanners() {
   try {
     // Connect to MongoDB
-    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/laundrypro');
+    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/LaundryLobby');
     console.log('✅ Connected to MongoDB');
 
     // Get all banners (including deleted ones if soft-delete is used)

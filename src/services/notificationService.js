@@ -1,24 +1,49 @@
 const Notification = require('../models/Notification');
-const { NOTIFICATION_TYPES } = require('../config/constants');
+const { NOTIFICATION_TYPES, RECIPIENT_TYPES } = require('../config/constants');
+const sseService = require('./sseService');
 
 class NotificationService {
-  // Create and send notification
+  /**
+   * Create and send notification (with real-time SSE push)
+   */
   static async createNotification({
     recipientId,
+    recipientModel = 'User',
+    recipientType,
+    tenancy,
     type,
     title,
     message,
+    icon = 'bell',
+    severity = 'info',
     data = {},
     channels = { inApp: true }
   }) {
     try {
       const notification = await Notification.createNotification({
         recipient: recipientId,
+        recipientModel,
+        recipientType,
+        tenancy,
         type,
         title,
         message,
+        icon,
+        severity,
         data,
         channels
+      });
+
+      // Send real-time notification via SSE
+      sseService.sendToRecipient(recipientId.toString(), recipientType, {
+        _id: notification._id,
+        type: notification.type,
+        title: notification.title,
+        message: notification.message,
+        icon: notification.icon,
+        severity: notification.severity,
+        data: notification.data,
+        createdAt: notification.createdAt
       });
 
       return notification;
@@ -28,195 +53,286 @@ class NotificationService {
     }
   }
 
-  // Order-related notifications
-  static async notifyOrderPlaced(customerId, order) {
+  // ==================== CUSTOMER NOTIFICATIONS ====================
+  
+  static async notifyOrderPlaced(customerId, order, tenancy) {
     return this.createNotification({
       recipientId: customerId,
+      recipientType: RECIPIENT_TYPES.CUSTOMER,
+      tenancy,
       type: NOTIFICATION_TYPES.ORDER_PLACED,
       title: 'Order Placed Successfully',
       message: `Your order ${order.orderNumber} has been placed successfully.`,
-      data: { orderId: order._id }
+      icon: 'shopping-bag',
+      severity: 'success',
+      data: { orderId: order._id, link: `/orders/${order._id}` }
     });
   }
 
-  static async notifyOrderPicked(customerId, order) {
+  static async notifyOrderPicked(customerId, order, tenancy) {
     return this.createNotification({
       recipientId: customerId,
+      recipientType: RECIPIENT_TYPES.CUSTOMER,
+      tenancy,
       type: NOTIFICATION_TYPES.ORDER_PICKED,
       title: 'Order Picked Up',
-      message: `Your order ${order.orderNumber} has been picked up and is on its way to our facility.`,
-      data: { orderId: order._id }
+      message: `Your order ${order.orderNumber} has been picked up.`,
+      icon: 'truck',
+      severity: 'info',
+      data: { orderId: order._id, link: `/orders/${order._id}` }
     });
   }
 
-  static async notifyOrderReady(customerId, order) {
+  static async notifyOrderReady(customerId, order, tenancy) {
     return this.createNotification({
       recipientId: customerId,
+      recipientType: RECIPIENT_TYPES.CUSTOMER,
+      tenancy,
       type: NOTIFICATION_TYPES.ORDER_READY,
-      title: 'Order Ready for Delivery',
-      message: `Your order ${order.orderNumber} is ready and will be delivered soon.`,
-      data: { orderId: order._id }
+      title: 'Order Ready',
+      message: `Your order ${order.orderNumber} is ready for delivery.`,
+      icon: 'check-circle',
+      severity: 'success',
+      data: { orderId: order._id, link: `/orders/${order._id}` }
     });
   }
 
-  static async notifyOrderOutForDelivery(customerId, order) {
+  static async notifyOrderOutForDelivery(customerId, order, tenancy) {
     return this.createNotification({
       recipientId: customerId,
+      recipientType: RECIPIENT_TYPES.CUSTOMER,
+      tenancy,
       type: NOTIFICATION_TYPES.ORDER_OUT_FOR_DELIVERY,
-      title: 'Order Out for Delivery',
-      message: `Your order ${order.orderNumber} is out for delivery and will reach you soon.`,
-      data: { orderId: order._id }
+      title: 'Out for Delivery',
+      message: `Your order ${order.orderNumber} is out for delivery.`,
+      icon: 'truck',
+      severity: 'info',
+      data: { orderId: order._id, link: `/orders/${order._id}` }
     });
   }
 
-  static async notifyOrderDelivered(customerId, order) {
+  static async notifyOrderDelivered(customerId, order, tenancy) {
     return this.createNotification({
       recipientId: customerId,
+      recipientType: RECIPIENT_TYPES.CUSTOMER,
+      tenancy,
       type: NOTIFICATION_TYPES.ORDER_DELIVERED,
       title: 'Order Delivered',
-      message: `Your order ${order.orderNumber} has been delivered successfully. Thank you for choosing our service!`,
-      data: { orderId: order._id }
+      message: `Your order ${order.orderNumber} has been delivered. Thank you!`,
+      icon: 'package-check',
+      severity: 'success',
+      data: { orderId: order._id, link: `/orders/${order._id}` }
     });
   }
 
-  // Branch notifications
-  static async notifyNewOrderToBranch(branchManagerId, order) {
+  static async notifyRewardPoints(customerId, points, reason, tenancy) {
     return this.createNotification({
-      recipientId: branchManagerId,
-      type: NOTIFICATION_TYPES.ORDER_PLACED,
-      title: 'New Order Assigned',
-      message: `New order ${order.orderNumber} has been assigned to your branch.`,
-      data: { orderId: order._id, branchId: order.branch }
+      recipientId: customerId,
+      recipientType: RECIPIENT_TYPES.CUSTOMER,
+      tenancy,
+      type: NOTIFICATION_TYPES.REWARD_POINTS,
+      title: 'Points Earned! 🎉',
+      message: `You earned ${points} reward points. ${reason}`,
+      icon: 'star',
+      severity: 'success',
+      data: { points, link: '/rewards' }
     });
   }
 
-  static async notifyLowInventory(branchManagerId, inventoryItem) {
+  static async notifyWalletCredited(customerId, amount, reason, tenancy) {
     return this.createNotification({
-      recipientId: branchManagerId,
-      type: NOTIFICATION_TYPES.LOW_INVENTORY,
-      title: 'Low Inventory Alert',
-      message: `${inventoryItem.itemName} is running low. Current stock: ${inventoryItem.currentStock} ${inventoryItem.unit}`,
-      data: { 
-        branchId: inventoryItem.branch,
-        inventoryItemId: inventoryItem._id
-      }
+      recipientId: customerId,
+      recipientType: RECIPIENT_TYPES.CUSTOMER,
+      tenancy,
+      type: NOTIFICATION_TYPES.WALLET_CREDITED,
+      title: 'Wallet Credited',
+      message: `₹${amount} has been added to your wallet. ${reason}`,
+      icon: 'wallet',
+      severity: 'success',
+      data: { amount, link: '/wallet' }
     });
   }
 
-  // Support notifications
-  static async notifyNewComplaint(supportAgentId, ticket) {
-    return this.createNotification({
-      recipientId: supportAgentId,
-      type: NOTIFICATION_TYPES.NEW_COMPLAINT,
-      title: 'New Support Ticket',
-      message: `New ticket ${ticket.ticketNumber} has been assigned to you.`,
-      data: { ticketId: ticket._id }
-    });
-  }
+  // ==================== ADMIN NOTIFICATIONS ====================
 
-  // Admin notifications
-  static async notifyRefundRequest(adminId, order, amount) {
+  static async notifyAdminNewOrder(adminId, order, tenancy) {
     return this.createNotification({
       recipientId: adminId,
+      recipientType: RECIPIENT_TYPES.ADMIN,
+      tenancy,
+      type: NOTIFICATION_TYPES.ORDER_PLACED,
+      title: 'New Order Received',
+      message: `New order ${order.orderNumber} from ${order.customer?.name || 'Customer'}`,
+      icon: 'shopping-bag',
+      severity: 'info',
+      data: { orderId: order._id, link: `/admin/orders/${order._id}` }
+    });
+  }
+
+  static async notifyLowInventory(adminId, item, tenancy) {
+    return this.createNotification({
+      recipientId: adminId,
+      recipientType: RECIPIENT_TYPES.ADMIN,
+      tenancy,
+      type: NOTIFICATION_TYPES.LOW_INVENTORY,
+      title: 'Low Inventory Alert',
+      message: `${item.name} is running low. Current stock: ${item.currentStock}`,
+      icon: 'alert-triangle',
+      severity: 'warning',
+      data: { itemId: item._id, link: '/admin/inventory' }
+    });
+  }
+
+  static async notifyNewComplaint(adminId, ticket, tenancy) {
+    return this.createNotification({
+      recipientId: adminId,
+      recipientType: RECIPIENT_TYPES.ADMIN,
+      tenancy,
+      type: NOTIFICATION_TYPES.NEW_COMPLAINT,
+      title: 'New Support Ticket',
+      message: `Ticket #${ticket.ticketNumber}: ${ticket.subject}`,
+      icon: 'message-square',
+      severity: 'warning',
+      data: { ticketId: ticket._id, link: `/admin/tickets/${ticket._id}` }
+    });
+  }
+
+  static async notifyRefundRequest(adminId, order, amount, tenancy) {
+    return this.createNotification({
+      recipientId: adminId,
+      recipientType: RECIPIENT_TYPES.ADMIN,
+      tenancy,
       type: NOTIFICATION_TYPES.REFUND_REQUEST,
       title: 'Refund Request',
-      message: `Refund request of ₹${amount} for order ${order.orderNumber} requires approval.`,
-      data: { orderId: order._id }
+      message: `Refund of ₹${amount} requested for order ${order.orderNumber}`,
+      icon: 'credit-card',
+      severity: 'warning',
+      data: { orderId: order._id, amount, link: `/admin/refunds` }
     });
   }
 
-  // Bulk notifications
-  static async notifyMultipleUsers(userIds, notificationData) {
-    const notifications = userIds.map(userId => ({
-      ...notificationData,
-      recipient: userId
-    }));
-
-    return Notification.insertMany(notifications);
+  static async notifyPaymentReceived(adminId, order, amount, tenancy) {
+    return this.createNotification({
+      recipientId: adminId,
+      recipientType: RECIPIENT_TYPES.ADMIN,
+      tenancy,
+      type: NOTIFICATION_TYPES.PAYMENT_RECEIVED,
+      title: 'Payment Received',
+      message: `₹${amount} received for order ${order.orderNumber}`,
+      icon: 'check-circle',
+      severity: 'success',
+      data: { orderId: order._id, amount, link: `/admin/payments` }
+    });
   }
 
-  // Get user notifications
-  static async getUserNotifications(userId, { page = 1, limit = 20, unreadOnly = false } = {}) {
-    const skip = (page - 1) * limit;
-    const query = {
-      recipient: userId,
-      $or: [
-        { expiresAt: { $exists: false } },
-        { expiresAt: { $gt: new Date() } }
-      ]
-    };
+  // ==================== BRANCH ADMIN NOTIFICATIONS ====================
 
-    if (unreadOnly) {
-      query.isRead = false;
-    }
-
-    const [notifications, total, unreadCount] = await Promise.all([
-      Notification.find(query)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .populate('data.orderId', 'orderNumber status')
-        .populate('data.ticketId', 'ticketNumber status'),
-      Notification.countDocuments(query),
-      Notification.getUnreadCount(userId)
-    ]);
-
-    return {
-      notifications,
-      pagination: {
-        currentPage: page,
-        totalPages: Math.ceil(total / limit),
-        totalItems: total,
-        itemsPerPage: limit
-      },
-      unreadCount
-    };
+  static async notifyBranchAdminNewOrder(branchAdminId, order, tenancy) {
+    return this.createNotification({
+      recipientId: branchAdminId,
+      recipientType: RECIPIENT_TYPES.BRANCH_ADMIN,
+      tenancy,
+      type: NOTIFICATION_TYPES.ORDER_ASSIGNED,
+      title: 'New Order Assigned',
+      message: `Order ${order.orderNumber} assigned to your branch`,
+      icon: 'shopping-bag',
+      severity: 'info',
+      data: { orderId: order._id, link: `/branch/orders/${order._id}` }
+    });
   }
 
-  // Mark notifications as read
+  // ==================== SUPERADMIN NOTIFICATIONS ====================
+
+  static async notifySuperAdminNewTenancy(superAdminId, tenancy) {
+    return this.createNotification({
+      recipientId: superAdminId,
+      recipientModel: 'SuperAdmin',
+      recipientType: RECIPIENT_TYPES.SUPERADMIN,
+      type: NOTIFICATION_TYPES.NEW_TENANCY_SIGNUP,
+      title: 'New Business Signup! 🎉',
+      message: `${tenancy.name} just signed up for ${tenancy.subscription?.plan || 'a plan'}`,
+      icon: 'building',
+      severity: 'success',
+      data: { tenancyId: tenancy._id, link: `/tenancies/${tenancy._id}` }
+    });
+  }
+
+  static async notifySuperAdminPayment(superAdminId, tenancy, amount) {
+    return this.createNotification({
+      recipientId: superAdminId,
+      recipientModel: 'SuperAdmin',
+      recipientType: RECIPIENT_TYPES.SUPERADMIN,
+      type: NOTIFICATION_TYPES.TENANCY_PAYMENT_RECEIVED,
+      title: 'Payment Received',
+      message: `₹${amount} received from ${tenancy.name}`,
+      icon: 'credit-card',
+      severity: 'success',
+      data: { tenancyId: tenancy._id, amount, link: `/billing` }
+    });
+  }
+
+  static async notifySuperAdminNewLead(superAdminId, lead) {
+    return this.createNotification({
+      recipientId: superAdminId,
+      recipientModel: 'SuperAdmin',
+      recipientType: RECIPIENT_TYPES.SUPERADMIN,
+      type: NOTIFICATION_TYPES.NEW_LEAD,
+      title: 'New Lead',
+      message: `${lead.businessName} - ${lead.email}`,
+      icon: 'user-plus',
+      severity: 'info',
+      data: { leadId: lead._id, link: `/leads` }
+    });
+  }
+
+  static async notifySuperAdminSubscriptionExpiring(superAdminId, tenancy, daysLeft) {
+    return this.createNotification({
+      recipientId: superAdminId,
+      recipientModel: 'SuperAdmin',
+      recipientType: RECIPIENT_TYPES.SUPERADMIN,
+      type: NOTIFICATION_TYPES.TENANCY_SUBSCRIPTION_EXPIRING,
+      title: 'Subscription Expiring',
+      message: `${tenancy.name}'s subscription expires in ${daysLeft} days`,
+      icon: 'alert-triangle',
+      severity: 'warning',
+      data: { tenancyId: tenancy._id, link: `/tenancies/${tenancy._id}` }
+    });
+  }
+
+  // ==================== BULK NOTIFICATIONS ====================
+
+  static async notifyAllSuperAdmins(notificationData) {
+    const SuperAdmin = require('../models/SuperAdmin');
+    const superAdmins = await SuperAdmin.find({ isActive: true }).select('_id');
+    
+    const notifications = await Promise.all(
+      superAdmins.map(sa => this.createNotification({
+        ...notificationData,
+        recipientId: sa._id,
+        recipientModel: 'SuperAdmin',
+        recipientType: RECIPIENT_TYPES.SUPERADMIN
+      }))
+    );
+    
+    return notifications;
+  }
+
+  // ==================== UTILITY METHODS ====================
+
+  static async getUserNotifications(userId, options) {
+    return Notification.getForUser(userId, options);
+  }
+
   static async markAsRead(userId, notificationIds) {
-    const result = await Notification.updateMany(
-      {
-        _id: { $in: notificationIds },
-        recipient: userId
-      },
-      {
-        $set: {
-          isRead: true,
-          readAt: new Date()
-        }
-      }
-    );
-
-    return result;
+    return Notification.markManyAsRead(userId, notificationIds);
   }
 
-  // Mark all notifications as read
   static async markAllAsRead(userId) {
-    const result = await Notification.updateMany(
-      {
-        recipient: userId,
-        isRead: false
-      },
-      {
-        $set: {
-          isRead: true,
-          readAt: new Date()
-        }
-      }
-    );
-
-    return result;
+    return Notification.markManyAsRead(userId);
   }
 
-  // Clean up expired notifications
-  static async cleanupExpiredNotifications() {
-    const result = await Notification.deleteMany({
-      expiresAt: { $lt: new Date() }
-    });
-
-    console.log(`Cleaned up ${result.deletedCount} expired notifications`);
-    return result;
+  static async getUnreadCount(userId) {
+    return Notification.getUnreadCount(userId);
   }
 }
 

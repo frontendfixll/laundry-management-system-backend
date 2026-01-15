@@ -55,13 +55,24 @@ const businessHoursSchema = new mongoose.Schema({
 }, { _id: false });
 
 const subscriptionSchema = new mongoose.Schema({
-  plan: { type: String, enum: ['free', 'basic', 'pro', 'enterprise'], default: 'free' },
-  status: { type: String, enum: ['active', 'trial', 'expired', 'cancelled'], default: 'trial' },
+  plan: { type: String, default: 'free' }, // Now supports any plan name
+  planId: { type: mongoose.Schema.Types.ObjectId, ref: 'BillingPlan' }, // Reference to BillingPlan
+  status: { type: String, enum: ['active', 'trial', 'expired', 'cancelled', 'pending'], default: 'trial' },
   startDate: { type: Date, default: Date.now },
   endDate: { type: Date },
   trialEndsAt: { type: Date },
+  billingCycle: { type: String, enum: ['monthly', 'yearly'], default: 'monthly' },
+  
+  // Dynamic features - supports any feature key with boolean or number value
+  // Example: { campaigns: true, loyalty_points: false, max_orders: 500 }
   features: {
-    maxOrders: { type: Number, default: 100 },        // Per month
+    type: mongoose.Schema.Types.Mixed,
+    default: {}
+  },
+  
+  // Legacy features for backward compatibility (deprecated)
+  legacyFeatures: {
+    maxOrders: { type: Number, default: 100 },
     maxStaff: { type: Number, default: 5 },
     maxCustomers: { type: Number, default: 500 },
     customDomain: { type: Boolean, default: false },
@@ -232,9 +243,31 @@ tenancySchema.methods.isSubscriptionActive = function() {
   return false;
 };
 
-// Method to check feature access
-tenancySchema.methods.hasFeature = function(feature) {
-  return this.subscription.features[feature] === true;
+// Method to check feature access (supports both boolean and truthy values)
+tenancySchema.methods.hasFeature = function(featureKey) {
+  const features = this.subscription?.features || {};
+  const value = features[featureKey];
+  
+  // For boolean features
+  if (typeof value === 'boolean') return value;
+  
+  // For number features (like limits), check if > 0 or -1 (unlimited)
+  if (typeof value === 'number') return value !== 0;
+  
+  return false;
+};
+
+// Method to get feature value (for limits)
+tenancySchema.methods.getFeatureValue = function(featureKey, defaultValue = 0) {
+  const features = this.subscription?.features || {};
+  return features[featureKey] ?? defaultValue;
+};
+
+// Method to check if a limit is exceeded
+tenancySchema.methods.isLimitExceeded = function(featureKey, currentCount) {
+  const limit = this.getFeatureValue(featureKey, 0);
+  if (limit === -1) return false; // Unlimited
+  return currentCount >= limit;
 };
 
 // Method to check limits

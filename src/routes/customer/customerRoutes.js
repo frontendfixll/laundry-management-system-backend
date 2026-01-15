@@ -1,6 +1,7 @@
 const express = require('express');
 const { protect, requireEmailVerification } = require('../../middlewares/auth');
 const { injectTenancyFromUser } = require('../../middlewares/tenancyMiddleware');
+const { checkOrderLimit } = require('../../middlewares/planLimits');
 const {
   getAddresses,
   getAddress,
@@ -91,13 +92,13 @@ router.put('/addresses/:id/set-default', setDefaultAddress);
 // Order routes
 router.route('/orders')
   .get(getOrders)
-  .post(createOrder);
+  .post(checkOrderLimit, createOrder);
 
 router.get('/orders/:orderId', getOrderById);
 router.get('/orders/:orderId/tracking', getOrderTracking);
 router.put('/orders/:orderId/cancel', cancelOrder);
 router.put('/orders/:orderId/rate', rateOrder);
-router.post('/orders/:orderId/reorder', reorder);
+router.post('/orders/:orderId/reorder', checkOrderLimit, reorder);
 
 // Notification routes
 router.get('/notifications', getNotifications);

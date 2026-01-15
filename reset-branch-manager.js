@@ -11,7 +11,7 @@ async function resetBranchManager() {
     console.log('✅ Connected to MongoDB');
 
     // Find branch manager
-    let manager = await User.findOne({ email: 'branchmanager@laundrypro.com' });
+    let manager = await User.findOne({ email: 'branchmanager@LaundryLobby.com' });
 
     if (!manager) {
       console.log('❌ Branch Manager not found!');
@@ -32,7 +32,7 @@ async function resetBranchManager() {
     console.log('🔐 BRANCH MANAGER LOGIN CREDENTIALS');
     console.log('========================================');
     console.log('URL:      http://localhost:3002/auth/login');
-    console.log('Email:    branchmanager@laundrypro.com');
+    console.log('Email:    branchmanager@LaundryLobby.com');
     console.log('Password: Branch@123456');
     console.log('Role:    ', manager.role);
     console.log('Active:  ', manager.isActive);

@@ -9,6 +9,8 @@ router.use(authenticateSuperAdmin);
 // Billing Plans
 router.get('/plans', billingController.getPlans);
 router.post('/plans', billingController.upsertPlan);
+router.post('/plans/create', billingController.createPlan);
+router.delete('/plans/:name', billingController.deletePlan);
 
 // Invoices
 router.get('/invoices', billingController.getInvoices);

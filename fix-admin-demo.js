@@ -10,13 +10,13 @@ async function fixAdmin() {
     const User = mongoose.connection.collection('users')
     
     // Check if admin exists
-    const admin = await User.findOne({ email: 'admin@laundrypro.com' })
+    const admin = await User.findOne({ email: 'admin@LaundryLobby.com' })
     
     if (admin) {
       console.log('Admin found, updating password and settings...')
       const hashedPassword = await bcrypt.hash('admin123', 12)
       await User.updateOne(
-        { email: 'admin@laundrypro.com' },
+        { email: 'admin@LaundryLobby.com' },
         { 
           $set: {
             password: hashedPassword,
@@ -33,7 +33,7 @@ async function fixAdmin() {
       
       await User.insertOne({
         name: 'Admin User',
-        email: 'admin@laundrypro.com',
+        email: 'admin@LaundryLobby.com',
         password: hashedPassword,
         phone: '9999999998',
         role: 'admin',
@@ -54,7 +54,7 @@ async function fixAdmin() {
     }
 
     // Verify
-    const updated = await User.findOne({ email: 'admin@laundrypro.com' })
+    const updated = await User.findOne({ email: 'admin@LaundryLobby.com' })
     console.log('\n📧 Admin Credentials:')
     console.log('Email:', updated.email)
     console.log('Password: admin123')

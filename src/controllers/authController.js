@@ -260,7 +260,7 @@ const login = async (req, res) => {
     const { email, password } = req.body;
 
     // Find user and include password
-    const user = await User.findOne({ email }).select('+password').populate('tenancy', 'name slug subdomain branding status');
+    const user = await User.findOne({ email }).select('+password').populate('tenancy', 'name slug subdomain branding status subscription');
     
     if (!user) {
       return res.status(401).json({
@@ -346,7 +346,8 @@ const login = async (req, res) => {
             name: user.tenancy.name,
             slug: user.tenancy.slug,
             subdomain: user.tenancy.subdomain,
-            branding: user.tenancy.branding
+            branding: user.tenancy.branding,
+            subscription: user.tenancy.subscription
           } : null,
           isEmailVerified: user.isEmailVerified,
           isActive: user.isActive,

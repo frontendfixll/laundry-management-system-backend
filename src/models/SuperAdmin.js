@@ -32,7 +32,13 @@ const superAdminSchema = new mongoose.Schema({
   resetPasswordToken: { type: String },
   resetPasswordExpires: { type: Date },
   
-  // Full permissions (SuperAdmin has all)
+  // RBAC: Multiple roles support
+  roles: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'SuperAdminRole'
+  }],
+  
+  // Legacy permissions (deprecated, kept for backward compatibility)
   permissions: {
     branches: { type: Boolean, default: true },
     users: { type: Boolean, default: true },
@@ -130,6 +136,43 @@ superAdminSchema.methods.resetLoginAttempts = function() {
   return this.updateOne({
     $unset: { loginAttempts: 1, lockUntil: 1 }
   })
+}
+
+// Method to get effective permissions from all assigned roles
+superAdminSchema.methods.getEffectivePermissions = async function() {
+  // If no roles assigned, fallback to legacy permissions
+  if (!this.roles || this.roles.length === 0) {
+    return this.permissions;
+  }
+  
+  const SuperAdminRole = mongoose.model('SuperAdminRole');
+  const roles = await SuperAdminRole.find({ 
+    _id: { $in: this.roles },
+    isActive: true 
+  });
+  
+  // Combine permissions using OR logic (user has permission if ANY role grants it)
+  const effectivePerms = {};
+  roles.forEach(role => {
+    Object.entries(role.permissions).forEach(([module, perms]) => {
+      if (!effectivePerms[module]) {
+        effectivePerms[module] = {};
+      }
+      Object.entries(perms).forEach(([action, value]) => {
+        if (value === true) {
+          effectivePerms[module][action] = true;
+        }
+      });
+    });
+  });
+  
+  return effectivePerms;
+}
+
+// Method to check if has specific permission
+superAdminSchema.methods.hasPermission = async function(module, action) {
+  const effectivePerms = await this.getEffectivePermissions();
+  return effectivePerms[module]?.[action] === true;
 }
 
 module.exports = mongoose.model('SuperAdmin', superAdminSchema)
