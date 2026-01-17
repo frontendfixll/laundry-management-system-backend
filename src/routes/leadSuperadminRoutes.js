@@ -9,7 +9,9 @@ const {
   deleteLead, 
   getLeadStats 
 } = require('../controllers/leadController');
-const { LEAD_STATUS } = require('../models/Lead');
+
+// Lead status values for validation
+const LEAD_STATUS = ['new', 'contacted', 'qualified', 'demo_scheduled', 'demo_completed', 'negotiation', 'converted', 'lost', 'on_hold'];
 
 // Validation middleware
 const handleValidation = (req, res, next) => {
@@ -31,8 +33,8 @@ const handleValidation = (req, res, next) => {
 const validateGetLeads = [
   query('status')
     .optional()
-    .isIn(Object.values(LEAD_STATUS))
-    .withMessage('Invalid status. Must be: new, contacted, converted, or closed'),
+    .isIn(LEAD_STATUS)
+    .withMessage('Invalid status'),
   query('page')
     .optional()
     .isInt({ min: 1 })
@@ -55,17 +57,24 @@ const validateUpdateLead = [
     .withMessage('Invalid lead ID'),
   body('status')
     .optional()
-    .isIn(Object.values(LEAD_STATUS))
-    .withMessage('Invalid status. Must be: new, contacted, converted, or closed'),
-  body('notes')
+    .isIn(LEAD_STATUS)
+    .withMessage('Invalid status'),
+  body('priority')
     .optional()
-    .trim()
-    .isLength({ max: 2000 })
-    .withMessage('Notes must not exceed 2000 characters'),
-  body('convertedToTenancy')
+    .isIn(['low', 'medium', 'high', 'urgent'])
+    .withMessage('Invalid priority'),
+  body('interestedPlan')
+    .optional()
+    .isIn(['free', 'basic', 'pro', 'enterprise', 'custom'])
+    .withMessage('Invalid plan'),
+  body('estimatedRevenue')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('Estimated revenue must be a positive number'),
+  body('assignedTo')
     .optional()
     .isMongoId()
-    .withMessage('Invalid tenancy ID')
+    .withMessage('Invalid sales user ID')
 ];
 
 // All routes require superadmin authentication

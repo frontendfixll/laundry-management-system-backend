@@ -1,6 +1,6 @@
 const Notification = require('../models/Notification');
 const { NOTIFICATION_TYPES, RECIPIENT_TYPES } = require('../config/constants');
-const sseService = require('./sseService');
+const socketService = require('./socketService');
 
 class NotificationService {
   /**
@@ -34,8 +34,8 @@ class NotificationService {
         channels
       });
 
-      // Send real-time notification via SSE
-      sseService.sendToRecipient(recipientId.toString(), recipientType, {
+      // Send real-time notification via WebSocket
+      socketService.sendToUser(recipientId.toString(), {
         _id: notification._id,
         type: notification.type,
         title: notification.title,
@@ -43,7 +43,8 @@ class NotificationService {
         icon: notification.icon,
         severity: notification.severity,
         data: notification.data,
-        createdAt: notification.createdAt
+        createdAt: notification.createdAt,
+        isRead: notification.isRead
       });
 
       return notification;
@@ -165,7 +166,7 @@ class NotificationService {
       message: `New order ${order.orderNumber} from ${order.customer?.name || 'Customer'}`,
       icon: 'shopping-bag',
       severity: 'info',
-      data: { orderId: order._id, link: `/admin/orders/${order._id}` }
+      data: { orderId: order._id, link: `/admin/orders` }
     });
   }
 

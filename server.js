@@ -2,6 +2,7 @@ const app = require('./src/app');
 const connectDB = require('./src/config/database');
 const cron = require('node-cron');
 const bannerLifecycleJob = require('./src/jobs/bannerLifecycleJob');
+const socketService = require('./src/services/socketService');
 
 const PORT = process.env.PORT || 5000;
 
@@ -71,6 +72,9 @@ const server = app.listen(PORT, () => {
   console.log(`📊 Version: http://localhost:${PORT}/version`);
   console.log(`📚 API: http://localhost:${PORT}/api`);
   console.log('='.repeat(60));
+  
+  // Initialize Socket.IO
+  socketService.initialize(server);
   
   // Setup cron jobs
   setupCronJobs();

@@ -1,7 +1,6 @@
 const Lead = require('../models/Lead');
-const Notification = require('../models/Notification');
-const SuperAdmin = require('../models/SuperAdmin');
-const { NOTIFICATION_TYPES } = require('../config/constants');
+const SalesUser = require('../models/SalesUser');
+const { sendSuccess, sendError, asyncHandler } = require('../utils/helpers');
 
 /**
  * Create a new lead (public endpoint - no auth required)
@@ -9,20 +8,106 @@ const { NOTIFICATION_TYPES } = require('../config/constants');
  */
 const createLead = async (req, res) => {
   try {
-    const { name, email, phone, businessName, businessType, message } = req.body;
+    const { 
+      name, 
+      email, 
+      phone, 
+      businessName, 
+      businessType, 
+      message,
+      interestedPlan,
+      expectedMonthlyOrders,
+      currentBranches,
+      address,
+      source
+    } = req.body;
 
-    // Create lead with status 'new'
+    // Calculate initial lead score based on provided information
+    let score = 50; // Base score
+
+    // Score adjustments
+    if (interestedPlan === 'enterprise') score += 20;
+    else if (interestedPlan === 'pro') score += 15;
+    else if (interestedPlan === 'basic') score += 10;
+
+    if (expectedMonthlyOrders === '5000+') score += 15;
+    else if (expectedMonthlyOrders === '1000-5000') score += 10;
+    else if (expectedMonthlyOrders === '500-1000') score += 5;
+
+    if (currentBranches > 5) score += 10;
+    else if (currentBranches > 2) score += 5;
+
+    if (address && address.city) score += 5;
+
+    // Determine priority based on score
+    let priority = 'medium';
+    if (score >= 80) priority = 'urgent';
+    else if (score >= 65) priority = 'high';
+    else if (score >= 50) priority = 'medium';
+    else priority = 'low';
+
+    // Calculate estimated revenue
+    const planPrices = { basic: 999, pro: 2999, enterprise: 9999 };
+    const basePrice = planPrices[interestedPlan] || 999;
+    const estimatedRevenue = basePrice * 12; // Annual revenue
+
+    // Parse expected orders
+    const orderRanges = {
+      '0-100': 50,
+      '100-500': 300,
+      '500-1000': 750,
+      '1000-5000': 3000,
+      '5000+': 7500
+    };
+    const expectedOrders = orderRanges[expectedMonthlyOrders] || 0;
+
+    // Create lead with new schema structure
     const lead = await Lead.create({
-      name,
-      email,
-      phone,
       businessName,
-      businessType,
-      message
+      businessType: businessType || 'laundry',
+      contactPerson: {
+        name,
+        email,
+        phone
+      },
+      address: address || {},
+      status: 'new',
+      source: source || 'website',
+      interestedPlan: interestedPlan || 'undecided',
+      estimatedRevenue,
+      requirements: {
+        numberOfBranches: currentBranches || 1,
+        expectedOrders,
+        notes: message || ''
+      },
+      priority,
+      score: Math.min(score, 100),
+      followUpNotes: message ? [{
+        note: `Initial inquiry: ${message}`,
+        createdAt: new Date()
+      }] : []
     });
 
-    // Create notifications for all active superadmins
-    await notifyNewLead(lead);
+    // Auto-assign to first available sales user (if any)
+    const salesUser = await SalesUser.findOne({ isActive: true }).sort({ 'performance.leadsAssigned': 1 });
+    if (salesUser) {
+      lead.assignedTo = salesUser._id;
+      lead.assignedDate = new Date();
+      await lead.save();
+
+      // Update sales user performance
+      await salesUser.updatePerformance({
+        leadsAssigned: salesUser.performance.leadsAssigned + 1
+      });
+    }
+
+    console.log('✅ Lead created from marketing website:', {
+      leadId: lead._id,
+      businessName: lead.businessName,
+      score: lead.score,
+      priority: lead.priority,
+      assignedTo: salesUser ? salesUser.name : 'Unassigned'
+    });
 
     res.status(201).json({
       success: true,
@@ -30,7 +115,7 @@ const createLead = async (req, res) => {
       data: { leadId: lead._id }
     });
   } catch (error) {
-    console.error('Create lead error:', error);
+    console.error('❌ Create lead error:', error);
     
     if (error.name === 'ValidationError') {
       const messages = Object.values(error.errors).map(e => e.message);
@@ -96,7 +181,8 @@ const getLeads = async (req, res) => {
 const getLeadById = async (req, res) => {
   try {
     const lead = await Lead.findById(req.params.id)
-      .populate('convertedToTenancy', 'name slug')
+      .populate('tenancyId', 'name slug')
+      .populate('assignedTo', 'name email')
       .lean();
 
     if (!lead) {
@@ -125,12 +211,17 @@ const getLeadById = async (req, res) => {
  */
 const updateLead = async (req, res) => {
   try {
-    const { status, notes, convertedToTenancy } = req.body;
+    const { status, priority, interestedPlan, estimatedRevenue, assignedTo } = req.body;
     
     const updateData = {};
     if (status) updateData.status = status;
-    if (notes !== undefined) updateData.notes = notes;
-    if (convertedToTenancy) updateData.convertedToTenancy = convertedToTenancy;
+    if (priority) updateData.priority = priority;
+    if (interestedPlan) updateData.interestedPlan = interestedPlan;
+    if (estimatedRevenue !== undefined) updateData.estimatedRevenue = estimatedRevenue;
+    if (assignedTo) {
+      updateData.assignedTo = assignedTo;
+      updateData.assignedDate = new Date();
+    }
 
     const lead = await Lead.findByIdAndUpdate(
       req.params.id,
@@ -206,6 +297,7 @@ const getLeadStats = async (req, res) => {
     const thisMonth = await Lead.countDocuments({
       createdAt: { $gte: new Date(new Date().setDate(1)) }
     });
+    const converted = await Lead.countDocuments({ isConverted: true });
 
     const statusCounts = stats.reduce((acc, item) => {
       acc[item._id] = item.count;
@@ -217,11 +309,17 @@ const getLeadStats = async (req, res) => {
       data: {
         total,
         thisMonth,
+        converted,
         byStatus: {
           new: statusCounts.new || 0,
           contacted: statusCounts.contacted || 0,
+          qualified: statusCounts.qualified || 0,
+          demo_scheduled: statusCounts.demo_scheduled || 0,
+          demo_completed: statusCounts.demo_completed || 0,
+          negotiation: statusCounts.negotiation || 0,
           converted: statusCounts.converted || 0,
-          closed: statusCounts.closed || 0
+          lost: statusCounts.lost || 0,
+          on_hold: statusCounts.on_hold || 0
         }
       }
     });
@@ -233,33 +331,6 @@ const getLeadStats = async (req, res) => {
     });
   }
 };
-
-/**
- * Helper function to notify all active superadmins about new lead
- */
-async function notifyNewLead(lead) {
-  try {
-    const superadmins = await SuperAdmin.find({ isActive: true }).select('_id');
-    
-    const notifications = superadmins.map(admin => ({
-      recipient: admin._id,
-      type: NOTIFICATION_TYPES.NEW_LEAD,
-      title: 'New Lead Received',
-      message: `${lead.businessName} has requested a demo`,
-      data: {
-        additionalData: { leadId: lead._id }
-      },
-      channels: { inApp: true, email: false }
-    }));
-
-    await Promise.all(
-      notifications.map(notif => Notification.createNotification(notif))
-    );
-  } catch (error) {
-    console.error('Failed to create lead notifications:', error);
-    // Don't throw - lead creation should succeed even if notifications fail
-  }
-}
 
 module.exports = {
   createLead,

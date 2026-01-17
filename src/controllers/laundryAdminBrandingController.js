@@ -83,13 +83,45 @@ const brandingController = {
         tenancy.branding = {};
       }
       
+      // ✨ NEW: Update business identity
+      if (branding.businessName !== undefined) {
+        tenancy.branding.businessName = branding.businessName;
+      }
+      if (branding.tagline !== undefined) {
+        tenancy.branding.tagline = branding.tagline;
+      }
+      if (branding.slogan !== undefined) {
+        tenancy.branding.slogan = branding.slogan;
+      }
+      
       // Merge branding updates
       if (branding.logo) {
         tenancy.branding.logo = { ...tenancy.branding.logo, ...branding.logo };
       }
+      
+      // ✨ NEW: Update secondary logo
+      if (branding.secondaryLogo) {
+        tenancy.branding.secondaryLogo = {
+          ...tenancy.branding.secondaryLogo,
+          ...branding.secondaryLogo
+        };
+      }
+      
       if (branding.favicon) {
         tenancy.branding.favicon = { ...tenancy.branding.favicon, ...branding.favicon };
       }
+      
+      // ✨ NEW: Update social media
+      if (branding.socialMedia) {
+        if (!tenancy.branding.socialMedia) {
+          tenancy.branding.socialMedia = {};
+        }
+        tenancy.branding.socialMedia = {
+          ...tenancy.branding.socialMedia,
+          ...branding.socialMedia
+        };
+      }
+      
       if (branding.theme) {
         tenancy.branding.theme = { ...tenancy.branding.theme, ...branding.theme };
       }

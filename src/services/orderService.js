@@ -2,6 +2,7 @@ const Order = require('../models/Order');
 const User = require('../models/User');
 const Branch = require('../models/Branch');
 const NotificationService = require('./notificationService');
+const socketService = require('./socketService');
 const { ORDER_STATUS, NOTIFICATION_TYPES } = require('../config/constants');
 
 class OrderService {
@@ -16,6 +17,8 @@ class OrderService {
         throw new Error('Order not found');
       }
 
+      const oldStatus = order.status;
+
       // Update order status
       await order.updateStatus(newStatus, updatedBy, notes);
 
@@ -25,10 +28,48 @@ class OrderService {
       // Send notifications based on status
       await this.sendStatusNotifications(order, newStatus);
 
+      // Send real-time WebSocket notifications
+      await this.sendRealtimeNotifications(order, oldStatus, newStatus);
+
       return order;
     } catch (error) {
       console.error('Error updating order status:', error);
       throw error;
+    }
+  }
+
+  // Send real-time WebSocket notifications for order status updates
+  static async sendRealtimeNotifications(order, oldStatus, newStatus) {
+    try {
+      console.log(`🔔 Sending real-time notifications for order ${order.orderNumber}: ${oldStatus} → ${newStatus}`);
+
+      // Notify customer
+      socketService.sendEventToUser(order.customer._id.toString(), 'orderStatusUpdated', {
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+        oldStatus: oldStatus,
+        newStatus: newStatus,
+        message: `Your order #${order.orderNumber} is now ${newStatus}`,
+        timestamp: new Date()
+      });
+
+      // Notify all admins in tenancy
+      if (order.tenancy) {
+        socketService.sendToTenancyRecipients(order.tenancy, 'admin', {
+          type: 'orderStatusUpdated',
+          orderId: order._id,
+          orderNumber: order.orderNumber,
+          oldStatus: oldStatus,
+          newStatus: newStatus,
+          customerName: order.customer.name,
+          timestamp: new Date()
+        });
+      }
+
+      console.log(`✅ Real-time notifications sent for order ${order.orderNumber}`);
+    } catch (error) {
+      console.error('Error sending real-time notifications:', error);
+      // Don't throw - WebSocket failure shouldn't break order update
     }
   }
 

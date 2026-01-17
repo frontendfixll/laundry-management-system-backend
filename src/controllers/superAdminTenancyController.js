@@ -3,6 +3,7 @@ const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const { sendEmail, emailTemplates } = require('../config/email');
 const { validationResult } = require('express-validator');
+const subdomainService = require('../services/subdomainService');
 
 const tenancyController = {
   // Get all tenancies
@@ -92,7 +93,8 @@ const tenancyController = {
         subdomain,
         contact,
         owner: ownerData,  // { name, email, phone, password }
-        subscription
+        subscription,
+        createSubdomain = true // New flag to control subdomain creation
       } = req.body;
       
       // Validate required fields
@@ -103,11 +105,26 @@ const tenancyController = {
         });
       }
       
-      // Check if slug/subdomain already exists
+      // Generate unique subdomain if not provided
+      let finalSubdomain = subdomain || slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      
+      if (createSubdomain) {
+        try {
+          // Generate unique subdomain using the service
+          finalSubdomain = await subdomainService.generateUniqueSubdomain(name);
+          console.log('🌐 Generated unique subdomain:', finalSubdomain);
+        } catch (error) {
+          console.error('Failed to generate subdomain:', error);
+          // Fall back to manual generation if service fails
+          finalSubdomain = name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        }
+      }
+      
+      // Check if slug/subdomain already exists in database
       const existingTenancy = await Tenancy.findOne({
         $or: [
           { slug: slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-') },
-          { subdomain: subdomain || slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-') }
+          { subdomain: finalSubdomain }
         ]
       });
       
@@ -181,27 +198,64 @@ const tenancyController = {
       
       console.log('📝 Subscription data:', JSON.stringify(subscriptionData, null, 2));
       
+      // Create DNS subdomain if enabled
+      let subdomainResult = null;
+      if (createSubdomain && process.env.DNS_PROVIDER && process.env.MAIN_DOMAIN) {
+        try {
+          console.log('🌐 Creating DNS subdomain:', finalSubdomain);
+          subdomainResult = await subdomainService.createSubdomain(finalSubdomain, 'temp-id');
+          console.log('✅ DNS subdomain created:', subdomainResult);
+        } catch (error) {
+          console.error('❌ Failed to create DNS subdomain:', error.message);
+          // Continue with tenancy creation even if DNS fails
+          // You can decide whether to fail the entire process or continue
+          console.log('⚠️ Continuing with tenancy creation despite DNS failure');
+        }
+      }
+      
       // Create tenancy
       const tenancy = new Tenancy({
         name,
         slug: slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
         description,
-        subdomain: subdomain || slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+        subdomain: finalSubdomain,
         contact,
         owner: owner._id,
         subscription: subscriptionData,
         status: 'active',
-        createdBy: req.admin?._id || null
+        createdBy: req.admin?._id || null,
+        // Store DNS record info if created
+        dnsRecord: subdomainResult ? {
+          recordId: subdomainResult.recordId,
+          provider: subdomainResult.provider,
+          createdAt: new Date()
+        } : null
       });
       
-      console.log('📝 Creating tenancy:', { name, slug: tenancy.slug, subdomain: tenancy.subdomain, ownerId: owner._id });
+      console.log('📝 Creating tenancy:', { 
+        name, 
+        slug: tenancy.slug, 
+        subdomain: tenancy.subdomain, 
+        ownerId: owner._id,
+        dnsCreated: !!subdomainResult
+      });
       
       await tenancy.save();
       console.log('✅ Tenancy saved:', tenancy._id);
       
+      // Update subdomain service log with actual tenant ID
+      if (subdomainResult) {
+        await subdomainService.logSubdomainCreation(finalSubdomain, tenancy._id.toString(), subdomainResult);
+      }
+      
       // Update owner with tenancy reference
       owner.tenancy = tenancy._id;
       await owner.save();
+      
+      // Determine the portal URL
+      const portalUrl = subdomainResult 
+        ? subdomainResult.url 
+        : `https://${tenancy.subdomain}.${process.env.MAIN_DOMAIN || 'laundry-platform.com'}`;
       
       // Send welcome email to owner
       try {
@@ -211,23 +265,45 @@ const tenancyController = {
           html: `
             <h2>Welcome to ${name}!</h2>
             <p>Your laundry portal has been created successfully.</p>
-            <p><strong>Portal URL:</strong> https://${tenancy.subdomain}.laundry-platform.com</p>
-            <p><strong>Admin Login:</strong> https://${tenancy.subdomain}.laundry-platform.com/auth/login</p>
+            <p><strong>Portal URL:</strong> ${portalUrl}</p>
+            <p><strong>Admin Login:</strong> ${portalUrl}/auth/login</p>
             <p><strong>Email:</strong> ${owner.email}</p>
             <p><strong>Temporary Password:</strong> ${tempPassword}</p>
             <p>Please change your password after first login.</p>
+            ${subdomainResult ? '<p>✅ Custom subdomain has been configured and is ready to use!</p>' : ''}
           `
         });
       } catch (emailError) {
         console.error('Failed to send welcome email:', emailError);
       }
       
+      // Verify subdomain is working (optional, non-blocking)
+      if (subdomainResult) {
+        setTimeout(async () => {
+          try {
+            const isWorking = await subdomainService.verifySubdomain(finalSubdomain);
+            console.log(`🔍 Subdomain verification for ${finalSubdomain}:`, isWorking ? '✅ Working' : '❌ Not working');
+          } catch (error) {
+            console.error('Subdomain verification error:', error);
+          }
+        }, 30000); // Check after 30 seconds to allow DNS propagation
+      }
+      
       res.status(201).json({
         success: true,
-        message: 'Tenancy created successfully',
+        message: 'Tenancy created successfully' + (subdomainResult ? ' with custom subdomain' : ''),
         data: {
           tenancy: await Tenancy.findById(tenancy._id).populate('owner', 'name email phone'),
-          owner: { email: owner.email, tempPassword }
+          owner: { email: owner.email, tempPassword },
+          subdomain: subdomainResult ? {
+            url: subdomainResult.url,
+            subdomain: subdomainResult.subdomain,
+            dnsCreated: true
+          } : {
+            url: portalUrl,
+            subdomain: `${finalSubdomain}.${process.env.MAIN_DOMAIN || 'laundry-platform.com'}`,
+            dnsCreated: false
+          }
         }
       });
     } catch (error) {
@@ -254,6 +330,10 @@ const tenancyController = {
         return res.status(404).json({ success: false, message: 'Tenancy not found' });
       }
       
+      // Track if features changed
+      const featuresChanged = updates.subscription?.features && 
+        JSON.stringify(existingTenancy.subscription.features) !== JSON.stringify(updates.subscription.features);
+      
       // Handle subscription.features merge properly
       if (updates.subscription?.features) {
         // Merge existing subscription with new updates
@@ -274,6 +354,31 @@ const tenancyController = {
       ).populate('owner', 'name email phone');
       
       console.log('✅ Tenancy updated:', id, 'Features:', tenancy.subscription?.features);
+      
+      // Notify all admins of this tenancy if features changed
+      if (featuresChanged) {
+        console.log('🔔 Features changed, notifying admins of tenancy:', id);
+        const User = require('../models/User');
+        const PermissionSyncService = require('../services/permissionSyncService');
+        
+        // Find all admins in this tenancy
+        const admins = await User.find({ 
+          tenancy: id, 
+          role: { $in: ['admin', 'branch_admin'] },
+          isActive: true 
+        });
+        
+        console.log(`📢 Found ${admins.length} admins to notify`);
+        
+        // Notify each admin
+        for (const admin of admins) {
+          await PermissionSyncService.notifyPermissionUpdate(admin._id, {
+            features: tenancy.subscription.features,
+            tenancy: id,
+            recipientType: admin.role === 'admin' ? 'admin' : 'branch_admin'
+          });
+        }
+      }
       
       res.json({
         success: true,
@@ -399,6 +504,31 @@ const tenancyController = {
       
       console.log('✅ Features updated for tenancy:', id, features);
       
+      // Notify all admins in this tenancy about feature update via WebSocket
+      const User = require('../models/User');
+      const PermissionSyncService = require('../services/permissionSyncService');
+      
+      const admins = await User.find({ 
+        tenancy: id, 
+        role: { $in: ['admin', 'branch_admin'] },
+        isActive: true 
+      }).select('_id email role');
+      
+      console.log(`📋 Found ${admins.length} admin(s) in tenancy ${id}:`, admins.map(a => ({
+        id: a._id,
+        email: a.email,
+        role: a.role
+      })));
+      
+      for (const admin of admins) {
+        await PermissionSyncService.notifyPermissionUpdate(admin._id, {
+          features: tenancy.subscription.features,
+          tenancy: id,
+          recipientType: 'admin'
+        });
+      }
+      console.log(`📢 Notified ${admins.length} admin(s) about feature update via WebSocket`);
+      
       res.json({
         success: true,
         message: 'Features updated successfully',
@@ -417,22 +547,42 @@ const tenancyController = {
     try {
       const { id } = req.params;
       
-      const tenancy = await Tenancy.findByIdAndUpdate(
-        id,
-        { isDeleted: true, deletedAt: new Date(), status: 'inactive' },
-        { new: true }
-      );
-      
+      const tenancy = await Tenancy.findById(id);
       if (!tenancy) {
         return res.status(404).json({ success: false, message: 'Tenancy not found' });
       }
+      
+      // Delete DNS record if it exists
+      if (tenancy.dnsRecord?.recordId) {
+        try {
+          console.log('🗑️ Deleting DNS record for tenancy:', tenancy.subdomain);
+          await subdomainService.deleteSubdomain(tenancy.subdomain, tenancy.dnsRecord.recordId);
+          console.log('✅ DNS record deleted successfully');
+        } catch (error) {
+          console.error('❌ Failed to delete DNS record:', error.message);
+          // Continue with tenancy deletion even if DNS deletion fails
+        }
+      }
+      
+      // Soft delete the tenancy
+      const updatedTenancy = await Tenancy.findByIdAndUpdate(
+        id,
+        { 
+          isDeleted: true, 
+          deletedAt: new Date(), 
+          status: 'inactive',
+          // Clear DNS record info since it's deleted
+          dnsRecord: null
+        },
+        { new: true }
+      );
       
       // Deactivate owner
       await User.findByIdAndUpdate(tenancy.owner, { isActive: false });
       
       res.json({
         success: true,
-        message: 'Tenancy deleted successfully'
+        message: 'Tenancy and associated subdomain deleted successfully'
       });
     } catch (error) {
       console.error('Delete tenancy error:', error);

@@ -93,6 +93,28 @@ const createCoupon = async (req, res) => {
     
     await coupon.save();
     
+    // Send real-time notification to customers if coupon is active
+    if (coupon.isActive) {
+      try {
+        const socketService = require('../../services/socketService');
+        socketService.sendToTenancyRecipients(tenancyId, 'customer', {
+          type: 'couponActivated',
+          couponId: coupon._id,
+          code: coupon.code,
+          name: coupon.name,
+          description: coupon.description,
+          discountType: coupon.type,
+          discountValue: coupon.value,
+          minOrderValue: coupon.minOrderValue,
+          validUntil: coupon.endDate,
+          timestamp: new Date()
+        });
+        console.log(`🎟️ Real-time notification sent to customers for new coupon ${coupon.code}`);
+      } catch (error) {
+        console.error('Error sending coupon notification:', error);
+      }
+    }
+    
     res.status(201).json({
       success: true,
       message: 'Coupon created successfully',

@@ -222,6 +222,15 @@ const centerAdminAdminsController = {
       admin.permissions = permissions
       await admin.save()
 
+      // Notify admin about permission update via WebSocket
+      const PermissionSyncService = require('../services/permissionSyncService');
+      await PermissionSyncService.notifyPermissionUpdate(adminId, {
+        permissions: admin.permissions,
+        tenancy: admin.tenancy,
+        recipientType: 'admin'
+      });
+      console.log('📢 Notified admin about permission update via WebSocket');
+
       res.json({
         success: true,
         message: 'Permissions updated successfully',

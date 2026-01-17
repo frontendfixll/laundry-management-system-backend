@@ -539,13 +539,67 @@ const createOrder = asyncHandler(async (req, res) => {
   // Populate order for response
   const populatedOrder = await Order.findById(order._id)
     .populate('items')
-    .populate('branch', 'name code');
+    .populate('branch', 'name code')
+    .populate('customer', 'name email phone');
 
   // Create notification for customer
   try {
     await NotificationService.notifyOrderPlaced(req.user._id, order);
   } catch (error) {
     console.log('Failed to create notification:', error.message);
+  }
+
+  // Notify all admins in this tenancy about new order
+  try {
+    const User = require('../../models/User');
+    const socketService = require('../../services/socketService');
+    
+    const admins = await User.find({ 
+      tenancy: orderTenancy, 
+      role: 'admin',
+      isActive: true 
+    }).select('_id');
+    
+    for (const admin of admins) {
+      await NotificationService.notifyAdminNewOrder(admin._id, populatedOrder, orderTenancy);
+    }
+    console.log(`📢 Notified ${admins.length} admin(s) about new order`);
+    
+    // Send real-time WebSocket notification to all admins
+    socketService.sendToTenancyRecipients(orderTenancy, 'admin', {
+      type: 'newOrder',
+      orderId: order._id,
+      orderNumber: order.orderNumber,
+      customerName: customer.name,
+      amount: pricing.total,
+      items: createdItems.length,
+      isExpress: isExpress || false,
+      serviceType: serviceType || 'full_service',
+      timestamp: new Date()
+    });
+    console.log(`🔔 Real-time notification sent to admins for new order ${order.orderNumber}`);
+  } catch (error) {
+    console.log('Failed to notify admins:', error.message);
+  }
+
+  // Notify branch admin if order is assigned to a branch
+  if (order.branch) {
+    try {
+      const User = require('../../models/User');
+      const branchAdmins = await User.find({
+        tenancy: tenancyId,
+        role: 'branch_admin',
+        assignedBranch: order.branch,
+        isActive: true
+      }).select('_id');
+      
+      for (const branchAdmin of branchAdmins) {
+        await NotificationService.notifyBranchAdminNewOrder(branchAdmin._id, populatedOrder, tenancyId);
+      }
+      console.log(`📢 Notified ${branchAdmins.length} branch admin(s) about new order`);
+    } catch (error) {
+      console.log('Failed to notify branch admins:', error.message);
+    }
   }
 
   // Send order confirmation email to customer (ASYNC - non-blocking)

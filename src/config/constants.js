@@ -1,6 +1,7 @@
 // User Roles
 const USER_ROLES = {
   SUPERADMIN: 'superadmin',      // Platform owner (separate model)
+  SALES_ADMIN: 'sales_admin',    // Sales department (separate model)
   ADMIN: 'admin',                // Tenancy admin - manages entire tenancy
   BRANCH_ADMIN: 'branch_admin',  // Branch admin - manages single branch only
   STAFF: 'staff',                // Workers (washer, ironer, etc.)

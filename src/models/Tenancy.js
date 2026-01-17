@@ -1,14 +1,48 @@
 const mongoose = require('mongoose');
 
 const brandingSchema = new mongoose.Schema({
+  // Business Identity
+  businessName: { 
+    type: String, 
+    default: '',
+    maxlength: [100, 'Business name cannot exceed 100 characters']
+  },
+  tagline: { 
+    type: String, 
+    default: '',
+    maxlength: [200, 'Tagline cannot exceed 200 characters']
+  },
+  slogan: { 
+    type: String, 
+    default: '',
+    maxlength: [200, 'Slogan cannot exceed 200 characters']
+  },
+  
+  // Logos
   logo: {
     url: { type: String, default: '' },
     publicId: { type: String, default: '' }  // For cloud storage
+  },
+  secondaryLogo: {
+    url: { type: String, default: '' },
+    publicId: { type: String, default: '' }
   },
   favicon: {
     url: { type: String, default: '' },
     publicId: { type: String, default: '' }
   },
+  
+  // Social Media
+  socialMedia: {
+    facebook: { type: String, default: '' },
+    instagram: { type: String, default: '' },
+    twitter: { type: String, default: '' },
+    linkedin: { type: String, default: '' },
+    youtube: { type: String, default: '' },
+    whatsapp: { type: String, default: '' }
+  },
+  
+  // Theme
   theme: {
     primaryColor: { type: String, default: '#3B82F6' },      // Blue
     secondaryColor: { type: String, default: '#10B981' },    // Green
@@ -192,6 +226,14 @@ const tenancySchema = new mongoose.Schema({
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'SuperAdmin'
+  },
+  
+  // DNS Record Information (for dynamic subdomain creation)
+  dnsRecord: {
+    recordId: { type: String }, // DNS provider record ID
+    provider: { type: String, enum: ['cloudflare', 'route53', 'manual'] }, // DNS provider
+    createdAt: { type: Date },
+    lastVerified: { type: Date }
   },
   
   isDeleted: { type: Boolean, default: false },

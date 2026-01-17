@@ -12,6 +12,7 @@ const {
   updatePaymentStatus,
   fixDeliveredPayments,
   getCustomers,
+  getCustomerDetails,
   toggleCustomerStatus,
   tagVIPCustomer,
   getComplaints,
@@ -160,6 +161,7 @@ router.post('/fix-delivered-payments', fixDeliveredPayments);
 
 // Customer management routes
 router.get('/customers', getCustomers);
+router.get('/customers/:customerId/details', getCustomerDetails);
 router.put('/customers/:customerId/toggle-status', toggleCustomerStatus);
 router.put('/customers/:customerId/vip', tagVIPCustomer);
 

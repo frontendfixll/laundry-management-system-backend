@@ -2,7 +2,9 @@ const express = require('express');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
 const { createLead } = require('../controllers/leadController');
-const { BUSINESS_TYPES } = require('../models/Lead');
+
+// Business types for validation (matching frontend form)
+const BUSINESS_TYPES = ['small_laundry', 'chain', 'dry_cleaner', 'laundry', 'dry_cleaning', 'hotel', 'hospital', 'other'];
 
 // Validation middleware
 const validateLead = [
@@ -39,8 +41,28 @@ const validateLead = [
     .trim()
     .notEmpty()
     .withMessage('Business type is required')
-    .isIn(Object.values(BUSINESS_TYPES))
+    .isIn(BUSINESS_TYPES)
     .withMessage('Invalid business type'),
+  
+  body('interestedPlan')
+    .optional()
+    .trim(),
+  
+  body('expectedMonthlyOrders')
+    .optional()
+    .trim(),
+  
+  body('currentBranches')
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage('Current branches must be at least 1'),
+  
+  body('address')
+    .optional(),
+  
+  body('source')
+    .optional()
+    .trim(),
   
   body('message')
     .optional()

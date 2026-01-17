@@ -4,6 +4,9 @@ const Branch = require('../../models/Branch');
 const LogisticsPartner = require('../../models/LogisticsPartner');
 const Ticket = require('../../models/Ticket');
 const Refund = require('../../models/Refund');
+const Address = require('../../models/Address');
+const { LoyaltyProgram } = require('../../models/LoyaltyProgram');
+const { Referral } = require('../../models/Referral');
 const OrderService = require('../../services/orderService');
 const { addTenancyFilter, addTenancyToDocument } = require('../../middlewares/tenancyMiddleware');
 const { 
@@ -493,6 +496,177 @@ const tagVIPCustomer = asyncHandler(async (req, res) => {
       isVIP: customer.isVIP 
     } 
   }, `Customer VIP status updated successfully`);
+});
+
+// @desc    Get detailed customer information
+// @route   GET /api/admin/customers/:customerId/details
+// @access  Private (Admin/Center Admin)
+const getCustomerDetails = asyncHandler(async (req, res) => {
+  const { customerId } = req.params;
+  const tenancyId = req.tenancyId || req.user?.tenancy;
+
+  // Verify customer has orders in this tenancy (if tenancy filter applies)
+  if (tenancyId) {
+    const hasOrdersInTenancy = await Order.exists({ 
+      customer: customerId, 
+      tenancy: tenancyId 
+    });
+    if (!hasOrdersInTenancy) {
+      return sendError(res, 'CUSTOMER_NOT_FOUND', 'Customer not found in your laundry', 404);
+    }
+  }
+
+  // Get customer basic info
+  const customer = await User.findOne({ 
+    _id: customerId, 
+    role: USER_ROLES.CUSTOMER 
+  }).select('-password');
+
+  if (!customer) {
+    return sendError(res, 'CUSTOMER_NOT_FOUND', 'Customer not found', 404);
+  }
+
+  // Get order statistics
+  const orderQuery = tenancyId ? { customer: customerId, tenancy: tenancyId } : { customer: customerId };
+  
+  const totalOrders = await Order.countDocuments(orderQuery);
+  const completedOrders = await Order.countDocuments({ ...orderQuery, status: ORDER_STATUS.DELIVERED });
+  const pendingOrders = await Order.countDocuments({ 
+    ...orderQuery, 
+    status: { $in: [ORDER_STATUS.PENDING, ORDER_STATUS.PROCESSING, ORDER_STATUS.READY, ORDER_STATUS.OUT_FOR_DELIVERY] } 
+  });
+  const cancelledOrders = await Order.countDocuments({ ...orderQuery, status: ORDER_STATUS.CANCELLED });
+
+  const totalSpentResult = await Order.aggregate([
+    { $match: { ...orderQuery, status: ORDER_STATUS.DELIVERED } },
+    { $group: { _id: null, total: { $sum: '$pricing.total' } } }
+  ]);
+  const totalSpent = totalSpentResult[0]?.total || 0;
+
+  // Get recent orders (last 5)
+  const recentOrders = await Order.find(orderQuery)
+    .sort({ createdAt: -1 })
+    .limit(5)
+    .select('orderNumber status pricing.total createdAt services')
+    .lean();
+
+  // Get last order date
+  const lastOrder = await Order.findOne(orderQuery)
+    .sort({ createdAt: -1 })
+    .select('createdAt')
+    .lean();
+
+  // Get saved addresses
+  const addresses = await Address.find({ user: customerId })
+    .sort({ isDefault: -1, createdAt: -1 })
+    .limit(5)
+    .lean();
+
+  // Get loyalty points
+  let loyaltyInfo = null;
+  if (tenancyId) {
+    const loyaltyProgram = await LoyaltyProgram.findOne({ tenancy: tenancyId, isActive: true });
+    if (loyaltyProgram) {
+      loyaltyInfo = {
+        points: customer.loyaltyPoints || 0,
+        tier: customer.loyaltyTier || 'Bronze',
+        programName: loyaltyProgram.name,
+        pointsValue: loyaltyProgram.pointValue || 1
+      };
+    }
+  }
+
+  // Get referral information
+  const referralCode = customer.referralCode || null;
+  const referredCustomers = await Referral.countDocuments({ 
+    referrer: customerId,
+    status: 'completed'
+  });
+  const referralEarnings = await Referral.aggregate([
+    { $match: { referrer: customerId, status: 'completed' } },
+    { $group: { _id: null, total: { $sum: '$referrerReward' } } }
+  ]);
+
+  // Get wallet balance
+  const walletBalance = customer.wallet?.balance || 0;
+
+  // Get favorite services (most ordered services)
+  const favoriteServices = await Order.aggregate([
+    { $match: orderQuery },
+    { $unwind: '$services' },
+    { $group: { 
+      _id: '$services.service',
+      count: { $sum: 1 },
+      serviceName: { $first: '$services.serviceName' }
+    }},
+    { $sort: { count: -1 } },
+    { $limit: 5 }
+  ]);
+
+  // Compile comprehensive customer details
+  const customerDetails = {
+    _id: customer._id,
+    name: customer.name,
+    email: customer.email,
+    phone: customer.phone,
+    isActive: customer.isActive,
+    isVIP: customer.isVIP,
+    createdAt: customer.createdAt,
+    
+    // Order statistics
+    orderStats: {
+      total: totalOrders,
+      completed: completedOrders,
+      pending: pendingOrders,
+      cancelled: cancelledOrders,
+      totalSpent: totalSpent,
+      lastOrderDate: lastOrder?.createdAt || null
+    },
+    
+    // Recent orders
+    recentOrders: recentOrders.map(order => ({
+      _id: order._id,
+      orderNumber: order.orderNumber,
+      status: order.status,
+      total: order.pricing?.total || 0,
+      date: order.createdAt,
+      serviceCount: order.services?.length || 0
+    })),
+    
+    // Addresses
+    addresses: addresses.map(addr => ({
+      _id: addr._id,
+      addressLine1: addr.addressLine1,
+      addressLine2: addr.addressLine2,
+      city: addr.city,
+      state: addr.state,
+      pincode: addr.pincode,
+      isDefault: addr.isDefault
+    })),
+    
+    // Loyalty information
+    loyalty: loyaltyInfo,
+    
+    // Referral information
+    referral: {
+      code: referralCode,
+      referredCount: referredCustomers,
+      totalEarnings: referralEarnings[0]?.total || 0
+    },
+    
+    // Wallet
+    wallet: {
+      balance: walletBalance
+    },
+    
+    // Favorite services
+    favoriteServices: favoriteServices.map(fs => ({
+      name: fs.serviceName || 'Unknown Service',
+      orderCount: fs.count
+    }))
+  };
+
+  sendSuccess(res, { customer: customerDetails }, 'Customer details retrieved successfully');
 });
 
 // @desc    Get complaints/tickets for admin
@@ -1810,6 +1984,7 @@ module.exports = {
   updatePaymentStatus,
   fixDeliveredPayments,
   getCustomers,
+  getCustomerDetails,
   toggleCustomerStatus,
   tagVIPCustomer,
   getComplaints,

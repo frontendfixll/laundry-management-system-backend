@@ -42,6 +42,17 @@ const superAdminPromotionalRoutes = require('./routes/superAdminPromotional');
 const superAdminCampaignRoutes = require('./routes/superAdminCampaigns');
 const adminCampaignRoutes = require('./routes/adminCampaigns');
 
+// Sales routes
+const salesAuthRoutes = require('./routes/salesAuthRoutes');
+const salesLeadRoutes = require('./routes/salesLeadRoutes');
+const salesSubscriptionRoutes = require('./routes/salesSubscriptionRoutes');
+const salesPaymentRoutes = require('./routes/salesPaymentRoutes');
+const superAdminSalesRoutes = require('./routes/superAdminSalesRoutes');
+
+// Test routes (development only)
+const testNotificationRoutes = require('./routes/testNotificationRoutes');
+const permissionSyncRoutes = require('./routes/permissionSyncRoutes');
+
 // Banner routes
 const adminBannerRoutes = require('./routes/admin/bannerRoutes');
 const superAdminBannerRoutes = require('./routes/superAdmin/bannerRoutes');
@@ -82,9 +93,11 @@ const allowedOrigins = [
   'http://localhost:3002',
   'http://localhost:3003',
   'http://localhost:3004', // Marketing frontend
+  'http://localhost:3005', // Sales frontend
   process.env.FRONTEND_URL,
   process.env.SUPERADMIN_URL,
   process.env.MARKETING_URL,
+  process.env.SALES_FRONTEND_URL,
   // Allow all Vercel preview deployments
   /^https:\/\/.*\.vercel\.app$/,
   // Allow all subdomains of your domain
@@ -196,6 +209,10 @@ app.use('/api/services', servicesRoutes);
 app.use('/api/customer', customerRoutes);
 app.use('/api/admin', adminRoutes);
 
+// Tenant verification routes (public, needed for middleware)
+const tenantVerificationRoutes = require('./routes/tenantVerification');
+app.use('/api/tenants', tenantVerificationRoutes);
+
 // SuperAdmin routes
 app.use('/api/superadmin/auth', superAdminAuthRoutes);
 app.use('/api/superadmin/dashboard', superAdminDashboardRoutes);
@@ -227,6 +244,21 @@ app.use('/api/superadmin/banners', superAdminBannerRoutes);
 app.use('/api/customer/banners', customerBannerRoutes);
 app.use('/api/superadmin/services', adminServiceRoutes);
 app.use('/api/superadmin/branch-services', branchServiceRoutes);
+app.use('/api/superadmin/sales-users', superAdminSalesRoutes);
+
+// Sales routes
+app.use('/api/sales/auth', salesAuthRoutes);
+app.use('/api/sales/leads', salesLeadRoutes);
+app.use('/api/sales/subscriptions', salesSubscriptionRoutes);
+app.use('/api/sales/payments', salesPaymentRoutes);
+
+// Test routes (development only)
+if (process.env.NODE_ENV !== 'production') {
+  app.use('/api', testNotificationRoutes);
+}
+
+// Permission sync routes
+app.use('/api/permissions', permissionSyncRoutes);
 
 // Center Admin routes (previously branch manager)
 app.use('/api/center-admin', centerAdminRoutes);
