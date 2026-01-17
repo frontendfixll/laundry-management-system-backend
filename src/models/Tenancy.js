@@ -231,7 +231,7 @@ const tenancySchema = new mongoose.Schema({
   // DNS Record Information (for dynamic subdomain creation)
   dnsRecord: {
     recordId: { type: String }, // DNS provider record ID
-    provider: { type: String, enum: ['cloudflare', 'route53', 'manual'] }, // DNS provider
+    provider: { type: String, enum: ['cloudflare', 'route53', 'manual', 'vercel'] }, // DNS provider
     createdAt: { type: Date },
     lastVerified: { type: Date }
   },

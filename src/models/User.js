@@ -266,9 +266,10 @@ const userSchema = new mongoose.Schema({
 });
 
 // Index for performance
-userSchema.index({ email: 1 });
-userSchema.index({ phone: 1 });
+userSchema.index({ email: 1 }, { unique: true }); // Keep email globally unique
+userSchema.index({ phone: 1 }); // Non-unique index for performance
 userSchema.index({ role: 1 });
+userSchema.index({ tenancy: 1 }); // Index for tenant-based queries
 
 // Hash password before saving
 userSchema.pre('save', async function(next) {

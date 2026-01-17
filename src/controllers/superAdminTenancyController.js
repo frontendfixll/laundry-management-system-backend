@@ -144,15 +144,43 @@ const tenancyController = {
         });
       }
       
+      // Check if phone number already exists (if provided)
+      if (ownerData.phone) {
+        const existingPhoneUser = await User.findOne({ phone: ownerData.phone });
+        if (existingPhoneUser) {
+          return res.status(400).json({
+            success: false,
+            message: 'A user with this phone number already exists'
+          });
+        }
+      }
+      
       // Create owner (laundry admin)
       const salt = await bcrypt.genSalt(10);
       const tempPassword = ownerData.password || Math.random().toString(36).slice(-8);
       const hashedPassword = await bcrypt.hash(tempPassword, salt);
       
+      // Generate unique phone if not provided or if provided phone already exists
+      let finalPhone = ownerData.phone;
+      if (!finalPhone) {
+        // Generate a unique phone number
+        let phoneExists = true;
+        let attempts = 0;
+        while (phoneExists && attempts < 10) {
+          finalPhone = `9${Math.floor(Math.random() * 900000000) + 100000000}`;
+          const existingPhone = await User.findOne({ phone: finalPhone });
+          phoneExists = !!existingPhone;
+          attempts++;
+        }
+        if (phoneExists) {
+          finalPhone = `9${Date.now().toString().slice(-9)}`;
+        }
+      }
+      
       const owner = new User({
         name: ownerData.name,
         email: ownerData.email.toLowerCase(),
-        phone: ownerData.phone || '0000000000',
+        phone: finalPhone,
         password: hashedPassword,
         role: 'admin',
         isActive: true,
