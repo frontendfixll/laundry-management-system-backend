@@ -102,7 +102,12 @@ const allowedOrigins = [
   /^https:\/\/.*\.vercel\.app$/,
   // Allow all subdomains of your domain
   /^https:\/\/[\w-]+\.laundry$/,
-  /^http:\/\/[\w-]+\.laundry$/
+  /^http:\/\/[\w-]+\.laundry$/,
+  // Allow laundrypro.com and laundrylobby.com domains
+  /^https:\/\/[\w-]+\.laundrypro\.com$/,
+  /^https:\/\/[\w-]+\.laundrylobby\.com$/,
+  'https://laundrypro.com',
+  'https://laundrylobby.com'
 ].filter(Boolean);
 
 app.use(cors({
