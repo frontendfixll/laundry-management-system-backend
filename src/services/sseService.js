@@ -1,171 +1,213 @@
-/**
- * SSE (Server-Sent Events) Service for Real-time Notifications
- * Manages client connections and broadcasts notifications
- */
+const EventEmitter = require('events');
 
-class SSEService {
+class SSEService extends EventEmitter {
   constructor() {
-    // Store active connections: Map<recipientId, Set<response>>
-    this.connections = new Map();
+    super();
+    this.connections = new Map(); // userId -> Set of response objects
+    this.heartbeatInterval = 30000; // 30 seconds
+    this.startHeartbeat();
   }
 
   /**
-   * Add a new SSE connection
+   * Add SSE connection for a user
    */
-  addConnection(recipientId, recipientType, res) {
-    const key = `${recipientType}:${recipientId}`;
-    
-    if (!this.connections.has(key)) {
-      this.connections.set(key, new Set());
+  addConnection(userId, recipientType, res) {
+    if (!this.connections.has(userId)) {
+      this.connections.set(userId, new Set());
     }
     
-    this.connections.get(key).add(res);
+    this.connections.get(userId).add(res);
     
-    console.log(`SSE: Client connected - ${key} (Total: ${this.connections.get(key).size})`);
+    console.log(`SSE connection added for user ${userId} (${recipientType}). Total connections: ${this.getTotalConnections()}`);
     
-    // Send initial connection success
-    this.sendToClient(res, { type: 'connected', message: 'SSE connection established' });
+    // Send initial connection confirmation
+    this.sendToConnection(res, {
+      type: 'connection',
+      message: 'Connected to notification stream',
+      timestamp: new Date().toISOString()
+    });
   }
 
   /**
-   * Remove a connection
+   * Remove SSE connection for a user
    */
-  removeConnection(recipientId, recipientType, res) {
-    const key = `${recipientType}:${recipientId}`;
-    
-    if (this.connections.has(key)) {
-      this.connections.get(key).delete(res);
+  removeConnection(userId, recipientType, res) {
+    if (this.connections.has(userId)) {
+      this.connections.get(userId).delete(res);
       
       // Clean up empty sets
-      if (this.connections.get(key).size === 0) {
-        this.connections.delete(key);
+      if (this.connections.get(userId).size === 0) {
+        this.connections.delete(userId);
       }
-      
-      console.log(`SSE: Client disconnected - ${key}`);
     }
+    
+    console.log(`SSE connection removed for user ${userId} (${recipientType}). Total connections: ${this.getTotalConnections()}`);
   }
 
   /**
-   * Send data to a specific client
+   * Send notification to specific user
    */
-  sendToClient(res, data) {
+  sendToUser(userId, notification) {
+    if (!this.connections.has(userId)) {
+      console.log(`No SSE connections for user ${userId}`);
+      return false;
+    }
+
+    const userConnections = this.connections.get(userId);
+    let sentCount = 0;
+    const deadConnections = new Set();
+
+    for (const res of userConnections) {
+      try {
+        if (this.sendToConnection(res, notification)) {
+          sentCount++;
+        } else {
+          deadConnections.add(res);
+        }
+      } catch (error) {
+        console.error(`Error sending to connection for user ${userId}:`, error);
+        deadConnections.add(res);
+      }
+    }
+
+    // Clean up dead connections
+    deadConnections.forEach(res => {
+      userConnections.delete(res);
+    });
+
+    if (userConnections.size === 0) {
+      this.connections.delete(userId);
+    }
+
+    console.log(`Sent notification to ${sentCount} connections for user ${userId}`);
+    return sentCount > 0;
+  }
+
+  /**
+   * Send data to a specific connection
+   */
+  sendToConnection(res, data) {
     try {
-      res.write(`data: ${JSON.stringify(data)}\n\n`);
-    } catch (error) {
-      console.error('SSE: Error sending to client:', error.message);
-    }
-  }
+      if (res.destroyed || res.finished) {
+        return false;
+      }
 
-  /**
-   * Send notification to a specific recipient
-   */
-  sendToRecipient(recipientId, recipientType, notification) {
-    const key = `${recipientType}:${recipientId}`;
-    
-    if (this.connections.has(key)) {
-      const clients = this.connections.get(key);
-      
-      clients.forEach(res => {
-        this.sendToClient(res, {
-          type: 'notification',
-          notification
-        });
-      });
-      
-      console.log(`SSE: Sent notification to ${clients.size} client(s) - ${key}`);
+      const sseData = `data: ${JSON.stringify(data)}\n\n`;
+      res.write(sseData);
       return true;
+    } catch (error) {
+      console.error('Error writing to SSE connection:', error);
+      return false;
     }
-    
-    return false;
   }
 
   /**
-   * Send to all admins of a tenancy
-   */
-  sendToTenancyAdmins(tenancyId, notification) {
-    let sent = 0;
-    
-    this.connections.forEach((clients, key) => {
-      if (key.startsWith('admin:') || key.startsWith('branch_admin:')) {
-        clients.forEach(res => {
-          this.sendToClient(res, { type: 'notification', notification });
-          sent++;
-        });
-      }
-    });
-    
-    return sent;
-  }
-
-  /**
-   * Send to all superadmins
-   */
-  sendToAllSuperAdmins(notification) {
-    let sent = 0;
-    
-    this.connections.forEach((clients, key) => {
-      if (key.startsWith('superadmin:')) {
-        clients.forEach(res => {
-          this.sendToClient(res, { type: 'notification', notification });
-          sent++;
-        });
-      }
-    });
-    
-    console.log(`SSE: Sent to ${sent} superadmin client(s)`);
-    return sent;
-  }
-
-  /**
-   * Broadcast to all connected clients
+   * Broadcast to all connections
    */
   broadcast(notification) {
-    let sent = 0;
+    let totalSent = 0;
     
-    this.connections.forEach((clients) => {
-      clients.forEach(res => {
-        this.sendToClient(res, { type: 'notification', notification });
-        sent++;
-      });
-    });
+    for (const [userId, connections] of this.connections) {
+      if (this.sendToUser(userId, notification)) {
+        totalSent++;
+      }
+    }
     
-    return sent;
+    return totalSent;
   }
 
   /**
-   * Send heartbeat to keep connections alive
+   * Send heartbeat to all connections to keep them alive
    */
-  sendHeartbeat() {
-    this.connections.forEach((clients) => {
-      clients.forEach(res => {
-        this.sendToClient(res, { type: 'heartbeat', timestamp: Date.now() });
-      });
-    });
+  startHeartbeat() {
+    setInterval(() => {
+      const heartbeat = {
+        type: 'heartbeat',
+        timestamp: new Date().toISOString()
+      };
+      
+      let activeConnections = 0;
+      const deadUsers = [];
+      
+      for (const [userId, connections] of this.connections) {
+        const deadConnections = new Set();
+        
+        for (const res of connections) {
+          try {
+            if (res.destroyed || res.finished) {
+              deadConnections.add(res);
+            } else {
+              this.sendToConnection(res, heartbeat);
+              activeConnections++;
+            }
+          } catch (error) {
+            deadConnections.add(res);
+          }
+        }
+        
+        // Clean up dead connections
+        deadConnections.forEach(res => connections.delete(res));
+        
+        if (connections.size === 0) {
+          deadUsers.push(userId);
+        }
+      }
+      
+      // Clean up users with no connections
+      deadUsers.forEach(userId => this.connections.delete(userId));
+      
+      if (activeConnections > 0) {
+        console.log(`Heartbeat sent to ${activeConnections} active SSE connections`);
+      }
+    }, this.heartbeatInterval);
+  }
+
+  /**
+   * Get total number of active connections
+   */
+  getTotalConnections() {
+    let total = 0;
+    for (const connections of this.connections.values()) {
+      total += connections.size;
+    }
+    return total;
   }
 
   /**
    * Get connection stats
    */
   getStats() {
-    let totalConnections = 0;
-    const byType = {};
+    const stats = {
+      totalUsers: this.connections.size,
+      totalConnections: this.getTotalConnections(),
+      userConnections: {}
+    };
     
-    this.connections.forEach((clients, key) => {
-      const [type] = key.split(':');
-      totalConnections += clients.size;
-      byType[type] = (byType[type] || 0) + clients.size;
-    });
+    for (const [userId, connections] of this.connections) {
+      stats.userConnections[userId] = connections.size;
+    }
     
-    return { totalConnections, byType, uniqueRecipients: this.connections.size };
+    return stats;
+  }
+
+  /**
+   * Close all connections
+   */
+  closeAllConnections() {
+    for (const [userId, connections] of this.connections) {
+      for (const res of connections) {
+        try {
+          res.end();
+        } catch (error) {
+          console.error(`Error closing connection for user ${userId}:`, error);
+        }
+      }
+    }
+    this.connections.clear();
   }
 }
 
-// Singleton instance
+// Create singleton instance
 const sseService = new SSEService();
-
-// Heartbeat every 30 seconds to keep connections alive
-setInterval(() => {
-  sseService.sendHeartbeat();
-}, 30000);
 
 module.exports = sseService;

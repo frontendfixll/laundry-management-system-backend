@@ -32,22 +32,12 @@ class PermissionSyncService {
 
       // Also send a notification
       const NotificationService = require('./notificationService');
-      await NotificationService.createNotification({
-        recipientId: userId,
-        recipientType: updates.recipientType || 'admin',
-        tenancy: updates.tenancy,
-        type: 'system_alert',
-        title: '🔄 Permissions Updated',
-        message: 'Your account permissions have been updated. Changes are now active.',
-        severity: 'info',
-        icon: 'shield-check',
-        data: { 
-          link: '/profile',
-          requiresAction: false
-        }
-      });
+      await NotificationService.notifyPermissionGranted(userId, {
+        module: updates.module || 'system',
+        action: updates.action || 'updated'
+      }, updates.tenancy);
       
-      console.log(`✅ Notification created for user ${userId}`);
+      console.log(`✅ Permission notification sent to user ${userId}`);
 
       return true;
     } catch (error) {
@@ -71,17 +61,7 @@ class PermissionSyncService {
       });
 
       const NotificationService = require('./notificationService');
-      await NotificationService.createNotification({
-        recipientId: userId,
-        recipientType: newRole === 'admin' ? 'admin' : 'branch_admin',
-        tenancy,
-        type: 'system_alert',
-        title: '👤 Role Changed',
-        message: `Your role has been updated to ${newRole}`,
-        severity: 'warning',
-        icon: 'user-cog',
-        data: { link: '/profile' }
-      });
+      await NotificationService.notifyRoleUpdated(userId, oldRole, newRole, tenancy);
 
       return true;
     } catch (error) {
@@ -170,17 +150,7 @@ class PermissionSyncService {
       });
 
       const NotificationService = require('./notificationService');
-      await NotificationService.createNotification({
-        recipientId: userId,
-        recipientType: 'admin',
-        tenancy,
-        type: 'system_alert',
-        title: '📦 Plan Updated',
-        message: `Your subscription has been upgraded to ${newPlan}`,
-        severity: 'success',
-        icon: 'package',
-        data: { link: '/billing' }
-      });
+      await NotificationService.notifyPlanUpgraded(userId, oldPlan, newPlan, tenancy);
 
       return true;
     } catch (error) {

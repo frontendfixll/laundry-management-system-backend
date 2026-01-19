@@ -335,6 +335,321 @@ class NotificationService {
   static async getUnreadCount(userId) {
     return Notification.getUnreadCount(userId);
   }
+
+  // ==================== PERMISSION & ROLE MANAGEMENT ====================
+
+  static async notifyPermissionGranted(adminId, permission, tenancy) {
+    return this.createNotification({
+      recipientId: adminId,
+      recipientType: RECIPIENT_TYPES.ADMIN,
+      tenancy,
+      type: NOTIFICATION_TYPES.PERMISSION_GRANTED,
+      title: 'New Permission Granted',
+      message: `You have been granted ${permission.module}.${permission.action} permission`,
+      icon: 'shield-check',
+      severity: 'success',
+      data: { permission, link: '/admin/settings' }
+    });
+  }
+
+  static async notifyPermissionRevoked(adminId, permission, tenancy) {
+    return this.createNotification({
+      recipientId: adminId,
+      recipientType: RECIPIENT_TYPES.ADMIN,
+      tenancy,
+      type: NOTIFICATION_TYPES.PERMISSION_REVOKED,
+      title: 'Permission Revoked',
+      message: `Your ${permission.module}.${permission.action} permission has been revoked`,
+      icon: 'shield-x',
+      severity: 'warning',
+      data: { permission, link: '/admin/settings' }
+    });
+  }
+
+  static async notifyRoleUpdated(adminId, oldRole, newRole, tenancy) {
+    return this.createNotification({
+      recipientId: adminId,
+      recipientType: newRole === 'admin' ? RECIPIENT_TYPES.ADMIN : RECIPIENT_TYPES.BRANCH_ADMIN,
+      tenancy,
+      type: NOTIFICATION_TYPES.ROLE_UPDATED,
+      title: 'Role Updated',
+      message: `Your role has been changed from ${oldRole} to ${newRole}`,
+      icon: 'user-check',
+      severity: 'info',
+      data: { oldRole, newRole, link: '/admin/dashboard' }
+    });
+  }
+
+  static async notifyAdminCreated(adminId, tenancy, createdBy) {
+    return this.createNotification({
+      recipientId: adminId,
+      recipientType: RECIPIENT_TYPES.ADMIN,
+      tenancy,
+      type: NOTIFICATION_TYPES.ADMIN_CREATED,
+      title: 'Welcome to LaundryLobby! 🎉',
+      message: `Your admin account has been created. You can now manage your laundry business.`,
+      icon: 'user-plus',
+      severity: 'success',
+      data: { createdBy, link: '/admin/dashboard' }
+    });
+  }
+
+  static async notifyTenancySettingsUpdated(adminId, settingType, tenancy) {
+    return this.createNotification({
+      recipientId: adminId,
+      recipientType: RECIPIENT_TYPES.ADMIN,
+      tenancy,
+      type: NOTIFICATION_TYPES.TENANCY_SETTINGS_UPDATED,
+      title: 'Business Settings Updated',
+      message: `Your ${settingType} settings have been updated by SuperAdmin`,
+      icon: 'settings',
+      severity: 'info',
+      data: { settingType, link: '/admin/settings' }
+    });
+  }
+
+  // ==================== INVENTORY MANAGEMENT ====================
+
+  static async notifyInventoryRequestSubmitted(superAdminId, request, tenancy) {
+    return this.createNotification({
+      recipientId: superAdminId,
+      recipientModel: 'SuperAdmin',
+      recipientType: RECIPIENT_TYPES.SUPERADMIN,
+      type: NOTIFICATION_TYPES.INVENTORY_REQUEST_SUBMITTED,
+      title: 'New Inventory Request',
+      message: `${tenancy.businessName} requested ${request.itemName}`,
+      icon: 'package-plus',
+      severity: 'info',
+      data: { 
+        requestId: request._id, 
+        tenancyId: tenancy._id,
+        urgency: request.urgency,
+        link: '/inventory-requests' 
+      }
+    });
+  }
+
+  static async notifyInventoryRequestApproved(adminId, request, tenancy) {
+    return this.createNotification({
+      recipientId: adminId,
+      recipientType: RECIPIENT_TYPES.ADMIN,
+      tenancy,
+      type: NOTIFICATION_TYPES.INVENTORY_REQUEST_APPROVED,
+      title: 'Inventory Request Approved ✅',
+      message: `Your request for ${request.itemName} has been approved`,
+      icon: 'check-circle',
+      severity: 'success',
+      data: { 
+        requestId: request._id,
+        estimatedCost: request.estimatedCost,
+        supplier: request.supplier,
+        link: '/admin/inventory/requests' 
+      }
+    });
+  }
+
+  static async notifyInventoryRequestRejected(adminId, request, tenancy) {
+    return this.createNotification({
+      recipientId: adminId,
+      recipientType: RECIPIENT_TYPES.ADMIN,
+      tenancy,
+      type: NOTIFICATION_TYPES.INVENTORY_REQUEST_REJECTED,
+      title: 'Inventory Request Rejected',
+      message: `Your request for ${request.itemName} has been rejected`,
+      icon: 'x-circle',
+      severity: 'error',
+      data: { 
+        requestId: request._id,
+        rejectionReason: request.rejectionReason,
+        link: '/admin/inventory/requests' 
+      }
+    });
+  }
+
+  static async notifyInventoryRequestCompleted(adminId, request, tenancy) {
+    return this.createNotification({
+      recipientId: adminId,
+      recipientType: RECIPIENT_TYPES.ADMIN,
+      tenancy,
+      type: NOTIFICATION_TYPES.INVENTORY_REQUEST_COMPLETED,
+      title: 'Inventory Request Completed 🎉',
+      message: `Your request for ${request.itemName} has been fulfilled`,
+      icon: 'package-check',
+      severity: 'success',
+      data: { 
+        requestId: request._id,
+        link: '/admin/inventory/requests' 
+      }
+    });
+  }
+
+  // ==================== BILLING & SUBSCRIPTION ====================
+
+  static async notifySubscriptionExpiring(adminId, tenancy, daysLeft) {
+    const urgency = daysLeft <= 3 ? 'error' : daysLeft <= 7 ? 'warning' : 'info';
+    return this.createNotification({
+      recipientId: adminId,
+      recipientType: RECIPIENT_TYPES.ADMIN,
+      tenancy: tenancy._id,
+      type: NOTIFICATION_TYPES.SUBSCRIPTION_EXPIRING,
+      title: `Subscription Expiring in ${daysLeft} Days`,
+      message: `Your ${tenancy.subscription?.plan || 'current'} plan expires soon. Renew to avoid service interruption.`,
+      icon: 'alert-triangle',
+      severity: urgency,
+      data: { 
+        daysLeft,
+        plan: tenancy.subscription?.plan,
+        expiryDate: tenancy.subscription?.expiryDate,
+        link: '/admin/billing' 
+      }
+    });
+  }
+
+  static async notifySubscriptionExpired(adminId, tenancy) {
+    return this.createNotification({
+      recipientId: adminId,
+      recipientType: RECIPIENT_TYPES.ADMIN,
+      tenancy: tenancy._id,
+      type: NOTIFICATION_TYPES.SUBSCRIPTION_EXPIRED,
+      title: 'Subscription Expired',
+      message: `Your subscription has expired. Please renew to continue using all features.`,
+      icon: 'alert-circle',
+      severity: 'error',
+      data: { 
+        plan: tenancy.subscription?.plan,
+        link: '/admin/billing' 
+      }
+    });
+  }
+
+  static async notifyPaymentFailed(adminId, tenancy, amount, reason) {
+    return this.createNotification({
+      recipientId: adminId,
+      recipientType: RECIPIENT_TYPES.ADMIN,
+      tenancy: tenancy._id,
+      type: NOTIFICATION_TYPES.PAYMENT_FAILED,
+      title: 'Payment Failed',
+      message: `Payment of ₹${amount} failed. ${reason}`,
+      icon: 'credit-card',
+      severity: 'error',
+      data: { 
+        amount,
+        reason,
+        link: '/admin/billing' 
+      }
+    });
+  }
+
+  static async notifyPlanUpgraded(adminId, tenancy, oldPlan, newPlan) {
+    return this.createNotification({
+      recipientId: adminId,
+      recipientType: RECIPIENT_TYPES.ADMIN,
+      tenancy: tenancy._id,
+      type: NOTIFICATION_TYPES.PLAN_UPGRADED,
+      title: 'Plan Upgraded Successfully! 🎉',
+      message: `Your plan has been upgraded from ${oldPlan} to ${newPlan}`,
+      icon: 'trending-up',
+      severity: 'success',
+      data: { 
+        oldPlan,
+        newPlan,
+        link: '/admin/billing' 
+      }
+    });
+  }
+
+  static async notifyUsageLimitReached(adminId, tenancy, limitType, currentUsage, limit) {
+    return this.createNotification({
+      recipientId: adminId,
+      recipientType: RECIPIENT_TYPES.ADMIN,
+      tenancy: tenancy._id,
+      type: NOTIFICATION_TYPES.USAGE_LIMIT_REACHED,
+      title: 'Usage Limit Reached',
+      message: `You've reached your ${limitType} limit (${currentUsage}/${limit}). Consider upgrading your plan.`,
+      icon: 'bar-chart',
+      severity: 'warning',
+      data: { 
+        limitType,
+        currentUsage,
+        limit,
+        link: '/admin/billing' 
+      }
+    });
+  }
+
+  // ==================== SECURITY & SYSTEM ====================
+
+  static async notifySecurityAlert(userId, alertType, details, tenancy) {
+    return this.createNotification({
+      recipientId: userId,
+      recipientType: RECIPIENT_TYPES.ADMIN,
+      tenancy,
+      type: NOTIFICATION_TYPES.SECURITY_ALERT,
+      title: 'Security Alert',
+      message: `${alertType}: ${details}`,
+      icon: 'shield-alert',
+      severity: 'error',
+      data: { 
+        alertType,
+        details,
+        timestamp: new Date(),
+        link: '/admin/security' 
+      }
+    });
+  }
+
+  static async notifyPasswordChanged(userId, tenancy) {
+    return this.createNotification({
+      recipientId: userId,
+      recipientType: RECIPIENT_TYPES.ADMIN,
+      tenancy,
+      type: NOTIFICATION_TYPES.PASSWORD_CHANGED,
+      title: 'Password Changed',
+      message: 'Your password has been successfully changed',
+      icon: 'key',
+      severity: 'success',
+      data: { 
+        timestamp: new Date(),
+        link: '/admin/profile' 
+      }
+    });
+  }
+
+  static async notifyMultipleLoginAttempts(userId, attemptCount, tenancy) {
+    return this.createNotification({
+      recipientId: userId,
+      recipientType: RECIPIENT_TYPES.ADMIN,
+      tenancy,
+      type: NOTIFICATION_TYPES.MULTIPLE_LOGIN_ATTEMPTS,
+      title: 'Multiple Login Attempts Detected',
+      message: `${attemptCount} failed login attempts detected on your account`,
+      icon: 'shield-alert',
+      severity: 'warning',
+      data: { 
+        attemptCount,
+        timestamp: new Date(),
+        link: '/admin/security' 
+      }
+    });
+  }
+
+  static async notifyPermissionSyncFailed(adminId, error, tenancy) {
+    return this.createNotification({
+      recipientId: adminId,
+      recipientType: RECIPIENT_TYPES.ADMIN,
+      tenancy,
+      type: NOTIFICATION_TYPES.PERMISSION_SYNC_FAILED,
+      title: 'Permission Sync Failed',
+      message: 'There was an issue syncing your permissions. Please contact support if problems persist.',
+      icon: 'alert-triangle',
+      severity: 'warning',
+      data: { 
+        error: error.message,
+        timestamp: new Date(),
+        link: '/admin/support' 
+      }
+    });
+  }
 }
 
 module.exports = NotificationService;

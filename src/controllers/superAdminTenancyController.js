@@ -94,60 +94,104 @@ const tenancyController = {
         contact,
         owner: ownerData,  // { name, email, phone, password }
         subscription,
-        createSubdomain = true // New flag to control subdomain creation
+        businessName,
+        tagline,
+        features
       } = req.body;
       
       // Validate required fields
       if (!name || !ownerData?.email || !ownerData?.name) {
         return res.status(400).json({
           success: false,
-          message: 'Name and owner details (name, email) are required'
+          message: 'Tenancy name and owner details (name, email) are required'
         });
       }
+
+      // Use TenancyCreationService for proper isolation
+      const TenancyCreationService = require('../services/tenancyCreationService');
       
-      // Generate unique subdomain if not provided
-      let finalSubdomain = subdomain || slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      // Validate input data
+      const validationErrors = TenancyCreationService.validateTenancyData(
+        { name, slug, description, businessName, tagline },
+        ownerData
+      );
       
-      if (createSubdomain) {
-        try {
-          // Generate unique subdomain using the service
-          finalSubdomain = await subdomainService.generateUniqueSubdomain(name);
-          console.log('🌐 Generated unique subdomain:', finalSubdomain);
-        } catch (error) {
-          console.error('Failed to generate subdomain:', error);
-          // Fall back to manual generation if service fails
-          finalSubdomain = name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      if (validationErrors.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: validationErrors[0],
+          errors: validationErrors
+        });
+      }
+
+      // Generate secure password if not provided
+      const adminPassword = ownerData.password || TenancyCreationService.generateSecurePassword();
+
+      // Prepare tenancy data
+      const tenancyData = {
+        name: name.trim(),
+        slug: slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+        description: description || '',
+        subdomain: subdomain,
+        businessName: businessName || name,
+        tagline: tagline || '',
+        address: contact?.address || {},
+        plan: subscription?.plan || 'trial',
+        features: features || {
+          orders: true,
+          customers: true,
+          inventory: true,
+          basic_analytics: true,
+          email_notifications: true
         }
-      }
-      
-      // Check if slug/subdomain already exists in database
-      const existingTenancy = await Tenancy.findOne({
-        $or: [
-          { slug: slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-') },
-          { subdomain: finalSubdomain }
-        ]
+      };
+
+      // Prepare admin data
+      const adminData = {
+        name: ownerData.name.trim(),
+        email: ownerData.email.toLowerCase().trim(),
+        phone: ownerData.phone || '',
+        password: adminPassword
+      };
+
+      // Create tenancy with isolated admin
+      const result = await TenancyCreationService.createTenancyWithAdmin(tenancyData, adminData);
+
+      console.log('✅ Tenancy created successfully:', result.tenancy.id);
+
+      // Send success response with login credentials
+      res.status(201).json({
+        success: true,
+        message: 'Tenancy created successfully with isolated admin credentials',
+        data: {
+          tenancy: result.tenancy,
+          admin: result.admin,
+          loginCredentials: {
+            email: result.loginCredentials.email,
+            password: result.loginCredentials.password,
+            loginUrl: result.loginCredentials.loginUrl,
+            note: 'These are the admin login credentials for this tenancy. Each tenancy has completely separate login credentials.'
+          }
+        }
       });
+
+    } catch (error) {
+      console.error('❌ Create tenancy error:', error);
       
-      if (existingTenancy) {
-        return res.status(400).json({
+      if (error.message.includes('already exists')) {
+        return res.status(409).json({
           success: false,
-          message: 'A tenancy with this name/subdomain already exists'
+          message: error.message
         });
       }
       
-      // Check if owner email already exists
-      const existingUser = await User.findOne({ email: ownerData.email.toLowerCase() });
-      if (existingUser) {
-        return res.status(400).json({
-          success: false,
-          message: 'A user with this email already exists'
-        });
-      }
-      
-      // Check if phone number already exists (if provided)
-      if (ownerData.phone) {
-        const existingPhoneUser = await User.findOne({ phone: ownerData.phone });
-        if (existingPhoneUser) {
+      res.status(500).json({
+        success: false,
+        message: 'Failed to create tenancy. Please try again.',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  },
           return res.status(400).json({
             success: false,
             message: 'A user with this phone number already exists'

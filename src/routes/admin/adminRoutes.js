@@ -245,6 +245,10 @@ router.post('/inventory', addInventoryItem);
 router.put('/inventory/:itemId/stock', updateInventoryStock);
 router.delete('/inventory/:itemId', deleteInventoryItem);
 
+// Inventory request routes
+const inventoryRequestRoutes = require('./inventoryRequests');
+router.use('/inventory', inventoryRequestRoutes);
+
 // Branding routes (multi-tenant)
 router.use('/tenancy', brandingRoutes);
 

@@ -5,6 +5,64 @@ const { verifyAccessToken, verifyToken } = require('../utils/jwt');
 const { getTokenFromRequest } = require('../utils/cookieConfig');
 const { LEGACY_ROLE_MAP } = require('../config/constants');
 
+// Track failed login attempts
+const failedAttempts = new Map();
+const FAILED_ATTEMPT_LIMIT = 5;
+const FAILED_ATTEMPT_WINDOW = 15 * 60 * 1000; // 15 minutes
+
+// Helper function to track failed attempts
+const trackFailedAttempt = async (identifier, userType = 'user') => {
+  const key = `${userType}:${identifier}`;
+  const now = Date.now();
+  
+  if (!failedAttempts.has(key)) {
+    failedAttempts.set(key, []);
+  }
+  
+  const attempts = failedAttempts.get(key);
+  // Remove old attempts outside the window
+  const recentAttempts = attempts.filter(time => now - time < FAILED_ATTEMPT_WINDOW);
+  recentAttempts.push(now);
+  failedAttempts.set(key, recentAttempts);
+  
+  // Send notification if threshold reached
+  if (recentAttempts.length >= FAILED_ATTEMPT_LIMIT) {
+    try {
+      const NotificationService = require('../services/notificationService');
+      
+      // Find user to get their ID and tenancy
+      let user = null;
+      let tenancy = null;
+      
+      if (userType === 'user') {
+        user = await User.findOne({ email: identifier }).select('_id tenancy');
+        tenancy = user?.tenancy;
+      } else if (userType === 'superadmin') {
+        user = await SuperAdmin.findOne({ email: identifier }).select('_id');
+      }
+      
+      if (user) {
+        await NotificationService.notifyMultipleLoginAttempts(
+          user._id, 
+          recentAttempts.length, 
+          tenancy
+        );
+        console.log(`🚨 Security alert sent for ${recentAttempts.length} failed attempts on ${identifier}`);
+      }
+    } catch (error) {
+      console.error('Failed to send security notification:', error);
+    }
+  }
+  
+  return recentAttempts.length;
+};
+
+// Helper function to clear failed attempts on successful login
+const clearFailedAttempts = (identifier, userType = 'user') => {
+  const key = `${userType}:${identifier}`;
+  failedAttempts.delete(key);
+};
+
 // Protect routes - require authentication (User model only)
 const protect = async (req, res, next) => {
   try {
@@ -421,5 +479,7 @@ module.exports = {
   optionalAuth,
   authenticateToken,
   requireAdmin,
-  requireBranchAdmin
+  requireBranchAdmin,
+  trackFailedAttempt,
+  clearFailedAttempts
 };

@@ -320,7 +320,36 @@ const NOTIFICATION_TYPES = {
   // Campaign/Promo (Customer)
   NEW_CAMPAIGN: 'new_campaign',
   COUPON_EXPIRING: 'coupon_expiring',
-  WALLET_CREDITED: 'wallet_credited'
+  WALLET_CREDITED: 'wallet_credited',
+  
+  // Permission & Role Management (Admin)
+  PERMISSION_GRANTED: 'permission_granted',
+  PERMISSION_REVOKED: 'permission_revoked',
+  ROLE_UPDATED: 'role_updated',
+  ADMIN_CREATED: 'admin_created',
+  TENANCY_SETTINGS_UPDATED: 'tenancy_settings_updated',
+  
+  // Inventory Management (Admin + SuperAdmin)
+  INVENTORY_REQUEST_SUBMITTED: 'inventory_request_submitted',
+  INVENTORY_REQUEST_APPROVED: 'inventory_request_approved',
+  INVENTORY_REQUEST_REJECTED: 'inventory_request_rejected',
+  INVENTORY_REQUEST_COMPLETED: 'inventory_request_completed',
+  
+  // Billing & Subscription (Admin)
+  SUBSCRIPTION_EXPIRING: 'subscription_expiring',
+  SUBSCRIPTION_EXPIRED: 'subscription_expired',
+  PAYMENT_FAILED: 'payment_failed',
+  PLAN_UPGRADED: 'plan_upgraded',
+  PLAN_DOWNGRADED: 'plan_downgraded',
+  USAGE_LIMIT_REACHED: 'usage_limit_reached',
+  INVOICE_GENERATED: 'invoice_generated',
+  
+  // System & Security (All Users)
+  SECURITY_ALERT: 'security_alert',
+  PASSWORD_CHANGED: 'password_changed',
+  ACCOUNT_LOCKED: 'account_locked',
+  MULTIPLE_LOGIN_ATTEMPTS: 'multiple_login_attempts',
+  PERMISSION_SYNC_FAILED: 'permission_sync_failed'
 };
 
 // Recipient types for notifications

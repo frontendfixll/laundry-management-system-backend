@@ -263,6 +263,10 @@ const login = async (req, res) => {
     const user = await User.findOne({ email }).select('+password').populate('tenancy', 'name slug subdomain branding status subscription');
     
     if (!user) {
+      // Track failed attempt for unknown email
+      const { trackFailedAttempt } = require('../middlewares/auth');
+      await trackFailedAttempt(email, 'user');
+      
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password'
@@ -273,11 +277,19 @@ const login = async (req, res) => {
     const isPasswordValid = await comparePassword(password, user.password);
     
     if (!isPasswordValid) {
+      // Track failed attempt for wrong password
+      const { trackFailedAttempt } = require('../middlewares/auth');
+      await trackFailedAttempt(email, 'user');
+      
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password'
       });
     }
+
+    // Clear failed attempts on successful login
+    const { clearFailedAttempts } = require('../middlewares/auth');
+    clearFailedAttempts(email, 'user');
 
     // Check if user is active
     if (!user.isActive) {
@@ -289,10 +301,20 @@ const login = async (req, res) => {
 
     // Check tenancy status for admin/branch_admin users
     if ((user.role === 'admin' || user.role === 'branch_admin') && user.tenancy) {
-      if (user.tenancy.status !== 'active') {
+      if (user.tenancy.status !== 'active' && user.tenancy.status !== 'trial') {
         return res.status(403).json({
           success: false,
           message: 'Your laundry portal is currently inactive. Please contact support.'
+        });
+      }
+    }
+
+    // TENANCY ISOLATION: Ensure admin/staff users have tenancy
+    if (user.role === 'admin' || user.role === 'branch_admin' || user.role === 'staff') {
+      if (!user.tenancy) {
+        return res.status(403).json({
+          success: false,
+          message: 'User is not associated with any tenancy. Please contact SuperAdmin.'
         });
       }
     }
