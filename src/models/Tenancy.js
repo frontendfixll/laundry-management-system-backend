@@ -236,6 +236,23 @@ const tenancySchema = new mongoose.Schema({
     lastVerified: { type: Date }
   },
   
+  // Upgrade Management
+  pendingUpgrades: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'UpgradeRequest'
+  }],
+  
+  upgradeHistory: [{
+    fromPlan: { type: mongoose.Schema.Types.ObjectId, ref: 'BillingPlan' },
+    toPlan: { type: mongoose.Schema.Types.ObjectId, ref: 'BillingPlan' },
+    upgradedAt: { type: Date, default: Date.now },
+    upgradedBy: mongoose.Schema.Types.ObjectId,
+    upgradedByModel: { type: String, enum: ['SalesUser', 'SuperAdmin'] },
+    paymentAmount: Number,
+    upgradeRequestId: { type: mongoose.Schema.Types.ObjectId, ref: 'UpgradeRequest' },
+    notes: String
+  }],
+  
   isDeleted: { type: Boolean, default: false },
   deletedAt: { type: Date }
   
@@ -334,6 +351,65 @@ tenancySchema.statics.findByDomain = async function(domain) {
   
   // Check slug
   return this.findOne({ slug: subdomain, status: 'active' });
+};
+
+// Upgrade Management Methods
+tenancySchema.methods.hasPendingUpgrade = function() {
+  return this.pendingUpgrades && this.pendingUpgrades.length > 0;
+};
+
+tenancySchema.methods.addUpgradeRequest = function(upgradeRequestId) {
+  if (!this.pendingUpgrades.includes(upgradeRequestId)) {
+    this.pendingUpgrades.push(upgradeRequestId);
+  }
+  return this;
+};
+
+tenancySchema.methods.removeUpgradeRequest = function(upgradeRequestId) {
+  this.pendingUpgrades = this.pendingUpgrades.filter(
+    id => !id.equals(upgradeRequestId)
+  );
+  return this;
+};
+
+tenancySchema.methods.addUpgradeHistory = function(upgradeData) {
+  this.upgradeHistory.push({
+    fromPlan: upgradeData.fromPlan,
+    toPlan: upgradeData.toPlan,
+    upgradedAt: upgradeData.upgradedAt || new Date(),
+    upgradedBy: upgradeData.upgradedBy,
+    upgradedByModel: upgradeData.upgradedByModel,
+    paymentAmount: upgradeData.paymentAmount,
+    upgradeRequestId: upgradeData.upgradeRequestId,
+    notes: upgradeData.notes || ''
+  });
+  return this;
+};
+
+tenancySchema.methods.upgradePlan = async function(newPlan, upgradeData) {
+  // Update current plan
+  const oldPlan = this.subscription.planId;
+  this.subscription.planId = newPlan._id;
+  this.subscription.plan = newPlan.name;
+  this.subscription.features = newPlan.features;
+  
+  // Add to history
+  this.addUpgradeHistory({
+    fromPlan: oldPlan,
+    toPlan: newPlan._id,
+    upgradedBy: upgradeData.upgradedBy,
+    upgradedByModel: upgradeData.upgradedByModel,
+    paymentAmount: upgradeData.paymentAmount,
+    upgradeRequestId: upgradeData.upgradeRequestId,
+    notes: upgradeData.notes
+  });
+  
+  // Remove from pending upgrades
+  if (upgradeData.upgradeRequestId) {
+    this.removeUpgradeRequest(upgradeData.upgradeRequestId);
+  }
+  
+  return this;
 };
 
 module.exports = mongoose.model('Tenancy', tenancySchema);

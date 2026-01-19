@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const salesSubscriptionController = require('../controllers/salesSubscriptionController');
-const { authenticateSales, requireSalesPermission, logSalesAction } = require('../middlewares/salesAuth');
+const { authenticateSalesOrSuperAdmin, requireSalesOrSuperAdminPermission, logSalesOrSuperAdminAction } = require('../middlewares/salesOrSuperAdminAuth');
 const { body, param } = require('express-validator');
 
 // Validation rules
@@ -34,97 +34,97 @@ const validateCustomPlan = [
   body('features').optional().isObject()
 ];
 
-// All routes require sales authentication
-router.use(authenticateSales);
+// All routes require sales or superadmin authentication
+router.use(authenticateSalesOrSuperAdmin);
 
 // Get subscription statistics
 router.get('/stats',
-  requireSalesPermission('subscriptions', 'view'),
-  logSalesAction('view_subscription_stats', 'subscriptions'),
+  requireSalesOrSuperAdminPermission('subscriptions', 'view'),
+  logSalesOrSuperAdminAction('view_subscription_stats', 'subscriptions'),
   salesSubscriptionController.getSubscriptionStats
 );
 
 // Get expiring trials
 router.get('/expiring-trials',
-  requireSalesPermission('trials', 'view'),
-  logSalesAction('view_expiring_trials', 'subscriptions'),
+  requireSalesOrSuperAdminPermission('trials', 'view'),
+  logSalesOrSuperAdminAction('view_expiring_trials', 'subscriptions'),
   salesSubscriptionController.getExpiringTrials
 );
 
 // Get available plans (MUST be before /:tenancyId route)
 router.get('/plans',
-  requireSalesPermission('plans', 'view'),
-  logSalesAction('view_plans', 'plans'),
+  requireSalesOrSuperAdminPermission('plans', 'view'),
+  logSalesOrSuperAdminAction('view_plans', 'plans'),
   salesSubscriptionController.getPlans
 );
 
 // Create custom plan (MUST be before /:tenancyId route)
 router.post('/plans/custom',
-  requireSalesPermission('plans', 'customPricing'),
+  requireSalesOrSuperAdminPermission('plans', 'customPricing'),
   validateCustomPlan,
-  logSalesAction('create_custom_plan', 'plans'),
+  logSalesOrSuperAdminAction('create_custom_plan', 'plans'),
   salesSubscriptionController.createCustomPlan
 );
 
 // Get all subscriptions
 router.get('/',
-  requireSalesPermission('subscriptions', 'view'),
-  logSalesAction('view_subscriptions', 'subscriptions'),
+  requireSalesOrSuperAdminPermission('subscriptions', 'view'),
+  logSalesOrSuperAdminAction('view_subscriptions', 'subscriptions'),
   salesSubscriptionController.getSubscriptions
 );
 
 // Get single subscription (MUST be after specific routes like /plans)
 router.get('/:tenancyId',
-  requireSalesPermission('subscriptions', 'view'),
-  logSalesAction('view_subscription', 'subscriptions'),
+  requireSalesOrSuperAdminPermission('subscriptions', 'view'),
+  logSalesOrSuperAdminAction('view_subscription', 'subscriptions'),
   salesSubscriptionController.getSubscription
 );
 
 // Assign plan to tenancy
 router.post('/:tenancyId/assign-plan',
-  requireSalesPermission('plans', 'assign'),
+  requireSalesOrSuperAdminPermission('plans', 'assign'),
   validateAssignPlan,
-  logSalesAction('assign_plan', 'subscriptions'),
+  logSalesOrSuperAdminAction('assign_plan', 'subscriptions'),
   salesSubscriptionController.assignPlan
 );
 
 // Activate subscription
 router.post('/:tenancyId/activate',
-  requireSalesPermission('subscriptions', 'activate'),
+  requireSalesOrSuperAdminPermission('subscriptions', 'activate'),
   validateActivation,
-  logSalesAction('activate_subscription', 'subscriptions'),
+  logSalesOrSuperAdminAction('activate_subscription', 'subscriptions'),
   salesSubscriptionController.activateSubscription
 );
 
 // Pause subscription
 router.post('/:tenancyId/pause',
-  requireSalesPermission('subscriptions', 'pause'),
+  requireSalesOrSuperAdminPermission('subscriptions', 'pause'),
   body('reason').optional().trim(),
-  logSalesAction('pause_subscription', 'subscriptions'),
+  logSalesOrSuperAdminAction('pause_subscription', 'subscriptions'),
   salesSubscriptionController.pauseSubscription
 );
 
 // Upgrade subscription
 router.post('/:tenancyId/upgrade',
-  requireSalesPermission('subscriptions', 'upgrade'),
+  requireSalesOrSuperAdminPermission('subscriptions', 'upgrade'),
   validatePlanChange,
-  logSalesAction('upgrade_subscription', 'subscriptions'),
+  logSalesOrSuperAdminAction('upgrade_subscription', 'subscriptions'),
   salesSubscriptionController.upgradeSubscription
 );
 
 // Downgrade subscription
 router.post('/:tenancyId/downgrade',
-  requireSalesPermission('subscriptions', 'downgrade'),
+  requireSalesOrSuperAdminPermission('subscriptions', 'downgrade'),
   validatePlanChange,
-  logSalesAction('downgrade_subscription', 'subscriptions'),
+  logSalesOrSuperAdminAction('downgrade_subscription', 'subscriptions'),
   salesSubscriptionController.downgradeSubscription
 );
 
 // Extend trial
 router.post('/:tenancyId/extend-trial',
-  requireSalesPermission('trials', 'extend'),
+  requireSalesOrSuperAdminPermission('trials', 'extend'),
   validateTrialExtension,
-  logSalesAction('extend_subscription_trial', 'subscriptions'),
+  logSalesOrSuperAdminAction('extend_subscription_trial', 'subscriptions'),
   salesSubscriptionController.extendTrial
 );
 

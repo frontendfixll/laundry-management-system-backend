@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const salesLeadController = require('../controllers/salesLeadController');
-const { authenticateSales, requireSalesPermission, logSalesAction } = require('../middlewares/salesAuth');
+const { authenticateSalesOrSuperAdmin, requireSalesOrSuperAdminPermission, logSalesOrSuperAdminAction } = require('../middlewares/salesOrSuperAdminAuth');
 const { body, param } = require('express-validator');
 
 // Validation rules
@@ -38,105 +38,105 @@ const validateMarkLost = [
   body('notes').optional().trim()
 ];
 
-// All routes require sales authentication
-router.use(authenticateSales);
+// All routes require sales or superadmin authentication
+router.use(authenticateSalesOrSuperAdmin);
 
 // Get lead statistics
 router.get('/stats',
-  requireSalesPermission('leads', 'view'),
-  logSalesAction('view_lead_stats', 'leads'),
+  requireSalesOrSuperAdminPermission('leads', 'view'),
+  logSalesOrSuperAdminAction('view_lead_stats', 'leads'),
   salesLeadController.getLeadStats
 );
 
 // Get expiring leads
 router.get('/expiring-soon',
-  requireSalesPermission('trials', 'view'),
-  logSalesAction('view_expiring_leads', 'leads'),
+  requireSalesOrSuperAdminPermission('trials', 'view'),
+  logSalesOrSuperAdminAction('view_expiring_leads', 'leads'),
   salesLeadController.getExpiringLeads
 );
 
 // Get all leads
 router.get('/',
-  requireSalesPermission('leads', 'view'),
-  logSalesAction('view_leads', 'leads'),
+  requireSalesOrSuperAdminPermission('leads', 'view'),
+  logSalesOrSuperAdminAction('view_leads', 'leads'),
   salesLeadController.getLeads
 );
 
 // Get single lead
 router.get('/:id',
-  requireSalesPermission('leads', 'view'),
-  logSalesAction('view_lead', 'leads'),
+  requireSalesOrSuperAdminPermission('leads', 'view'),
+  logSalesOrSuperAdminAction('view_lead', 'leads'),
   salesLeadController.getLead
 );
 
 // Create lead
 router.post('/',
-  requireSalesPermission('leads', 'create'),
+  requireSalesOrSuperAdminPermission('leads', 'create'),
   validateLeadCreation,
-  logSalesAction('create_lead', 'leads'),
+  logSalesOrSuperAdminAction('create_lead', 'leads'),
   salesLeadController.createLead
 );
 
 // Update lead
 router.put('/:id',
-  requireSalesPermission('leads', 'update'),
+  requireSalesOrSuperAdminPermission('leads', 'update'),
   validateLeadUpdate,
-  logSalesAction('update_lead', 'leads'),
+  logSalesOrSuperAdminAction('update_lead', 'leads'),
   salesLeadController.updateLead
 );
 
 // Delete lead
 router.delete('/:id',
-  requireSalesPermission('leads', 'delete'),
-  logSalesAction('delete_lead', 'leads'),
+  requireSalesOrSuperAdminPermission('leads', 'delete'),
+  logSalesOrSuperAdminAction('delete_lead', 'leads'),
   salesLeadController.deleteLead
 );
 
 // Assign lead
 router.post('/:id/assign',
-  requireSalesPermission('leads', 'update'),
+  requireSalesOrSuperAdminPermission('leads', 'update'),
   body('salesUserId').isMongoId().withMessage('Valid sales user ID required'),
-  logSalesAction('assign_lead', 'leads'),
+  logSalesOrSuperAdminAction('assign_lead', 'leads'),
   salesLeadController.assignLead
 );
 
 // Add follow-up note
 router.post('/:id/follow-up',
-  requireSalesPermission('leads', 'update'),
+  requireSalesOrSuperAdminPermission('leads', 'update'),
   validateFollowUp,
-  logSalesAction('add_follow_up', 'leads'),
+  logSalesOrSuperAdminAction('add_follow_up', 'leads'),
   salesLeadController.addFollowUpNote
 );
 
 // Start trial
 router.post('/:id/start-trial',
-  requireSalesPermission('trials', 'extend'),
+  requireSalesOrSuperAdminPermission('trials', 'extend'),
   body('trialDays').optional().isInt({ min: 1, max: 90 }).withMessage('Trial days must be between 1 and 90'),
-  logSalesAction('start_trial', 'trials'),
+  logSalesOrSuperAdminAction('start_trial', 'trials'),
   salesLeadController.startTrial
 );
 
 // Extend trial
 router.post('/:id/extend-trial',
-  requireSalesPermission('trials', 'extend'),
+  requireSalesOrSuperAdminPermission('trials', 'extend'),
   validateTrialExtension,
-  logSalesAction('extend_trial', 'trials'),
+  logSalesOrSuperAdminAction('extend_trial', 'trials'),
   salesLeadController.extendTrial
 );
 
 // Convert lead
 router.post('/:id/convert',
-  requireSalesPermission('trials', 'convert'),
+  requireSalesOrSuperAdminPermission('trials', 'convert'),
   validateConversion,
-  logSalesAction('convert_lead', 'leads'),
+  logSalesOrSuperAdminAction('convert_lead', 'leads'),
   salesLeadController.convertLead
 );
 
 // Mark lead as lost
 router.post('/:id/mark-lost',
-  requireSalesPermission('leads', 'update'),
+  requireSalesOrSuperAdminPermission('leads', 'update'),
   validateMarkLost,
-  logSalesAction('mark_lead_lost', 'leads'),
+  logSalesOrSuperAdminAction('mark_lead_lost', 'leads'),
   salesLeadController.markLeadAsLost
 );
 

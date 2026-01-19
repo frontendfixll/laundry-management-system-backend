@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const salesPaymentController = require('../controllers/salesPaymentController');
-const { authenticateSales, requireSalesPermission, logSalesAction } = require('../middlewares/salesAuth');
+const { authenticateSalesOrSuperAdmin, requireSalesOrSuperAdminPermission, logSalesOrSuperAdminAction } = require('../middlewares/salesOrSuperAdminAuth');
 const { body, param } = require('express-validator');
 
 // Validation rules
@@ -43,71 +43,71 @@ router.post('/webhook',
   salesPaymentController.handleStripeWebhook
 );
 
-// All other routes require sales authentication
-router.use(authenticateSales);
+// All other routes require sales or superadmin authentication
+router.use(authenticateSalesOrSuperAdmin);
 
 // Payment statistics
 router.get('/stats',
-  requireSalesPermission('payments', 'view'),
-  logSalesAction('view_payment_stats', 'payments'),
+  requireSalesOrSuperAdminPermission('payments', 'view'),
+  logSalesOrSuperAdminAction('view_payment_stats', 'payments'),
   salesPaymentController.getPaymentStats
 );
 
 // Get all payments
 router.get('/',
-  requireSalesPermission('payments', 'view'),
-  logSalesAction('view_payments', 'payments'),
+  requireSalesOrSuperAdminPermission('payments', 'view'),
+  logSalesOrSuperAdminAction('view_payments', 'payments'),
   salesPaymentController.getPayments
 );
 
 // Get single payment
 router.get('/:id',
-  requireSalesPermission('payments', 'view'),
-  logSalesAction('view_payment', 'payments'),
+  requireSalesOrSuperAdminPermission('payments', 'view'),
+  logSalesOrSuperAdminAction('view_payment', 'payments'),
   salesPaymentController.getPayment
 );
 
 // Generate payment link
 router.post('/generate-link',
-  requireSalesPermission('payments', 'generateLink'),
+  requireSalesOrSuperAdminPermission('payments', 'generateLink'),
   validateGenerateLink,
-  logSalesAction('generate_payment_link', 'payments'),
+  logSalesOrSuperAdminAction('generate_payment_link', 'payments'),
   salesPaymentController.generatePaymentLink
 );
 
 // Record offline payment
 router.post('/record-offline',
-  requireSalesPermission('payments', 'recordOffline'),
+  requireSalesOrSuperAdminPermission('payments', 'recordOffline'),
   validateOfflinePayment,
-  logSalesAction('record_offline_payment', 'payments'),
+  logSalesOrSuperAdminAction('record_offline_payment', 'payments'),
   salesPaymentController.recordOfflinePayment
 );
 
 // Mark invoice as paid
 router.post('/:invoiceId/mark-paid',
-  requireSalesPermission('payments', 'markPaid'),
+  requireSalesOrSuperAdminPermission('payments', 'markPaid'),
   validateMarkPaid,
-  logSalesAction('mark_invoice_paid', 'payments'),
+  logSalesOrSuperAdminAction('mark_invoice_paid', 'payments'),
   salesPaymentController.markInvoiceAsPaid
 );
 
 // Invoice routes
 router.get('/invoices/all',
-  requireSalesPermission('payments', 'view'),
-  logSalesAction('view_invoices', 'invoices'),
+  requireSalesOrSuperAdminPermission('payments', 'view'),
+  logSalesOrSuperAdminAction('view_invoices', 'invoices'),
   salesPaymentController.getInvoices
 );
 
 router.get('/invoices/:id',
-  requireSalesPermission('payments', 'view'),
-  logSalesAction('view_invoice', 'invoices'),
+  requireSalesOrSuperAdminPermission('payments', 'view'),
+  logSalesOrSuperAdminAction('view_invoice', 'invoices'),
   salesPaymentController.getInvoice
 );
 
 router.post('/invoices',
-  requireSalesPermission('payments', 'generateLink'),
+  requireSalesOrSuperAdminPermission('payments', 'generateLink'),
   validateCreateInvoice,
-  logSalesAction('create_invoice', 'invoices'),
+  logSalesOrSuperAdminAction('create_invoice', 'invoices'),
   salesPaymentController.createInvoice
 );
 

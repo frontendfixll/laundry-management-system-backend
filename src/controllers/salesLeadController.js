@@ -23,15 +23,19 @@ exports.getLeads = asyncHandler(async (req, res) => {
   // Build filter
   const filter = {};
   
-  // IMPORTANT: Sales users can only see their own assigned leads
-  // Unless they explicitly query for unassigned leads
+  // Handle different user types
   if (assignedTo === 'unassigned') {
     filter.assignedTo = null;
   } else if (assignedTo) {
     filter.assignedTo = assignedTo;
   } else {
-    // Default: show only leads assigned to the logged-in sales user
-    filter.assignedTo = req.salesUser._id;
+    // SuperAdmin can see all leads, Sales users see only their assigned leads
+    if (req.isSuperAdmin) {
+      // SuperAdmin sees all leads by default (no filter)
+    } else if (req.salesUser) {
+      // Sales user sees only their assigned leads
+      filter.assignedTo = req.salesUser._id;
+    }
   }
   
   if (status) filter.status = status;
@@ -88,7 +92,7 @@ exports.getLead = asyncHandler(async (req, res) => {
     return sendError(res, 'Lead not found', 404);
   }
 
-  sendSuccess(res, 'Lead retrieved', lead);
+  sendSuccess(res, { lead }, 'Lead retrieved');
 });
 
 /**
@@ -101,14 +105,18 @@ exports.createLead = asyncHandler(async (req, res) => {
     return sendError(res, 'Validation failed', 400, errors.array());
   }
 
+  // Get user info based on user type
+  const userId = req.salesUser?._id || req.admin?._id;
+  const userModel = req.salesUser ? 'SalesUser' : 'SuperAdmin';
+
   const leadData = {
     ...req.body,
-    createdBy: req.salesUser._id,
-    createdByModel: 'SalesUser'
+    createdBy: userId,
+    createdByModel: userModel
   };
 
-  // Auto-assign to creator if not specified
-  if (!leadData.assignedTo) {
+  // Auto-assign to creator if not specified (only for sales users)
+  if (!leadData.assignedTo && req.salesUser) {
     leadData.assignedTo = req.salesUser._id;
     leadData.assignedDate = new Date();
   }
@@ -118,10 +126,12 @@ exports.createLead = asyncHandler(async (req, res) => {
   // Calculate initial score
   await lead.calculateScore();
 
-  // Update sales user performance
-  await req.salesUser.updatePerformance({
-    leadsAssigned: req.salesUser.performance.leadsAssigned + 1
-  });
+  // Update sales user performance (only for sales users)
+  if (req.salesUser) {
+    await req.salesUser.updatePerformance({
+      leadsAssigned: req.salesUser.performance.leadsAssigned + 1
+    });
+  }
 
   sendSuccess(res, 'Lead created successfully', lead, 201);
 });
@@ -150,8 +160,9 @@ exports.updateLead = asyncHandler(async (req, res) => {
     }
   });
 
-  lead.updatedBy = req.salesUser._id;
-  lead.updatedByModel = 'SalesUser';
+  // Set updater info based on user type
+  lead.updatedBy = req.salesUser?._id || req.admin?._id;
+  lead.updatedByModel = req.salesUser ? 'SalesUser' : 'SuperAdmin';
 
   await lead.save();
 
@@ -208,7 +219,7 @@ exports.addFollowUpNote = asyncHandler(async (req, res) => {
     return sendError(res, 'Lead not found', 404);
   }
 
-  await lead.addFollowUpNote(note, req.salesUser._id);
+  await lead.addFollowUpNote(note, req.salesUser?._id || req.admin?._id);
   
   if (nextFollowUp) {
     lead.nextFollowUp = nextFollowUp;
@@ -310,11 +321,13 @@ exports.convertLead = asyncHandler(async (req, res) => {
 
   await lead.convertToCustomer(tenancyId);
 
-  // Update sales user performance
-  await req.salesUser.updatePerformance({
-    leadsConverted: req.salesUser.performance.leadsConverted + 1,
-    totalRevenue: req.salesUser.performance.totalRevenue + (lead.estimatedRevenue || 0)
-  });
+  // Update sales user performance (only for sales users)
+  if (req.salesUser) {
+    await req.salesUser.updatePerformance({
+      leadsConverted: req.salesUser.performance.leadsConverted + 1,
+      totalRevenue: req.salesUser.performance.totalRevenue + (lead.estimatedRevenue || 0)
+    });
+  }
 
   sendSuccess(res, 'Lead converted successfully', lead);
 });

@@ -110,7 +110,7 @@ exports.generatePaymentLink = asyncHandler(async (req, res) => {
       metadata: {
         tenancyId: tenancy._id.toString(),
         invoiceId: invoiceId || '',
-        salesUserId: req.salesUser._id.toString()
+        salesUserId: (req.salesUser?._id || req.admin?._id).toString()
       }
     });
 
@@ -126,8 +126,8 @@ exports.generatePaymentLink = asyncHandler(async (req, res) => {
       gatewayPaymentId: paymentLink.id,
       metadata: {
         paymentLink: paymentLink.url,
-        createdBy: req.salesUser._id,
-        createdByModel: 'SalesUser'
+        createdBy: req.salesUser?._id || req.admin?._id,
+        createdByModel: req.salesUser ? 'SalesUser' : 'SuperAdmin'
       }
     });
 
@@ -179,8 +179,8 @@ exports.recordOfflinePayment = asyncHandler(async (req, res) => {
     paidAt: paymentDate || new Date(),
     metadata: {
       notes,
-      recordedBy: req.salesUser._id,
-      recordedByModel: 'SalesUser',
+      recordedBy: req.salesUser?._id || req.admin?._id,
+      recordedByModel: req.salesUser ? 'SalesUser' : 'SuperAdmin',
       isOffline: true
     }
   });
@@ -241,8 +241,8 @@ exports.markInvoiceAsPaid = asyncHandler(async (req, res) => {
     paidAt: new Date(),
     metadata: {
       notes,
-      markedBy: req.salesUser._id,
-      markedByModel: 'SalesUser'
+      markedBy: req.salesUser?._id || req.admin?._id,
+      markedByModel: req.salesUser ? 'SalesUser' : 'SuperAdmin'
     }
   });
 
@@ -353,8 +353,8 @@ exports.createInvoice = asyncHandler(async (req, res) => {
     items: items || [],
     notes,
     metadata: {
-      createdBy: req.salesUser._id,
-      createdByModel: 'SalesUser'
+      createdBy: req.salesUser?._id || req.admin?._id,
+      createdByModel: req.salesUser ? 'SalesUser' : 'SuperAdmin'
     }
   });
 

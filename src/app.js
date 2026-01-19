@@ -47,7 +47,9 @@ const salesAuthRoutes = require('./routes/salesAuthRoutes');
 const salesLeadRoutes = require('./routes/salesLeadRoutes');
 const salesSubscriptionRoutes = require('./routes/salesSubscriptionRoutes');
 const salesPaymentRoutes = require('./routes/salesPaymentRoutes');
+const salesAnalyticsRoutes = require('./routes/salesAnalyticsRoutes');
 const superAdminSalesRoutes = require('./routes/superAdminSalesRoutes');
+const upgradeRoutes = require('./routes/upgradeRoutes');
 
 // Test routes (development only)
 const testNotificationRoutes = require('./routes/testNotificationRoutes');
@@ -94,6 +96,8 @@ const allowedOrigins = [
   'http://localhost:3003',
   'http://localhost:3004', // Marketing frontend
   'http://localhost:3005', // Sales frontend
+  'http://localhost:3006', // Marketing frontend (alternative port)
+  'http://localhost:3007', // Marketing frontend (alternative port 2)
   process.env.FRONTEND_URL,
   process.env.SUPERADMIN_URL,
   process.env.MARKETING_URL,
@@ -138,6 +142,9 @@ app.use(cors({
 
 // Cookie parser middleware
 app.use(cookieParser());
+
+// Stripe webhook route (must be before JSON parsing)
+app.use('/api/sales/upgrades/stripe-webhook', express.raw({ type: 'application/json' }));
 
 // Rate limiting (relaxed for development)
 const limiter = rateLimit({
@@ -256,6 +263,8 @@ app.use('/api/sales/auth', salesAuthRoutes);
 app.use('/api/sales/leads', salesLeadRoutes);
 app.use('/api/sales/subscriptions', salesSubscriptionRoutes);
 app.use('/api/sales/payments', salesPaymentRoutes);
+app.use('/api/sales/analytics', salesAnalyticsRoutes);
+app.use('/api/sales/upgrades', upgradeRoutes);
 
 // Test routes (development only)
 if (process.env.NODE_ENV !== 'production') {
@@ -294,6 +303,10 @@ app.use('/api/invitations', invitationPublicRoutes);
 
 // Lead public routes (no auth required - for marketing site lead capture)
 app.use('/api/public/leads', leadPublicRoutes);
+
+// Customer upgrade routes (no auth required - for customer self-service)
+// const customerUpgradeRoutes = require('./routes/customerUpgradeRoutes');
+// app.use('/api/public', customerUpgradeRoutes);
 
 // Billing public routes (no auth required - for pricing page)
 const billingPublicRoutes = require('./routes/billingPublicRoutes');

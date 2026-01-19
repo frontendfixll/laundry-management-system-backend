@@ -1,75 +1,25 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+require('dotenv').config();
 
 // Connect to MongoDB
-mongoose.connect('mongodb+srv://deepakfixl2_db_user:sgr7QHS46sn36eEs@cluster0.ugk4dbe.mongodb.net/laundry-management-system?retryWrites=true&w=majority', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-});
+mongoose.connect(process.env.MONGODB_URI);
 
-// Define SalesUser schema (simplified)
-const salesUserSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  email: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-  phone: String,
-  employeeId: { type: String, unique: true },
-  designation: String,
-  role: { type: String, default: 'sales_admin' },
-  permissions: {
-    leads: {
-      view: { type: Boolean, default: true },
-      create: { type: Boolean, default: true },
-      update: { type: Boolean, default: true },
-      delete: { type: Boolean, default: true },
-      export: { type: Boolean, default: true },
-    },
-    trials: {
-      view: { type: Boolean, default: true },
-      extend: { type: Boolean, default: true },
-      convert: { type: Boolean, default: true },
-    },
-    subscriptions: {
-      view: { type: Boolean, default: true },
-      activate: { type: Boolean, default: true },
-      pause: { type: Boolean, default: true },
-      upgrade: { type: Boolean, default: true },
-      downgrade: { type: Boolean, default: true },
-    },
-    plans: {
-      view: { type: Boolean, default: true },
-      assign: { type: Boolean, default: true },
-      customPricing: { type: Boolean, default: false },
-      createPlan: { type: Boolean, default: false },
-    },
-    payments: {
-      view: { type: Boolean, default: true },
-      generateLink: { type: Boolean, default: true },
-      recordOffline: { type: Boolean, default: true },
-      markPaid: { type: Boolean, default: true },
-    },
-    analytics: {
-      view: { type: Boolean, default: true },
-      export: { type: Boolean, default: true },
-    },
-  },
-  performance: {
-    leadsAssigned: { type: Number, default: 0 },
-    leadsConverted: { type: Number, default: 0 },
-    conversionRate: { type: Number, default: 0 },
-    totalRevenue: { type: Number, default: 0 },
-    currentMonthRevenue: { type: Number, default: 0 },
-    target: { type: Number, default: 0 },
-    targetAchieved: { type: Number, default: 0 },
-  },
-  isActive: { type: Boolean, default: true },
-  sessions: [],
-}, { timestamps: true });
-
-const SalesUser = mongoose.model('SalesUser', salesUserSchema);
+const SalesUser = require('./src/models/SalesUser');
 
 async function createSalesUser() {
   try {
+    // Check if user already exists
+    const existingUser = await SalesUser.findOne({ email: 'virat@sales.com' });
+    if (existingUser) {
+      console.log('✅ Sales user already exists!');
+      console.log('📧 Email: virat@sales.com');
+      console.log('🔑 Password: sales123');
+      console.log('👤 Name:', existingUser.name);
+      console.log('🆔 Employee ID:', existingUser.employeeId);
+      process.exit(0);
+    }
+
     // Hash password
     const hashedPassword = await bcrypt.hash('sales123', 10);
 

@@ -275,8 +275,8 @@ exports.upgradeSubscription = asyncHandler(async (req, res) => {
       fromPlan: currentPlan?.name || 'Unknown',
       toPlan: newPlan.name,
       upgradeDate: new Date(),
-      processedBy: req.salesUser._id,
-      processedByModel: 'SalesUser',
+      processedBy: req.salesUser?._id || req.admin?._id,
+      processedByModel: req.salesUser ? 'SalesUser' : 'SuperAdmin',
       paymentMethodUsed: paymentMethod,
       notes: `Plan upgraded from ${currentPlan?.displayName || 'Unknown'} to ${newPlan.displayName}`
     }
@@ -344,8 +344,8 @@ exports.downgradeSubscription = asyncHandler(async (req, res) => {
         fromPlan: currentPlan?.name || 'Unknown',
         toPlan: newPlan.name,
         downgradeDate: new Date(),
-        processedBy: req.salesUser._id,
-        processedByModel: 'SalesUser',
+        processedBy: req.salesUser?._id || req.admin?._id,
+        processedByModel: req.salesUser ? 'SalesUser' : 'SuperAdmin',
         notes: 'Credit for plan downgrade'
       }
     });
@@ -516,7 +516,7 @@ exports.createCustomPlan = asyncHandler(async (req, res) => {
     features: new Map(Object.entries(features || {})),
     isCustom: true,
     showOnMarketing: false,
-    createdBy: req.salesUser._id
+    createdBy: req.salesUser?._id || req.admin?._id
   });
 
   sendSuccess(res, 'Custom plan created successfully', plan, 201);
