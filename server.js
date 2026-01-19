@@ -54,6 +54,39 @@ const setupCronJobs = () => {
 if (isVercel) {
   // Initialize database connection for serverless
   connectDB();
+  
+  // Add CORS headers for all responses in serverless environment
+  app.use((req, res, next) => {
+    const origin = req.get('origin');
+    
+    // Allow specific origins
+    const allowedOrigins = [
+      'https://laundrylobby.vercel.app',
+      'https://laundrylobby-superadmin.vercel.app',
+      'https://laundrylobby.com'
+    ];
+    
+    // Check if origin matches tenant subdomain pattern
+    const isTenantSubdomain = origin && /^https:\/\/[\w-]+\.laundrylobby\.com$/.test(origin);
+    const isAllowedOrigin = allowedOrigins.includes(origin);
+    
+    if (isTenantSubdomain || isAllowedOrigin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Tenancy-ID, X-Tenancy-Slug');
+      res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
+    }
+    
+    // Handle preflight requests
+    if (req.method === 'OPTIONS') {
+      return res.status(200).end();
+    }
+    
+    next();
+  });
+  
+  console.log('🌐 Vercel serverless mode: CORS headers configured for tenant subdomains');
   module.exports = app;
 } else {
   // Traditional server setup for local development and other platforms

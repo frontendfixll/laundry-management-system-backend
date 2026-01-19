@@ -108,16 +108,49 @@ const allowedOrigins = [
   // Allow all subdomains of your domain
   /^https:\/\/[\w-]+\.laundry$/,
   /^http:\/\/[\w-]+\.laundry$/,
-  // Allow laundrypro.com and laundrylobby.com domains
+  // Allow laundrypro.com and laundrylobby.com domains with all subdomains
   /^https:\/\/[\w-]+\.laundrypro\.com$/,
   /^https:\/\/[\w-]+\.laundrylobby\.com$/,
+  // Explicitly allow main domains
   'https://laundrypro.com',
-  'https://laundrylobby.com'
+  'https://laundrylobby.com',
+  'https://laundrylobby.vercel.app',
+  // Allow specific tenant subdomains (for testing)
+  'https://tenacy.laundrylobby.com',
+  'https://quickwash.laundrylobby.com',
+  'https://cleanpro.laundrylobby.com'
 ].filter(Boolean);
 
 app.use(cors({
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    console.log('🌐 CORS check for origin:', origin);
+    
+    // Check if origin matches allowed patterns
+    const isAllowed = allowedOrigins.some(allowed => {
+      if (typeof allowed === 'string') {
+        const match = allowed === origin;
+        if (match) console.log('✅ CORS allowed (string match):', origin);
+        return match;
+      }
+      if (allowed instanceof RegExp) {
+        const match = allowed.test(origin);
+        if (match) console.log('✅ CORS allowed (regex match):', origin, 'pattern:', allowed);
+        return match;
+      }
+      return false;
+    });
+    
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      console.log('❌ CORS blocked origin:', origin);
+      console.log('📋 Allowed origins:', allowedOrigins.filter(o => typeof o === 'string'));
+      callback(null, false);
+    }
+  },
     if (!origin) return callback(null, true);
     
     // Check if origin matches allowed patterns

@@ -20,14 +20,52 @@ class SocketService {
    * Initialize Socket.IO server
    */
   initialize(server) {
+    // Define allowed origins for WebSocket connections
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:3002',
+      'http://localhost:3003',
+      'https://laundrylobby.vercel.app',
+      'https://laundrylobby-superadmin.vercel.app',
+      'https://laundrylobby.com',
+      // Allow all tenant subdomains
+      /^https:\/\/[\w-]+\.laundrylobby\.com$/,
+      /^https:\/\/.*\.vercel\.app$/
+    ];
+
     this.io = new Server(server, {
       cors: {
-        origin: process.env.CORS_ORIGIN || '*',
+        origin: (origin, callback) => {
+          // Allow requests with no origin (mobile apps, etc.)
+          if (!origin) return callback(null, true);
+          
+          console.log('🔌 WebSocket CORS check for origin:', origin);
+          
+          // Check if origin is allowed
+          const isAllowed = allowedOrigins.some(allowed => {
+            if (typeof allowed === 'string') {
+              return allowed === origin;
+            }
+            if (allowed instanceof RegExp) {
+              return allowed.test(origin);
+            }
+            return false;
+          });
+          
+          if (isAllowed) {
+            console.log('✅ WebSocket CORS allowed:', origin);
+            callback(null, true);
+          } else {
+            console.log('❌ WebSocket CORS blocked:', origin);
+            callback(null, false);
+          }
+        },
         credentials: true,
         methods: ['GET', 'POST']
       },
       pingTimeout: 60000,
-      pingInterval: 25000
+      pingInterval: 25000,
+      transports: ['websocket', 'polling']
     });
 
     // Authentication middleware

@@ -1,10 +1,20 @@
 const Notification = require('../models/Notification');
 const { NOTIFICATION_TYPES, RECIPIENT_TYPES } = require('../config/constants');
-const socketService = require('./socketService');
+
+// Check if running on Vercel (serverless)
+const isVercel = process.env.VERCEL || process.env.VERCEL_ENV;
+
+// Import socket service only if not on Vercel
+let socketService;
+if (!isVercel) {
+  socketService = require('./socketService');
+} else {
+  console.log('🌐 Running on Vercel: WebSocket disabled, using fallback notifications');
+}
 
 class NotificationService {
   /**
-   * Create and send notification (with real-time SSE push)
+   * Create and send notification (with real-time push if available)
    */
   static async createNotification({
     recipientId,
@@ -34,18 +44,22 @@ class NotificationService {
         channels
       });
 
-      // Send real-time notification via WebSocket
-      socketService.sendToUser(recipientId.toString(), {
-        _id: notification._id,
-        type: notification.type,
-        title: notification.title,
-        message: notification.message,
-        icon: notification.icon,
-        severity: notification.severity,
-        data: notification.data,
-        createdAt: notification.createdAt,
-        isRead: notification.isRead
-      });
+      // Send real-time notification via WebSocket (if available)
+      if (socketService && !isVercel) {
+        socketService.sendToUser(recipientId.toString(), {
+          _id: notification._id,
+          type: notification.type,
+          title: notification.title,
+          message: notification.message,
+          icon: notification.icon,
+          severity: notification.severity,
+          data: notification.data,
+          createdAt: notification.createdAt,
+          isRead: notification.isRead
+        });
+      } else {
+        console.log(`📧 Notification created (serverless): ${title} for user ${recipientId}`);
+      }
 
       return notification;
     } catch (error) {

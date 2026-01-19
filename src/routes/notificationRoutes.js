@@ -76,11 +76,52 @@ router.get('/unread-count', protect, async (req, res) => {
 });
 
 /**
- * @route PUT /api/notifications/read
+ * @route GET /api/notifications/poll
+ * @desc Poll for new notifications (serverless-friendly)
+ * @access Private
+ */
+router.get('/poll', protect, async (req, res) => {
+  try {
+    const { since } = req.query;
+    const userId = req.user._id;
+    
+    // Get notifications since timestamp
+    const query = { recipient: userId };
+    if (since) {
+      query.createdAt = { $gt: new Date(since) };
+    }
+    
+    const notifications = await Notification.find(query)
+      .sort({ createdAt: -1 })
+      .limit(20)
+      .lean();
+    
+    const unreadCount = await Notification.countDocuments({
+      recipient: userId,
+      isRead: false
+    });
+    
+    res.json({
+      success: true,
+      data: {
+        notifications,
+        unreadCount,
+        hasNew: notifications.length > 0,
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    console.error('Poll notifications error:', error);
+    res.status(500).json({ success: false, message: 'Failed to poll notifications' });
+  }
+});
+
+/**
+ * @route PUT /api/notifications/mark-read
  * @desc Mark notifications as read
  * @access Private
  */
-router.put('/read', protect, async (req, res) => {
+router.put('/mark-read', protect, async (req, res) => {
   try {
     const { notificationIds } = req.body;
     

@@ -1,9 +1,17 @@
 /**
  * Permission Sync Service
- * Handles real-time permission updates via WebSocket
+ * Handles real-time permission updates via WebSocket (when available)
  */
 
-const socketService = require('./socketService');
+// Check if running on Vercel (serverless)
+const isVercel = process.env.VERCEL || process.env.VERCEL_ENV;
+
+// Import socket service only if not on Vercel
+let socketService;
+if (!isVercel) {
+  socketService = require('./socketService');
+}
+
 const jwt = require('jsonwebtoken');
 
 class PermissionSyncService {
@@ -17,20 +25,24 @@ class PermissionSyncService {
       console.log(`🔄 Notifying user ${userId} of permission changes`);
       console.log(`📦 Updates:`, JSON.stringify(updates, null, 2));
 
-      // Send WebSocket event with correct event name
-      const sent = socketService.sendEventToUser(userId.toString(), 'permissionsUpdated', {
-        message: 'Your permissions have been updated',
-        updates: {
-          role: updates.role,
-          permissions: updates.permissions,
-          features: updates.features,
-          timestamp: new Date()
-        }
-      });
-      
-      console.log(`📤 WebSocket event sent: ${sent ? 'YES' : 'NO (user not connected)'}`);
+      // Send WebSocket event if available (non-serverless)
+      if (socketService && !isVercel) {
+        const sent = socketService.sendEventToUser(userId.toString(), 'permissionsUpdated', {
+          message: 'Your permissions have been updated',
+          updates: {
+            role: updates.role,
+            permissions: updates.permissions,
+            features: updates.features,
+            timestamp: new Date()
+          }
+        });
+        
+        console.log(`📤 WebSocket event sent: ${sent ? 'YES' : 'NO (user not connected)'}`);
+      } else {
+        console.log(`📧 Serverless mode: Permission update notification will be available on next page load`);
+      }
 
-      // Also send a notification
+      // Always send a notification (works in both environments)
       const NotificationService = require('./notificationService');
       await NotificationService.notifyPermissionGranted(userId, {
         module: updates.module || 'system',
