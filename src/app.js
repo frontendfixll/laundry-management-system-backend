@@ -91,6 +91,9 @@ app.set('trust proxy', 1);
 // EMERGENCY CORS FIX - Allow all origins temporarily
 app.use((req, res, next) => {
   console.log('🚨 EMERGENCY CORS FIX - Origin:', req.headers.origin);
+  console.log('🚨 EMERGENCY CORS FIX - Method:', req.method);
+  
+  // Set CORS headers for all requests
   res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
   res.header('Access-Control-Allow-Credentials', 'true');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
