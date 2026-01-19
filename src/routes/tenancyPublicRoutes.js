@@ -8,6 +8,7 @@ const Review = require('../models/Review');
 router.get('/branding/:identifier', async (req, res) => {
   try {
     const { identifier } = req.params;
+    console.log('🔍 Fetching branding for identifier:', identifier);
     
     // Find tenancy by slug, subdomain, or custom domain
     const tenancy = await Tenancy.findOne({
@@ -15,12 +16,18 @@ router.get('/branding/:identifier', async (req, res) => {
         { slug: identifier },
         { subdomain: identifier },
         { customDomain: identifier }
-      ],
-      status: 'active',
-      isDeleted: false
-    }).select('name slug subdomain customDomain branding landingPageTemplate contact businessHours settings.currency settings.language');
+      ]
+      // Temporarily remove status filter for debugging
+      // status: 'active',
+      // isDeleted: false
+    }).select('name slug subdomain customDomain branding landingPageTemplate contact businessHours settings.currency settings.language status isDeleted');
+    
+    console.log('🔍 Tenancy found:', tenancy ? tenancy.name : 'null');
+    console.log('🔍 Tenancy status:', tenancy?.status);
+    console.log('🔍 Tenancy isDeleted:', tenancy?.isDeleted);
     
     if (!tenancy) {
+      console.log('❌ Tenancy not found for identifier:', identifier);
       return res.status(404).json({
         success: false,
         message: 'Laundry not found'
