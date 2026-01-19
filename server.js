@@ -1,31 +1,18 @@
 const app = require('./src/app');
 const connectDB = require('./src/config/database');
-const cron = require('node-cron');
-const bannerLifecycleJob = require('./src/jobs/bannerLifecycleJob');
-const socketService = require('./src/services/socketService');
+
+// Check if running on Vercel
+const isVercel = process.env.VERCEL || process.env.VERCEL_ENV;
+
+// Only import cron and socket services if not on Vercel
+let cron, bannerLifecycleJob, socketService;
+if (!isVercel) {
+  cron = require('node-cron');
+  bannerLifecycleJob = require('./src/jobs/bannerLifecycleJob');
+  socketService = require('./src/services/socketService');
+}
 
 const PORT = process.env.PORT || 5000;
-
-// ============================================
-// KEEP-ALIVE: Prevent Render Free Tier Sleep
-// ============================================
-const keepAlive = () => {
-  const INTERVAL = 13 * 60 * 1000; // 13 minutes (Render sleeps at 15 min)
-  
-  setInterval(async () => {
-    try {
-      const url = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
-      const response = await fetch(`${url}/health`);
-      if (response.ok) {
-        console.log(`🏓 Keep-alive ping at ${new Date().toLocaleTimeString()}`);
-      }
-    } catch (err) {
-      console.log('🏓 Keep-alive ping failed (server may be starting)');
-    }
-  }, INTERVAL);
-  
-  console.log('⏰ Keep-alive enabled - pings every 13 min');
-};
 
 // Connect to MongoDB
 connectDB().catch(err => {
@@ -34,9 +21,14 @@ connectDB().catch(err => {
 });
 
 // ============================================
-// CRON JOBS: Banner Lifecycle Management
+// CRON JOBS: Banner Lifecycle Management (Only for non-Vercel environments)
 // ============================================
 const setupCronJobs = () => {
+  if (isVercel) {
+    console.log('⏰ Cron jobs disabled on Vercel (use Vercel Cron or external service)');
+    return;
+  }
+
   // Auto-activate scheduled banners (every 5 minutes)
   cron.schedule('*/5 * * * *', async () => {
     await bannerLifecycleJob.autoActivateBanners();
@@ -58,35 +50,43 @@ const setupCronJobs = () => {
   console.log('   - Campaign sync: Every 15 minutes');
 };
 
-// Start server
-const server = app.listen(PORT, () => {
-  const APP_VERSION = process.env.APP_VERSION || 'unknown';
-  
-  console.log('='.repeat(60));
-  console.log(`🚀 Laundry Management System v${APP_VERSION}`);
-  console.log('='.repeat(60));
-  console.log(`📦 Version: ${APP_VERSION}`);
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔌 Port: ${PORT}`);
-  console.log(`📍 Health: http://localhost:${PORT}/health`);
-  console.log(`📊 Version: http://localhost:${PORT}/version`);
-  console.log(`📚 API: http://localhost:${PORT}/api`);
-  console.log('='.repeat(60));
-  
-  // Initialize Socket.IO
-  socketService.initialize(server);
-  
-  // Setup cron jobs
-  setupCronJobs();
-  
-  // Start keep-alive in production
-  if (process.env.NODE_ENV === 'production') {
-    keepAlive();
-  }
-});
+// For Vercel serverless functions, export the app
+if (isVercel) {
+  // Initialize database connection for serverless
+  connectDB();
+  module.exports = app;
+} else {
+  // Traditional server setup for local development and other platforms
+  const server = app.listen(PORT, () => {
+    const APP_VERSION = process.env.APP_VERSION || 'unknown';
+    
+    console.log('='.repeat(60));
+    console.log(`🚀 Laundry Management System v${APP_VERSION}`);
+    console.log('='.repeat(60));
+    console.log(`📦 Version: ${APP_VERSION}`);
+    console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🔌 Port: ${PORT}`);
+    console.log(`📍 Health: http://localhost:${PORT}/health`);
+    console.log(`📊 Version: http://localhost:${PORT}/version`);
+    console.log(`📚 API: http://localhost:${PORT}/api`);
+    console.log('='.repeat(60));
+    
+    // Initialize Socket.IO (only for traditional server)
+    if (socketService) {
+      socketService.initialize(server);
+    }
+    
+    // Setup cron jobs
+    setupCronJobs();
+  });
 
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (err) => {
-  console.error('❌ Unhandled Rejection:', err.message);
-  server.close(() => process.exit(1));
-});
+  // Handle unhandled promise rejections
+  process.on('unhandledRejection', (err) => {
+    console.error('❌ Unhandled Rejection:', err.message);
+    if (server) {
+      server.close(() => process.exit(1));
+    } else {
+      process.exit(1);
+    }
+  });
+}

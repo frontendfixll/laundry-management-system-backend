@@ -330,6 +330,10 @@ app.get('/api/public/features', featureController.getPublicFeatures);
 const signupPublicRoutes = require('./routes/signupPublicRoutes');
 app.use('/api/public/signup', signupPublicRoutes);
 
+// Cron routes (for external cron services like Vercel Cron)
+const cronRoutes = require('./routes/cronRoutes');
+app.use('/api/cron', cronRoutes);
+
 // Notification routes (with SSE for real-time)
 const notificationRoutes = require('./routes/notificationRoutes');
 const superAdminNotificationRoutes = require('./routes/superAdminNotificationRoutes');

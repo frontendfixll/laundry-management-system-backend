@@ -1,0 +1,37 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "server.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/server.js"
+    }
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  },
+  "functions": {
+    "server.js": {
+      "maxDuration": 30
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/banners/auto-activate",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/banners/auto-complete", 
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/banners/sync-campaigns",
+      "schedule": "*/15 * * * *"
+    }
+  ]
+}
