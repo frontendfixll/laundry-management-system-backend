@@ -117,6 +117,8 @@ const allowedOrigins = [
   /^https:\/\/[\w-]+\.laundrylobby\.com$/,
   // Allow HTTP subdomains for development
   /^http:\/\/[\w-]+\.laundrylobby\.com$/,
+  // Wildcard for all laundrylobby.com subdomains (more permissive)
+  /^https:\/\/.*\.laundrylobby\.com$/,
   // Explicitly allow main domains
   'https://laundrypro.com',
   'https://laundrylobby.com',
@@ -350,6 +352,8 @@ app.use('/api/orders', publicRoutes);
 
 // Tenancy public routes (no auth required - for branding/theming)
 app.use('/api/public/tenancy', tenancyPublicRoutes);
+// Also mount on /api/tenancy for backward compatibility
+app.use('/api/tenancy', tenancyPublicRoutes);
 
 // Invitation public routes (no auth required - for accepting invitations)
 app.use('/api/invitations', invitationPublicRoutes);
