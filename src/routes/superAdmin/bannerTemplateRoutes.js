@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const bannerTemplateController = require('../../controllers/superAdmin/bannerTemplateController');
-const { authenticateSuperAdmin } = require('../../middleware/authMiddleware');
+const { protectSuperAdmin } = require('../../middlewares/auth');
 
 // Apply super admin authentication to all routes
-router.use(authenticateSuperAdmin);
+router.use(protectSuperAdmin);
 
 // Banner Template CRUD
 router.post('/', bannerTemplateController.createTemplate);

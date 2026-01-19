@@ -192,196 +192,86 @@ const tenancyController = {
       });
     }
   },
-          return res.status(400).json({
-            success: false,
-            message: 'A user with this phone number already exists'
-          });
-        }
+
+  // Get all tenancies with pagination and filtering
+  getAllTenancies: async (req, res) => {
+    try {
+      const { page = 1, limit = 10, search = '', status = 'all', sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
+
+      // Build search query
+      let query = {};
+      if (search) {
+        query = {
+          $or: [
+            { businessName: { $regex: search, $options: 'i' } },
+            { subdomain: { $regex: search, $options: 'i' } },
+            { contactEmail: { $regex: search, $options: 'i' } }
+          ]
+        };
       }
-      
-      // Create owner (laundry admin)
-      const salt = await bcrypt.genSalt(10);
-      const tempPassword = ownerData.password || Math.random().toString(36).slice(-8);
-      const hashedPassword = await bcrypt.hash(tempPassword, salt);
-      
-      // Generate unique phone if not provided or if provided phone already exists
-      let finalPhone = ownerData.phone;
-      if (!finalPhone) {
-        // Generate a unique phone number
-        let phoneExists = true;
-        let attempts = 0;
-        while (phoneExists && attempts < 10) {
-          finalPhone = `9${Math.floor(Math.random() * 900000000) + 100000000}`;
-          const existingPhone = await User.findOne({ phone: finalPhone });
-          phoneExists = !!existingPhone;
-          attempts++;
-        }
-        if (phoneExists) {
-          finalPhone = `9${Date.now().toString().slice(-9)}`;
-        }
+
+      if (status !== 'all') {
+        query.isActive = status === 'active';
       }
-      
-      const owner = new User({
-        name: ownerData.name,
-        email: ownerData.email.toLowerCase(),
-        phone: finalPhone,
-        password: hashedPassword,
-        role: 'admin',
-        isActive: true,
-        isEmailVerified: true
-      });
-      
-      console.log('📝 Creating owner user:', { name: ownerData.name, email: ownerData.email });
-      await owner.save();
-      console.log('✅ Owner saved:', owner._id);
-      
-      // Build subscription object with proper trialEndsAt calculation
-      const trialDays = subscription?.trialDays || 14;
-      
-      // Get features from billing plan if planId or plan name provided
-      let planFeatures = subscription?.features || {};
-      const planName = subscription?.plan || 'free';
-      
-      // If features not provided, fetch from BillingPlan
-      if (Object.keys(planFeatures).length === 0) {
-        const { BillingPlan } = require('../models/TenancyBilling');
-        const billingPlan = await BillingPlan.findOne({ name: planName });
-        if (billingPlan) {
-          planFeatures = billingPlan.features instanceof Map 
-            ? Object.fromEntries(billingPlan.features)
-            : billingPlan.features || {};
-          console.log('📝 Loaded features from plan:', planName, planFeatures);
-        }
-      }
-      
-      const subscriptionData = {
-        plan: planName,
-        status: subscription?.status || 'trial',
-        features: planFeatures,
-        trialEndsAt: new Date(Date.now() + trialDays * 24 * 60 * 60 * 1000),
-        startDate: new Date(),
-        billingCycle: subscription?.billingCycle || 'monthly'
-      };
-      
-      // If planId is provided, add it
-      if (subscription?.planId) {
-        subscriptionData.planId = subscription.planId;
-      }
-      
-      console.log('📝 Subscription data:', JSON.stringify(subscriptionData, null, 2));
-      
-      // Create DNS subdomain if enabled
-      let subdomainResult = null;
-      if (createSubdomain && process.env.DNS_PROVIDER && process.env.MAIN_DOMAIN) {
-        try {
-          console.log('🌐 Creating DNS subdomain:', finalSubdomain);
-          subdomainResult = await subdomainService.createSubdomain(finalSubdomain, 'temp-id');
-          console.log('✅ DNS subdomain created:', subdomainResult);
-        } catch (error) {
-          console.error('❌ Failed to create DNS subdomain:', error.message);
-          // Continue with tenancy creation even if DNS fails
-          // You can decide whether to fail the entire process or continue
-          console.log('⚠️ Continuing with tenancy creation despite DNS failure');
-        }
-      }
-      
-      // Create tenancy
-      const tenancy = new Tenancy({
-        name,
-        slug: slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-        description,
-        subdomain: finalSubdomain,
-        contact,
-        owner: owner._id,
-        subscription: subscriptionData,
-        status: 'active',
-        createdBy: req.admin?._id || null,
-        // Store DNS record info if created
-        dnsRecord: subdomainResult ? {
-          recordId: subdomainResult.recordId,
-          provider: subdomainResult.provider,
-          createdAt: new Date()
-        } : null
-      });
-      
-      console.log('📝 Creating tenancy:', { 
-        name, 
-        slug: tenancy.slug, 
-        subdomain: tenancy.subdomain, 
-        ownerId: owner._id,
-        dnsCreated: !!subdomainResult
-      });
-      
-      await tenancy.save();
-      console.log('✅ Tenancy saved:', tenancy._id);
-      
-      // Update subdomain service log with actual tenant ID
-      if (subdomainResult) {
-        await subdomainService.logSubdomainCreation(finalSubdomain, tenancy._id.toString(), subdomainResult);
-      }
-      
-      // Update owner with tenancy reference
-      owner.tenancy = tenancy._id;
-      await owner.save();
-      
-      // Determine the portal URL
-      const portalUrl = subdomainResult 
-        ? subdomainResult.url 
-        : `https://${tenancy.subdomain}.${process.env.MAIN_DOMAIN || 'laundry-platform.com'}`;
-      
-      // Send welcome email to owner
-      try {
-        await sendEmail({
-          to: owner.email,
-          subject: `Welcome to ${name} - Your Laundry Portal is Ready!`,
-          html: `
-            <h2>Welcome to ${name}!</h2>
-            <p>Your laundry portal has been created successfully.</p>
-            <p><strong>Portal URL:</strong> ${portalUrl}</p>
-            <p><strong>Admin Login:</strong> ${portalUrl}/auth/login</p>
-            <p><strong>Email:</strong> ${owner.email}</p>
-            <p><strong>Temporary Password:</strong> ${tempPassword}</p>
-            <p>Please change your password after first login.</p>
-            ${subdomainResult ? '<p>✅ Custom subdomain has been configured and is ready to use!</p>' : ''}
-          `
-        });
-      } catch (emailError) {
-        console.error('Failed to send welcome email:', emailError);
-      }
-      
-      // Verify subdomain is working (optional, non-blocking)
-      if (subdomainResult) {
-        setTimeout(async () => {
-          try {
-            const isWorking = await subdomainService.verifySubdomain(finalSubdomain);
-            console.log(`🔍 Subdomain verification for ${finalSubdomain}:`, isWorking ? '✅ Working' : '❌ Not working');
-          } catch (error) {
-            console.error('Subdomain verification error:', error);
-          }
-        }, 30000); // Check after 30 seconds to allow DNS propagation
-      }
-      
-      res.status(201).json({
+
+      // Get total count for pagination
+      const total = await Tenancy.countDocuments(query);
+
+      // Get tenancies with pagination
+      const tenancies = await Tenancy.find(query)
+        .sort({ [sortBy]: sortOrder === 'desc' ? -1 : 1 })
+        .limit(limit * 1)
+        .skip((page - 1) * limit)
+        .populate('owner', 'name email phone')
+        .lean();
+
+      res.json({
         success: true,
-        message: 'Tenancy created successfully' + (subdomainResult ? ' with custom subdomain' : ''),
         data: {
-          tenancy: await Tenancy.findById(tenancy._id).populate('owner', 'name email phone'),
-          owner: { email: owner.email, tempPassword },
-          subdomain: subdomainResult ? {
-            url: subdomainResult.url,
-            subdomain: subdomainResult.subdomain,
-            dnsCreated: true
-          } : {
-            url: portalUrl,
-            subdomain: `${finalSubdomain}.${process.env.MAIN_DOMAIN || 'laundry-platform.com'}`,
-            dnsCreated: false
+          tenancies,
+          pagination: {
+            current: parseInt(page),
+            pages: Math.ceil(total / limit),
+            total,
+            limit: parseInt(limit)
           }
         }
       });
     } catch (error) {
-      console.error('Create tenancy error:', error.message);
-      console.error('Error stack:', error.stack);
-      res.status(500).json({ success: false, message: 'Failed to create tenancy: ' + error.message });
+      console.error('Error fetching tenancies:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch tenancies'
+      });
+    }
+  },
+
+  // Get single tenancy by ID
+  getTenancyById: async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      const tenancy = await Tenancy.findById(id)
+        .populate('owner', 'name email phone')
+        .lean();
+      
+      if (!tenancy) {
+        return res.status(404).json({
+          success: false,
+          message: 'Tenancy not found'
+        });
+      }
+      
+      res.json({
+        success: true,
+        data: { tenancy }
+      });
+    } catch (error) {
+      console.error('Error fetching tenancy:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch tenancy'
+      });
     }
   },
 
@@ -391,65 +281,17 @@ const tenancyController = {
       const { id } = req.params;
       const updates = req.body;
       
-      // Remove fields that shouldn't be updated directly
-      delete updates.owner;
-      delete updates.createdBy;
-      delete updates.stats;
-      
-      // Get existing tenancy first
-      const existingTenancy = await Tenancy.findById(id);
-      if (!existingTenancy) {
-        return res.status(404).json({ success: false, message: 'Tenancy not found' });
-      }
-      
-      // Track if features changed
-      const featuresChanged = updates.subscription?.features && 
-        JSON.stringify(existingTenancy.subscription.features) !== JSON.stringify(updates.subscription.features);
-      
-      // Handle subscription.features merge properly
-      if (updates.subscription?.features) {
-        // Merge existing subscription with new updates
-        updates.subscription = {
-          ...existingTenancy.subscription.toObject(),
-          ...updates.subscription,
-          features: {
-            ...existingTenancy.subscription.features,
-            ...updates.subscription.features
-          }
-        };
-      }
-      
       const tenancy = await Tenancy.findByIdAndUpdate(
         id,
         { $set: updates },
         { new: true, runValidators: true }
       ).populate('owner', 'name email phone');
       
-      console.log('✅ Tenancy updated:', id, 'Features:', tenancy.subscription?.features);
-      
-      // Notify all admins of this tenancy if features changed
-      if (featuresChanged) {
-        console.log('🔔 Features changed, notifying admins of tenancy:', id);
-        const User = require('../models/User');
-        const PermissionSyncService = require('../services/permissionSyncService');
-        
-        // Find all admins in this tenancy
-        const admins = await User.find({ 
-          tenancy: id, 
-          role: { $in: ['admin', 'branch_admin'] },
-          isActive: true 
+      if (!tenancy) {
+        return res.status(404).json({
+          success: false,
+          message: 'Tenancy not found'
         });
-        
-        console.log(`📢 Found ${admins.length} admins to notify`);
-        
-        // Notify each admin
-        for (const admin of admins) {
-          await PermissionSyncService.notifyPermissionUpdate(admin._id, {
-            features: tenancy.subscription.features,
-            tenancy: id,
-            recipientType: admin.role === 'admin' ? 'admin' : 'branch_admin'
-          });
-        }
       }
       
       res.json({
@@ -458,8 +300,11 @@ const tenancyController = {
         data: { tenancy }
       });
     } catch (error) {
-      console.error('Update tenancy error:', error);
-      res.status(500).json({ success: false, message: 'Failed to update tenancy' });
+      console.error('Error updating tenancy:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to update tenancy'
+      });
     }
   },
 
@@ -469,10 +314,6 @@ const tenancyController = {
       const { id } = req.params;
       const { status } = req.body;
       
-      if (!['active', 'inactive', 'suspended', 'pending'].includes(status)) {
-        return res.status(400).json({ success: false, message: 'Invalid status' });
-      }
-      
       const tenancy = await Tenancy.findByIdAndUpdate(
         id,
         { status },
@@ -480,17 +321,23 @@ const tenancyController = {
       ).populate('owner', 'name email phone');
       
       if (!tenancy) {
-        return res.status(404).json({ success: false, message: 'Tenancy not found' });
+        return res.status(404).json({
+          success: false,
+          message: 'Tenancy not found'
+        });
       }
       
       res.json({
         success: true,
-        message: `Tenancy ${status === 'active' ? 'activated' : status}`,
+        message: `Tenancy ${status}`,
         data: { tenancy }
       });
     } catch (error) {
-      console.error('Update tenancy status error:', error);
-      res.status(500).json({ success: false, message: 'Failed to update status' });
+      console.error('Error updating tenancy status:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to update tenancy status'
+      });
     }
   },
 
@@ -504,10 +351,13 @@ const tenancyController = {
         id,
         { $set: { branding } },
         { new: true }
-      );
+      ).populate('owner', 'name email phone');
       
       if (!tenancy) {
-        return res.status(404).json({ success: false, message: 'Tenancy not found' });
+        return res.status(404).json({
+          success: false,
+          message: 'Tenancy not found'
+        });
       }
       
       res.json({
@@ -516,8 +366,11 @@ const tenancyController = {
         data: { tenancy }
       });
     } catch (error) {
-      console.error('Update branding error:', error);
-      res.status(500).json({ success: false, message: 'Failed to update branding' });
+      console.error('Error updating branding:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to update branding'
+      });
     }
   },
 
@@ -531,10 +384,13 @@ const tenancyController = {
         id,
         { $set: { subscription } },
         { new: true }
-      );
+      ).populate('owner', 'name email phone');
       
       if (!tenancy) {
-        return res.status(404).json({ success: false, message: 'Tenancy not found' });
+        return res.status(404).json({
+          success: false,
+          message: 'Tenancy not found'
+        });
       }
       
       res.json({
@@ -543,27 +399,26 @@ const tenancyController = {
         data: { tenancy }
       });
     } catch (error) {
-      console.error('Update subscription error:', error);
-      res.status(500).json({ success: false, message: 'Failed to update subscription' });
+      console.error('Error updating subscription:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to update subscription'
+      });
     }
   },
 
-  // Update tenancy features/permissions
+  // Update tenancy features
   updateFeatures: async (req, res) => {
     try {
       const { id } = req.params;
       const { features } = req.body;
       
-      if (!features || typeof features !== 'object') {
-        return res.status(400).json({ 
-          success: false, 
-          message: 'Features object is required' 
-        });
-      }
-      
       const tenancy = await Tenancy.findById(id);
       if (!tenancy) {
-        return res.status(404).json({ success: false, message: 'Tenancy not found' });
+        return res.status(404).json({
+          success: false,
+          message: 'Tenancy not found'
+        });
       }
       
       // Update features in subscription
@@ -574,33 +429,6 @@ const tenancyController = {
       
       await tenancy.save();
       
-      console.log('✅ Features updated for tenancy:', id, features);
-      
-      // Notify all admins in this tenancy about feature update via WebSocket
-      const User = require('../models/User');
-      const PermissionSyncService = require('../services/permissionSyncService');
-      
-      const admins = await User.find({ 
-        tenancy: id, 
-        role: { $in: ['admin', 'branch_admin'] },
-        isActive: true 
-      }).select('_id email role');
-      
-      console.log(`📋 Found ${admins.length} admin(s) in tenancy ${id}:`, admins.map(a => ({
-        id: a._id,
-        email: a.email,
-        role: a.role
-      })));
-      
-      for (const admin of admins) {
-        await PermissionSyncService.notifyPermissionUpdate(admin._id, {
-          features: tenancy.subscription.features,
-          tenancy: id,
-          recipientType: 'admin'
-        });
-      }
-      console.log(`📢 Notified ${admins.length} admin(s) about feature update via WebSocket`);
-      
       res.json({
         success: true,
         message: 'Features updated successfully',
@@ -609,8 +437,11 @@ const tenancyController = {
         }
       });
     } catch (error) {
-      console.error('Update features error:', error);
-      res.status(500).json({ success: false, message: 'Failed to update features' });
+      console.error('Error updating features:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to update features'
+      });
     }
   },
 
@@ -619,46 +450,36 @@ const tenancyController = {
     try {
       const { id } = req.params;
       
-      const tenancy = await Tenancy.findById(id);
-      if (!tenancy) {
-        return res.status(404).json({ success: false, message: 'Tenancy not found' });
-      }
-      
-      // Delete DNS record if it exists
-      if (tenancy.dnsRecord?.recordId) {
-        try {
-          console.log('🗑️ Deleting DNS record for tenancy:', tenancy.subdomain);
-          await subdomainService.deleteSubdomain(tenancy.subdomain, tenancy.dnsRecord.recordId);
-          console.log('✅ DNS record deleted successfully');
-        } catch (error) {
-          console.error('❌ Failed to delete DNS record:', error.message);
-          // Continue with tenancy deletion even if DNS deletion fails
-        }
-      }
-      
-      // Soft delete the tenancy
-      const updatedTenancy = await Tenancy.findByIdAndUpdate(
+      const tenancy = await Tenancy.findByIdAndUpdate(
         id,
         { 
           isDeleted: true, 
           deletedAt: new Date(), 
-          status: 'inactive',
-          // Clear DNS record info since it's deleted
-          dnsRecord: null
+          status: 'inactive'
         },
         { new: true }
       );
+      
+      if (!tenancy) {
+        return res.status(404).json({
+          success: false,
+          message: 'Tenancy not found'
+        });
+      }
       
       // Deactivate owner
       await User.findByIdAndUpdate(tenancy.owner, { isActive: false });
       
       res.json({
         success: true,
-        message: 'Tenancy and associated subdomain deleted successfully'
+        message: 'Tenancy deleted successfully'
       });
     } catch (error) {
-      console.error('Delete tenancy error:', error);
-      res.status(500).json({ success: false, message: 'Failed to delete tenancy' });
+      console.error('Error deleting tenancy:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to delete tenancy'
+      });
     }
   },
 
@@ -689,8 +510,11 @@ const tenancyController = {
         }
       });
     } catch (error) {
-      console.error('Get tenancy stats error:', error);
-      res.status(500).json({ success: false, message: 'Failed to fetch stats' });
+      console.error('Error fetching tenancy stats:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch stats'
+      });
     }
   }
 };

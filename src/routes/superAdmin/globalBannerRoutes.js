@@ -1,11 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const globalBannerController = require('../../controllers/superAdmin/globalBannerController');
-const { authenticateSuperAdmin } = require('../../middleware/authMiddleware');
+const { protectSuperAdmin } = require('../../middlewares/auth');
 const { upload } = require('../../services/imageUploadService');
 
 // Apply super admin authentication to all routes
-router.use(authenticateSuperAdmin);
+router.use(protectSuperAdmin);
 
 // Image Upload (must be before other routes)
 router.post('/upload-image', upload.single('image'), globalBannerController.uploadBannerImage);

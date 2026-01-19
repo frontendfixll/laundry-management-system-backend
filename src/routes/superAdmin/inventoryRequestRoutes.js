@@ -1,12 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const InventoryRequest = require('../../models/InventoryRequest');
-const { authMiddleware } = require('../../middleware/auth');
+const { protect } = require('../../middlewares/auth');
+const NotificationService = require('../../services/notificationService');
 
 // @route   GET /api/superadmin/inventory-requests
 // @desc    Get all inventory requests from all tenancies
 // @access  Private (SuperAdmin)
-router.get('/', authMiddleware, async (req, res) => {
+router.get('/', protect, async (req, res) => {
   try {
     const { page = 1, limit = 20, status = 'all', urgency = 'all', tenancyId = 'all' } = req.query;
     
@@ -78,7 +79,7 @@ router.get('/', authMiddleware, async (req, res) => {
 // @route   GET /api/superadmin/inventory-requests/:requestId
 // @desc    Get single inventory request details
 // @access  Private (SuperAdmin)
-router.get('/:requestId', authMiddleware, async (req, res) => {
+router.get('/:requestId', protect, async (req, res) => {
   try {
     const request = await InventoryRequest.findById(req.params.requestId)
       .populate('requestedBy', 'name email')
@@ -109,7 +110,7 @@ router.get('/:requestId', authMiddleware, async (req, res) => {
 // @route   PUT /api/superadmin/inventory-requests/:requestId/approve
 // @desc    Approve inventory request
 // @access  Private (SuperAdmin)
-router.put('/:requestId/approve', authMiddleware, async (req, res) => {
+router.put('/:requestId/approve', protect, async (req, res) => {
   try {
     const { estimatedCost, supplier, expectedDelivery, adminNotes } = req.body;
 
@@ -175,7 +176,7 @@ router.put('/:requestId/approve', authMiddleware, async (req, res) => {
 // @route   PUT /api/superadmin/inventory-requests/:requestId/reject
 // @desc    Reject inventory request
 // @access  Private (SuperAdmin)
-router.put('/:requestId/reject', authMiddleware, async (req, res) => {
+router.put('/:requestId/reject', protect, async (req, res) => {
   try {
     const { rejectionReason, adminNotes } = req.body;
 
@@ -246,7 +247,7 @@ router.put('/:requestId/reject', authMiddleware, async (req, res) => {
 // @route   PUT /api/superadmin/inventory-requests/:requestId/complete
 // @desc    Mark inventory request as completed
 // @access  Private (SuperAdmin)
-router.put('/:requestId/complete', authMiddleware, async (req, res) => {
+router.put('/:requestId/complete', protect, async (req, res) => {
   try {
     const { adminNotes } = req.body;
 

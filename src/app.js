@@ -151,8 +151,35 @@ app.use(cors({
       callback(null, false);
     }
   },
-  credentials: true  // Allow cookies to be sent
+  credentials: true,  // Allow cookies to be sent
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  exposedHeaders: ['Set-Cookie'],
+  optionsSuccessStatus: 200 // Some legacy browsers (IE11, various SmartTVs) choke on 204
 }));
+
+// Additional CORS headers for serverless environments
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (allowedOrigins.some(allowed => {
+    if (typeof allowed === 'string') return allowed === origin;
+    if (allowed instanceof RegExp) return allowed.test(origin);
+    return false;
+  })) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+    res.header('Access-Control-Expose-Headers', 'Set-Cookie');
+  }
+  
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  
+  next();
+});
 
 // Cookie parser middleware
 app.use(cookieParser());

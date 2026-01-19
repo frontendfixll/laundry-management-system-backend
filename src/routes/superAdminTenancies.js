@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const tenancyController = require('../controllers/superAdminTenancyController');
-const { authenticateSuperAdmin } = require('../middlewares/superAdminAuthSimple');
+const { protectSuperAdmin } = require('../middlewares/auth');
 const { requirePermission, logAdminAction } = require('../middlewares/superAdminAuth');
 const { body, param } = require('express-validator');
 
@@ -71,7 +71,7 @@ const validateSubscriptionUpdate = [
 ];
 
 // All routes require superadmin authentication
-router.use(authenticateSuperAdmin);
+router.use(protectSuperAdmin);
 
 // Get tenancy stats
 router.get('/stats',

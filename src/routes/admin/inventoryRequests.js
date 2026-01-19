@@ -1,13 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const InventoryRequest = require('../../models/InventoryRequest');
-const { authMiddleware } = require('../../middleware/auth');
-const { checkPermission } = require('../../middleware/permissions');
+const { protect } = require('../../middlewares/auth');
+const NotificationService = require('../../services/notificationService');
 
 // @route   POST /api/admin/inventory/request
 // @desc    Create new inventory item request
 // @access  Private (Admin)
-router.post('/request', authMiddleware, checkPermission('inventory', 'create'), async (req, res) => {
+router.post('/request', protect, async (req, res) => {
   try {
     const { itemName, category, description, estimatedQuantity, unit, urgency, justification } = req.body;
 
@@ -80,7 +80,7 @@ router.post('/request', authMiddleware, checkPermission('inventory', 'create'), 
 // @route   GET /api/admin/inventory/requests
 // @desc    Get inventory requests for current tenancy
 // @access  Private (Admin)
-router.get('/requests', authMiddleware, checkPermission('inventory', 'view'), async (req, res) => {
+router.get('/requests', protect, async (req, res) => {
   try {
     const { page = 1, limit = 10, status = 'all' } = req.query;
     
