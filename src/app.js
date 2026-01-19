@@ -151,26 +151,6 @@ app.use(cors({
       callback(null, false);
     }
   },
-    if (!origin) return callback(null, true);
-    
-    // Check if origin matches allowed patterns
-    const isAllowed = allowedOrigins.some(allowed => {
-      if (typeof allowed === 'string') {
-        return allowed === origin;
-      }
-      if (allowed instanceof RegExp) {
-        return allowed.test(origin);
-      }
-      return false;
-    });
-    
-    if (isAllowed) {
-      callback(null, true);
-    } else {
-      console.log('CORS blocked origin:', origin);
-      callback(null, false);
-    }
-  },
   credentials: true  // Allow cookies to be sent
 }));
 
