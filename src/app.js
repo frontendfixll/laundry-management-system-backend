@@ -88,6 +88,23 @@ const app = express();
 // Trust proxy for Render/production (needed for rate limiting behind reverse proxy)
 app.set('trust proxy', 1);
 
+// EMERGENCY CORS FIX - Allow all origins temporarily
+app.use((req, res, next) => {
+  console.log('🚨 EMERGENCY CORS FIX - Origin:', req.headers.origin);
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Subdomain');
+  res.header('Access-Control-Expose-Headers', 'Set-Cookie');
+  
+  if (req.method === 'OPTIONS') {
+    console.log('🚨 EMERGENCY CORS - Handling OPTIONS');
+    return res.status(200).end();
+  }
+  
+  next();
+});
+
 // Security middleware - Configure helmet to allow images
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
@@ -174,21 +191,19 @@ app.use(cors({
 
 // Additional CORS headers for serverless environments
 app.use((req, res, next) => {
+  // TEMPORARY: Allow all origins for debugging
   const origin = req.headers.origin;
-  if (allowedOrigins.some(allowed => {
-    if (typeof allowed === 'string') return allowed === origin;
-    if (allowed instanceof RegExp) return allowed.test(origin);
-    return false;
-  })) {
-    res.header('Access-Control-Allow-Origin', origin);
-    res.header('Access-Control-Allow-Credentials', 'true');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
-    res.header('Access-Control-Expose-Headers', 'Set-Cookie');
-  }
+  console.log('🌐 Additional CORS middleware for origin:', origin);
+  
+  res.header('Access-Control-Allow-Origin', origin || '*');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+  res.header('Access-Control-Expose-Headers', 'Set-Cookie');
   
   // Handle preflight requests
   if (req.method === 'OPTIONS') {
+    console.log('🔧 Handling OPTIONS preflight request');
     return res.status(200).end();
   }
   
