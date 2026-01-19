@@ -115,12 +115,15 @@ const allowedOrigins = [
   // Allow laundrypro.com and laundrylobby.com domains with all subdomains
   /^https:\/\/[\w-]+\.laundrypro\.com$/,
   /^https:\/\/[\w-]+\.laundrylobby\.com$/,
+  // Allow HTTP subdomains for development
+  /^http:\/\/[\w-]+\.laundrylobby\.com$/,
   // Explicitly allow main domains
   'https://laundrypro.com',
   'https://laundrylobby.com',
   'https://laundrylobby.vercel.app',
   // Allow specific tenant subdomains (for testing)
   'https://tenacy.laundrylobby.com',
+  'https://test-tenacy.laundrylobby.com',
   'https://quickwash.laundrylobby.com',
   'https://cleanpro.laundrylobby.com'
 ].filter(Boolean);
