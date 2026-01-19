@@ -166,7 +166,27 @@ const ticketValidation = {
   addMessage: Joi.object({
     message: Joi.string().trim().required(),
     isInternal: Joi.boolean().default(false)
-  })
+  }),
+
+  updateStatus: {
+    body: Joi.object({
+      status: Joi.string().valid(...Object.values(TICKET_STATUS)).required(),
+      resolution: Joi.string().trim().optional()
+    })
+  },
+
+  escalate: {
+    body: Joi.object({
+      escalationReason: Joi.string().trim().required(),
+      escalateTo: Joi.string().optional()
+    })
+  },
+
+  updatePriority: {
+    body: Joi.object({
+      priority: Joi.string().valid(...Object.values(TICKET_PRIORITY)).required()
+    })
+  }
 };
 
 // Staff validation schemas
@@ -207,6 +227,44 @@ const validate = (schema) => {
   };
 };
 
+// Support validation schemas
+const supportValidation = {
+  createUser: {
+    body: Joi.object({
+      name: Joi.string().required().trim().max(50),
+      email: Joi.string().email().required(),
+      phone: Joi.string().pattern(/^[6-9]\d{9}$/).required(),
+      password: Joi.string().min(6).required(),
+      assignedBranch: Joi.string().optional()
+    })
+  },
+  
+  updateUser: {
+    body: Joi.object({
+      name: Joi.string().trim().max(50).optional(),
+      phone: Joi.string().pattern(/^[6-9]\d{9}$/).optional(),
+      assignedBranch: Joi.string().allow(null).optional(),
+      isActive: Joi.boolean().optional(),
+      permissions: Joi.object({
+        tickets: Joi.object({
+          view: Joi.boolean().optional(),
+          create: Joi.boolean().optional(),
+          update: Joi.boolean().optional(),
+          assign: Joi.boolean().optional(),
+          resolve: Joi.boolean().optional(),
+          escalate: Joi.boolean().optional()
+        }).optional()
+      }).optional()
+    })
+  },
+  
+  resetPassword: {
+    body: Joi.object({
+      newPassword: Joi.string().min(6).required()
+    })
+  }
+};
+
 module.exports = {
   validate,
   authValidation,
@@ -215,5 +273,6 @@ module.exports = {
   branchValidation,
   ticketValidation,
   staffValidation,
+  supportValidation,
   commonSchemas
 };

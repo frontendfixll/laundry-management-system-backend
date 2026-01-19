@@ -100,6 +100,14 @@ const adminPermissionsSchema = new mongoose.Schema({
     create: { type: Boolean, default: false },
     update: { type: Boolean, default: false },
     delete: { type: Boolean, default: false }
+  },
+  support: {
+    view: { type: Boolean, default: false },
+    create: { type: Boolean, default: false },
+    update: { type: Boolean, default: false },
+    delete: { type: Boolean, default: false },
+    assign: { type: Boolean, default: false },
+    manage: { type: Boolean, default: false }
   }
 }, { _id: false });
 
@@ -138,7 +146,7 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['admin', 'branch_admin', 'staff', 'customer'],  // admin = tenancy admin, branch_admin = single branch admin, staff = laundry staff
+    enum: ['admin', 'branch_admin', 'staff', 'customer', 'support'],  // admin = tenancy admin, branch_admin = single branch admin, staff = laundry staff, support = customer support
     default: 'customer'
   },
   isActive: {
@@ -346,7 +354,8 @@ userSchema.statics.getDefaultAdminPermissions = function() {
     settings: { view: true, create: true, update: true, delete: true },
     coupons: { view: true, create: true, update: true, delete: true },
     branches: { view: true, create: true, update: true, delete: true },
-    branchAdmins: { view: true, create: true, update: true, delete: true }
+    branchAdmins: { view: true, create: true, update: true, delete: true },
+    support: { view: true, create: true, update: true, delete: true, assign: true, manage: true }
   };
 };
 
@@ -365,7 +374,28 @@ userSchema.statics.getDefaultBranchAdminPermissions = function() {
     settings: { view: true, create: false, update: false, delete: false },
     coupons: { view: true, create: false, update: false, delete: false },
     branches: { view: false, create: false, update: false, delete: false },
-    branchAdmins: { view: false, create: false, update: false, delete: false }
+    branchAdmins: { view: false, create: false, update: false, delete: false },
+    support: { view: false, create: false, update: false, delete: false, assign: false, manage: false }
+  };
+};
+
+// Default support permissions (ticket management only)
+userSchema.statics.getDefaultSupportPermissions = function() {
+  return {
+    orders: { view: true, create: false, update: false, delete: false, assign: false, cancel: false, process: false },
+    staff: { view: false, create: false, update: false, delete: false, assignShift: false, manageAttendance: false },
+    inventory: { view: false, create: false, update: false, delete: false, restock: false, writeOff: false },
+    services: { view: true, create: false, update: false, delete: false, toggle: false, updatePricing: false },
+    customers: { view: true, create: false, update: false, delete: false },
+    logistics: { view: false, create: false, update: false, delete: false, assign: false, track: false },
+    tickets: { view: true, create: true, update: true, delete: false, assign: true, resolve: true, escalate: true },
+    performance: { view: false, create: false, update: false, delete: false, export: false },
+    analytics: { view: false },
+    settings: { view: false, create: false, update: false, delete: false },
+    coupons: { view: false, create: false, update: false, delete: false },
+    branches: { view: false, create: false, update: false, delete: false },
+    branchAdmins: { view: false, create: false, update: false, delete: false },
+    support: { view: false, create: false, update: false, delete: false, assign: false, manage: false }
   };
 };
 

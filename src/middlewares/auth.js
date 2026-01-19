@@ -468,6 +468,22 @@ const requireBranchAdmin = (req, res, next) => {
   next();
 };
 
+// Require support role
+const requireSupport = (req, res, next) => {
+  if (req.isSuperAdmin) {
+    return next();
+  }
+  
+  if (req.user.role !== 'support') {
+    return res.status(403).json({
+      success: false,
+      message: 'Access denied. Support role required.'
+    });
+  }
+  
+  next();
+};
+
 module.exports = {
   protect,
   protectAny,
@@ -480,6 +496,7 @@ module.exports = {
   authenticateToken,
   requireAdmin,
   requireBranchAdmin,
+  requireSupport,
   trackFailedAttempt,
   clearFailedAttempts
 };

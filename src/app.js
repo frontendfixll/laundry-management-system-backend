@@ -64,6 +64,10 @@ const customerBannerRoutes = require('./routes/customer/bannerRoutes');
 // Branch Admin routes
 const branchAdminRoutes = require('./routes/admin/branchAdminRoutes');
 
+// Support routes
+const supportRoutes = require('./routes/support');
+const adminSupportRoutes = require('./routes/admin/supportRoutes');
+
 const servicePricesRoutes = require('./routes/servicePrices');
 const serviceItemsRoutes = require('./routes/serviceItems');
 const deliveryRoutes = require('./routes/delivery');
@@ -294,6 +298,7 @@ app.use('/api/superadmin/leads', leadSuperadminRoutes);
 app.use('/api/admin/campaigns', adminCampaignRoutes);
 app.use('/api/admin/banners', adminBannerRoutes);
 app.use('/api/admin/branch-admins', branchAdminRoutes);
+app.use('/api/admin/support', adminSupportRoutes);
 app.use('/api/superadmin/banners', superAdminBannerRoutes);
 app.use('/api/customer/banners', customerBannerRoutes);
 app.use('/api/superadmin/services', adminServiceRoutes);
@@ -315,6 +320,9 @@ if (process.env.NODE_ENV !== 'production') {
 
 // Permission sync routes
 app.use('/api/permissions', permissionSyncRoutes);
+
+// Support routes
+app.use('/api/support', supportRoutes);
 
 // Center Admin routes (previously branch manager)
 app.use('/api/center-admin', centerAdminRoutes);
