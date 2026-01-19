@@ -317,6 +317,26 @@ const login = async (req, res) => {
           message: 'User is not associated with any tenancy. Please contact SuperAdmin.'
         });
       }
+      
+      // CRITICAL: Validate user belongs to the tenancy being accessed via subdomain
+      if (req.tenancy && req.tenancyId) {
+        // User is accessing via subdomain - ensure they belong to this tenancy
+        if (user.tenancy._id.toString() !== req.tenancyId.toString()) {
+          console.log(`🚨 TENANCY ISOLATION VIOLATION: User ${user.email} (tenancy: ${user.tenancy.name}) tried to access ${req.tenancy.name} via subdomain`);
+          return res.status(403).json({
+            success: false,
+            message: 'Access denied. You do not have permission to access this laundry portal.',
+            code: 'TENANCY_MISMATCH'
+          });
+        }
+        console.log(`✅ TENANCY VALIDATION: User ${user.email} accessing correct tenancy: ${req.tenancy.name}`);
+      }
+    }
+
+    // TENANCY ISOLATION: For customers accessing via subdomain
+    if (user.role === 'customer' && req.tenancy && req.tenancyId) {
+      // Customers can access any tenancy's services, but we log it for analytics
+      console.log(`📊 Customer ${user.email} accessing tenancy: ${req.tenancy.name}`);
     }
 
     // Validate branch_admin has assigned branch
