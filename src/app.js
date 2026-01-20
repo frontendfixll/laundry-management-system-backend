@@ -434,8 +434,9 @@ app.get('/api/health', (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     success: true,
-    message: 'Laundry Management System API',
-    version: '1.0.0',
+    message: 'Laundry Management System API v2.0.1',
+    version: '2.0.1',
+    timestamp: new Date().toISOString(),
     endpoints: {
       health: '/api/health',
       auth: '/api/auth',
