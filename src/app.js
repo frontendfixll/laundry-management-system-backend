@@ -91,18 +91,20 @@ app.set('trust proxy', 1);
 
 // EMERGENCY CORS FIX - Allow all origins temporarily
 app.use((req, res, next) => {
-  console.log('🚨 EMERGENCY CORS FIX - Origin:', req.headers.origin);
+  const origin = req.headers.origin;
+  console.log('🚨 EMERGENCY CORS FIX - Origin:', origin);
   console.log('🚨 EMERGENCY CORS FIX - Method:', req.method);
   
   // Set CORS headers for all requests
-  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Origin', origin || '*');
   res.header('Access-Control-Allow-Credentials', 'true');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Subdomain');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Subdomain, X-Tenancy-ID, X-Tenancy-Slug');
   res.header('Access-Control-Expose-Headers', 'Set-Cookie');
+  res.header('Access-Control-Max-Age', '86400'); // 24 hours
   
   if (req.method === 'OPTIONS') {
-    console.log('🚨 EMERGENCY CORS - Handling OPTIONS');
+    console.log('🚨 EMERGENCY CORS - Handling OPTIONS for origin:', origin);
     return res.status(200).end();
   }
   

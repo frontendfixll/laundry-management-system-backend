@@ -2,13 +2,13 @@ const mongoose = require('mongoose');
 
 const connectDB = async () => {
   try {
-    // Enhanced connection options for production
+    // Optimized connection options for Vercel serverless
     const options = {
-      serverSelectionTimeoutMS: 30000, // Increase timeout for Vercel
-      socketTimeoutMS: 60000,
-      maxPoolSize: 10, // Maintain up to 10 socket connections
-      minPoolSize: 2, // Maintain minimum 2 connections
-      maxIdleTimeMS: 30000, // Close connections after 30 seconds of inactivity
+      serverSelectionTimeoutMS: 5000, // Reduced for Vercel (was 30000)
+      socketTimeoutMS: 10000, // Reduced for Vercel (was 60000)
+      maxPoolSize: 5, // Reduced for serverless (was 10)
+      minPoolSize: 1, // Reduced for serverless (was 2)
+      maxIdleTimeMS: 10000, // Reduced for serverless (was 30000)
       bufferMaxEntries: 0, // Disable mongoose buffering
       bufferCommands: false, // Disable mongoose buffering
       family: 4, // Use IPv4, skip trying IPv6
@@ -18,6 +18,7 @@ const connectDB = async () => {
 
     console.log('🔄 Connecting to MongoDB...');
     console.log('🌍 Environment:', process.env.NODE_ENV);
+    console.log('🚀 Platform:', process.env.VERCEL ? 'Vercel Serverless' : 'Traditional Server');
     
     const conn = await mongoose.connect(process.env.MONGODB_URI, options);
 
@@ -25,18 +26,20 @@ const connectDB = async () => {
     console.log(`📊 Database: ${conn.connection.name}`);
     console.log(`🔗 Connection State: ${conn.connection.readyState}`);
     
-    // Handle connection events
-    mongoose.connection.on('error', (err) => {
-      console.error('❌ MongoDB connection error:', err);
-    });
+    // Handle connection events (only for non-serverless)
+    if (!process.env.VERCEL) {
+      mongoose.connection.on('error', (err) => {
+        console.error('❌ MongoDB connection error:', err);
+      });
 
-    mongoose.connection.on('disconnected', () => {
-      console.log('⚠️ MongoDB disconnected');
-    });
+      mongoose.connection.on('disconnected', () => {
+        console.log('⚠️ MongoDB disconnected');
+      });
 
-    mongoose.connection.on('reconnected', () => {
-      console.log('🔄 MongoDB reconnected');
-    });
+      mongoose.connection.on('reconnected', () => {
+        console.log('🔄 MongoDB reconnected');
+      });
+    }
 
     return conn;
   } catch (error) {
@@ -55,7 +58,13 @@ const connectDB = async () => {
       console.error('💡 Network timeout - check your internet connection and MongoDB Atlas status');
     }
     
-    throw error; // Don't exit, let the caller handle it
+    // For Vercel, don't throw error - continue without DB
+    if (process.env.VERCEL) {
+      console.warn('⚠️ Running in serverless mode without database connection');
+      return null;
+    }
+    
+    throw error;
   }
 };
 

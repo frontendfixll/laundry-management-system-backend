@@ -21,6 +21,7 @@ const PORT = process.env.PORT || 5000;
 connectDB().catch(err => {
   console.warn('⚠️  MongoDB connection failed, running without database');
   console.warn('💡 Some features will be limited without database connection');
+  console.warn('🔧 Error:', err.message);
 });
 
 // ============================================
@@ -90,6 +91,13 @@ if (isVercel) {
     const isTenantSubdomain = origin && /^https:\/\/[\w-]+\.laundrylobby\.com$/.test(origin);
     const isAllowedOrigin = allowedOrigins.includes(origin);
     
+    console.log('🌐 Vercel CORS check:', {
+      origin,
+      isVercelDeployment,
+      isTenantSubdomain,
+      isAllowedOrigin
+    });
+    
     if (isVercelDeployment || isTenantSubdomain || isAllowedOrigin || !origin) {
       res.setHeader('Access-Control-Allow-Origin', origin || '*');
       res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -100,6 +108,7 @@ if (isVercel) {
     
     // Handle preflight requests
     if (req.method === 'OPTIONS') {
+      console.log('🔧 Vercel OPTIONS preflight for origin:', origin);
       return res.status(200).end();
     }
     
