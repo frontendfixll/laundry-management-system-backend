@@ -2,15 +2,16 @@ const mongoose = require('mongoose');
 
 const connectDB = async () => {
   try {
-    // Optimized connection options for Vercel serverless
+    // Optimized connection options for both local and Vercel
     const options = {
-      serverSelectionTimeoutMS: 5000, // Reduced for Vercel (was 30000)
-      socketTimeoutMS: 10000, // Reduced for Vercel (was 60000)
-      maxPoolSize: 5, // Reduced for serverless (was 10)
-      minPoolSize: 1, // Reduced for serverless (was 2)
-      maxIdleTimeMS: 10000, // Reduced for serverless (was 30000)
-      bufferMaxEntries: 0, // Disable mongoose buffering
-      bufferCommands: false, // Disable mongoose buffering
+      serverSelectionTimeoutMS: process.env.VERCEL ? 5000 : 30000,
+      socketTimeoutMS: process.env.VERCEL ? 10000 : 60000,
+      maxPoolSize: process.env.VERCEL ? 5 : 10,
+      minPoolSize: 1,
+      maxIdleTimeMS: process.env.VERCEL ? 10000 : 30000,
+      // Remove unsupported options
+      // bufferMaxEntries: 0, // This option is not supported
+      // bufferCommands: false, // This causes issues with mongoose
       family: 4, // Use IPv4, skip trying IPv6
       retryWrites: true,
       w: 'majority'
