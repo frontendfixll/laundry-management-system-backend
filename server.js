@@ -17,13 +17,6 @@ if (!isVercel) {
 
 const PORT = process.env.PORT || 5000;
 
-// Connect to MongoDB
-connectDB().catch(err => {
-  console.warn('⚠️  MongoDB connection failed, running without database');
-  console.warn('💡 Some features will be limited without database connection');
-  console.warn('🔧 Error:', err.message);
-});
-
 // ============================================
 // CRON JOBS: Banner Lifecycle Management (Only for non-Vercel environments)
 // ============================================
@@ -54,10 +47,14 @@ const setupCronJobs = () => {
   console.log('   - Campaign sync: Every 15 minutes');
 };
 
-// For Vercel serverless functions, export the app
+// For Vercel serverless functions, export the app immediately
 if (isVercel) {
-  // Initialize database connection for serverless
-  connectDB();
+  // Connect to MongoDB asynchronously (don't wait)
+  connectDB().catch(err => {
+    console.warn('⚠️  MongoDB connection failed, running without database');
+    console.warn('💡 Some features will be limited without database connection');
+    console.warn('🔧 Error:', err.message);
+  });
   
   // Add a simple test route to verify the app is working
   app.get('/test', (req, res) => {
@@ -65,59 +62,23 @@ if (isVercel) {
       success: true,
       message: 'Test route working in Vercel',
       timestamp: new Date().toISOString(),
-      environment: 'vercel-serverless'
+      environment: 'vercel-serverless',
+      nodeVersion: process.version,
+      platform: process.platform
     });
   });
   
-  // Add CORS headers for all responses in serverless environment
-  app.use((req, res, next) => {
-    const origin = req.get('origin');
-    
-    // Allow specific origins
-    const allowedOrigins = [
-      'https://laundrylobby.vercel.app',
-      'https://laundrylobby-superadmin.vercel.app',
-      'https://laundrylobby.com',
-      // Add your actual frontend URL
-      'https://laundry-management-system-git-828182-deepakfixl2-5120s-projects.vercel.app',
-      // Allow all Vercel preview deployments
-      process.env.FRONTEND_URL,
-      process.env.SUPERADMIN_URL,
-      process.env.MARKETING_URL
-    ].filter(Boolean);
-    
-    // Check if origin matches allowed patterns or Vercel deployments
-    const isVercelDeployment = origin && /^https:\/\/.*\.vercel\.app$/.test(origin);
-    const isTenantSubdomain = origin && /^https:\/\/[\w-]+\.laundrylobby\.com$/.test(origin);
-    const isAllowedOrigin = allowedOrigins.includes(origin);
-    
-    console.log('🌐 Vercel CORS check:', {
-      origin,
-      isVercelDeployment,
-      isTenantSubdomain,
-      isAllowedOrigin
-    });
-    
-    if (isVercelDeployment || isTenantSubdomain || isAllowedOrigin || !origin) {
-      res.setHeader('Access-Control-Allow-Origin', origin || '*');
-      res.setHeader('Access-Control-Allow-Credentials', 'true');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Tenancy-ID, X-Tenancy-Slug');
-      res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
-    }
-    
-    // Handle preflight requests
-    if (req.method === 'OPTIONS') {
-      console.log('🔧 Vercel OPTIONS preflight for origin:', origin);
-      return res.status(200).end();
-    }
-    
-    next();
-  });
-  
-  console.log('🌐 Vercel serverless mode: CORS headers configured for tenant subdomains');
+  console.log('🌐 Vercel serverless mode: App ready for export');
   module.exports = app;
 } else {
+  // Traditional server setup for local development
+  // Connect to MongoDB and wait
+  connectDB().catch(err => {
+    console.warn('⚠️  MongoDB connection failed, running without database');
+    console.warn('💡 Some features will be limited without database connection');
+    console.warn('🔧 Error:', err.message);
+  });
+
   // Traditional server setup for local development and other platforms
   const server = app.listen(PORT, () => {
     const APP_VERSION = process.env.APP_VERSION || 'unknown';
