@@ -130,6 +130,8 @@ const allowedOrigins = [
   process.env.SALES_FRONTEND_URL,
   // Allow all Vercel preview deployments
   /^https:\/\/.*\.vercel\.app$/,
+  // Explicitly allow your frontend URL
+  'https://laundry-management-system-git-828182-deepakfixl2-5120s-projects.vercel.app',
   // Allow all subdomains of your domain
   /^https:\/\/[\w-]+\.laundry$/,
   /^http:\/\/[\w-]+\.laundry$/,

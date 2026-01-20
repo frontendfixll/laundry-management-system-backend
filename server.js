@@ -66,15 +66,22 @@ if (isVercel) {
     const allowedOrigins = [
       'https://laundrylobby.vercel.app',
       'https://laundrylobby-superadmin.vercel.app',
-      'https://laundrylobby.com'
-    ];
+      'https://laundrylobby.com',
+      // Add your actual frontend URL
+      'https://laundry-management-system-git-828182-deepakfixl2-5120s-projects.vercel.app',
+      // Allow all Vercel preview deployments
+      process.env.FRONTEND_URL,
+      process.env.SUPERADMIN_URL,
+      process.env.MARKETING_URL
+    ].filter(Boolean);
     
-    // Check if origin matches tenant subdomain pattern
+    // Check if origin matches allowed patterns or Vercel deployments
+    const isVercelDeployment = origin && /^https:\/\/.*\.vercel\.app$/.test(origin);
     const isTenantSubdomain = origin && /^https:\/\/[\w-]+\.laundrylobby\.com$/.test(origin);
     const isAllowedOrigin = allowedOrigins.includes(origin);
     
-    if (isTenantSubdomain || isAllowedOrigin) {
-      res.setHeader('Access-Control-Allow-Origin', origin);
+    if (isVercelDeployment || isTenantSubdomain || isAllowedOrigin || !origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin || '*');
       res.setHeader('Access-Control-Allow-Credentials', 'true');
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Tenancy-ID, X-Tenancy-Slug');
