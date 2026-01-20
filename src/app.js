@@ -420,6 +420,31 @@ app.use('/api/public/signup', signupPublicRoutes);
 const cronRoutes = require('./routes/cronRoutes');
 app.use('/api/cron', cronRoutes);
 
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Backend is running',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Laundry Management System API',
+    version: '1.0.0',
+    endpoints: {
+      health: '/api/health',
+      auth: '/api/auth',
+      admin: '/api/admin',
+      customer: '/api/customer'
+    }
+  });
+});
+
 // Notification routes (with SSE for real-time)
 const notificationRoutes = require('./routes/notificationRoutes');
 const superAdminNotificationRoutes = require('./routes/superAdminNotificationRoutes');
