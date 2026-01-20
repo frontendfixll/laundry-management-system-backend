@@ -58,6 +58,16 @@ if (isVercel) {
   // Initialize database connection for serverless
   connectDB();
   
+  // Add a simple test route to verify the app is working
+  app.get('/test', (req, res) => {
+    res.json({
+      success: true,
+      message: 'Test route working in Vercel',
+      timestamp: new Date().toISOString(),
+      environment: 'vercel-serverless'
+    });
+  });
+  
   // Add CORS headers for all responses in serverless environment
   app.use((req, res, next) => {
     const origin = req.get('origin');
