@@ -81,6 +81,16 @@ const salesUserSchema = new mongoose.Schema({
       view: { type: Boolean, default: true },
       export: { type: Boolean, default: true }
     },
+    // Upgrade Management
+    upgrades: {
+      view: { type: Boolean, default: true },
+      create: { type: Boolean, default: true },
+      update: { type: Boolean, default: true },
+      delete: { type: Boolean, default: false },
+      payment: { type: Boolean, default: true },
+      remind: { type: Boolean, default: true },
+      extend: { type: Boolean, default: true }
+    },
     // Tenancy Management (limited)
     tenancies: {
       view: { type: Boolean, default: true },
