@@ -152,6 +152,17 @@ const tenancySchema = new mongoose.Schema({
     lowercase: true,
     trim: true
   },
+  domainStatus: {
+    type: String,
+    enum: ['pending', 'active', 'failed', 'removed'],
+    default: 'pending'
+  },
+  domainCreatedAt: {
+    type: Date
+  },
+  domainVerifiedAt: {
+    type: Date
+  },
   
   // Branding
   branding: {

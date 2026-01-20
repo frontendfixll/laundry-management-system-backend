@@ -139,6 +139,21 @@ router.patch('/:id/features',
   tenancyController.updateFeatures
 );
 
+// Update tenancy owner permissions
+router.patch('/:id/owner/permissions',
+  param('id').isMongoId().withMessage('Valid tenancy ID is required'),
+  body('permissions').isObject().withMessage('Permissions object is required'),
+  logAdminAction('update_tenancy_owner_permissions', 'tenancies'),
+  tenancyController.updateOwnerPermissions
+);
+
+// Get tenancy owner permissions
+router.get('/:id/owner/permissions',
+  param('id').isMongoId().withMessage('Valid tenancy ID is required'),
+  logAdminAction('view_tenancy_owner_permissions', 'tenancies'),
+  tenancyController.getOwnerPermissions
+);
+
 // Delete tenancy (soft delete)
 router.delete('/:id',
   param('id').isMongoId().withMessage('Valid tenancy ID is required'),

@@ -16,7 +16,25 @@ const getSupportDashboard = asyncHandler(async (req, res) => {
   const supportUserId = req.user._id;
   const tenancyId = req.tenancyId;
 
-  // Get assigned tickets stats
+  console.log('🔍 Support Dashboard Request:', {
+    supportUserId,
+    tenancyId,
+    userRole: req.user.role,
+    userName: req.user.name
+  });
+
+  // Get all tickets in tenancy with detailed stats
+  const allTicketsStats = await Ticket.aggregate([
+    { $match: { tenancy: tenancyId } },
+    {
+      $group: {
+        _id: '$status',
+        count: { $sum: 1 }
+      }
+    }
+  ]);
+
+  // Get assigned tickets stats (tickets assigned to this support user)
   const assignedStats = await Ticket.aggregate([
     { $match: { assignedTo: supportUserId } },
     {
@@ -27,7 +45,20 @@ const getSupportDashboard = asyncHandler(async (req, res) => {
     }
   ]);
 
-  // Get my recent tickets
+  // Get tickets resolved today by this support user
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const resolvedToday = await Ticket.countDocuments({
+    resolvedBy: supportUserId,
+    resolvedAt: { $gte: today }
+  });
+
+  // Get total tickets resolved by this support user
+  const totalResolved = await Ticket.countDocuments({
+    resolvedBy: supportUserId
+  });
+
+  // Get my recent tickets (assigned to me)
   const myTickets = await Ticket.find({ assignedTo: supportUserId })
     .populate('raisedBy', 'name email')
     .populate('relatedOrder', 'orderNumber')
@@ -57,15 +88,45 @@ const getSupportDashboard = asyncHandler(async (req, res) => {
     .sort({ createdAt: 1 })
     .limit(5);
 
+  // Calculate dynamic stats
+  const openTicketsCount = allTicketsStats.find(s => s._id === 'open')?.count || 0;
+  const inProgressCount = allTicketsStats.find(s => s._id === 'in_progress')?.count || 0;
+  const resolvedCount = allTicketsStats.find(s => s._id === 'resolved')?.count || 0;
+  const assignedToMeCount = assignedStats.reduce((sum, stat) => sum + stat.count, 0);
+
   const dashboardData = {
+    // Dynamic stats for cards
+    stats: {
+      assignedTickets: assignedToMeCount,
+      pendingTickets: unassignedTickets.length,
+      resolvedToday: resolvedToday,
+      totalResolved: totalResolved,
+      openTickets: openTicketsCount,
+      inProgressTickets: inProgressCount,
+      allResolvedTickets: resolvedCount
+    },
+    // Legacy format for backward compatibility
     assignedStats: {
-      total: assignedStats.reduce((sum, stat) => sum + stat.count, 0),
+      total: assignedToMeCount,
       byStatus: assignedStats
     },
     myTickets,
     unassignedTickets,
-    overdueTickets
+    overdueTickets,
+    // Additional stats for dashboard cards
+    tenancyStats: {
+      total: allTicketsStats.reduce((sum, stat) => sum + stat.count, 0),
+      byStatus: allTicketsStats
+    }
   };
+
+  console.log('📤 Sending dashboard data:', {
+    assignedToMe: assignedToMeCount,
+    unassigned: unassignedTickets.length,
+    resolvedToday: resolvedToday,
+    totalResolved: totalResolved,
+    openTickets: openTicketsCount
+  });
 
   sendSuccess(res, dashboardData, 'Support dashboard retrieved successfully');
 });

@@ -17,6 +17,9 @@ router.post('/', superAdminUsersController.createUser);
 // Get user by ID
 router.get('/:userId', superAdminUsersController.getUserById);
 
+// Update user information
+router.put('/:userId', superAdminUsersController.updateUser);
+
 // Update user status
 router.patch('/:userId/status', superAdminUsersController.updateUserStatus);
 

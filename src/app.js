@@ -35,6 +35,7 @@ const superAdminUsersRoutes = require('./routes/superAdminUsers');
 const superAdminAdminsRoutes = require('./routes/superAdminAdmins');
 const superAdminCustomersRoutes = require('./routes/superAdminCustomers');
 const superAdminTenancyRoutes = require('./routes/superAdminTenancies');
+const subdomainRoutes = require('./routes/subdomainRoutes');
 const superAdminInvitationRoutes = require('./routes/superAdminInvitations');
 const superAdminBillingRoutes = require('./routes/superAdminBilling');
 const superAdminTenancyAnalyticsRoutes = require('./routes/superAdminTenancyAnalytics');
@@ -316,6 +317,7 @@ app.use('/api/superadmin/users', superAdminUsersRoutes);
 app.use('/api/superadmin/admins', superAdminAdminsRoutes);
 app.use('/api/superadmin/customers', superAdminCustomersRoutes);
 app.use('/api/superadmin/tenancies', superAdminTenancyRoutes);
+app.use('/api/superadmin/subdomains', subdomainRoutes);
 app.use('/api/superadmin/invitations', superAdminInvitationRoutes);
 app.use('/api/superadmin/billing', superAdminBillingRoutes);
 app.use('/api/superadmin/tenancy-analytics', superAdminTenancyAnalyticsRoutes);
@@ -348,6 +350,10 @@ if (process.env.NODE_ENV !== 'production') {
 
 // Permission sync routes
 app.use('/api/permissions', permissionSyncRoutes);
+
+// Refresh permissions route
+const refreshPermissionsRoutes = require('./routes/refreshPermissions');
+app.use('/api', refreshPermissionsRoutes);
 
 // Support routes
 app.use('/api/support', supportRoutes);

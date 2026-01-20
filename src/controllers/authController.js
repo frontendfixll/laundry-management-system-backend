@@ -432,6 +432,7 @@ const getProfile = async (req, res) => {
           email: user.email,
           phone: user.phone,
           role: user.role,
+          permissions: user.permissions || {},
           isEmailVerified: user.isEmailVerified,
           phoneVerified: user.phoneVerified,
           addresses: user.addresses,

@@ -483,6 +483,142 @@ const tenancyController = {
     }
   },
 
+  // Update tenancy owner permissions
+  updateOwnerPermissions: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { permissions } = req.body;
+      
+      console.log(`🔧 SuperAdmin updating owner permissions for tenancy: ${id}`);
+      
+      // Validate permissions object
+      if (!permissions || typeof permissions !== 'object') {
+        return res.status(400).json({
+          success: false,
+          message: 'Valid permissions object is required'
+        });
+      }
+      
+      // Find tenancy
+      const tenancy = await Tenancy.findById(id).populate('owner');
+      if (!tenancy) {
+        return res.status(404).json({
+          success: false,
+          message: 'Tenancy not found'
+        });
+      }
+      
+      if (!tenancy.owner) {
+        return res.status(404).json({
+          success: false,
+          message: 'Tenancy owner not found'
+        });
+      }
+      
+      // Update owner permissions
+      const owner = await User.findById(tenancy.owner._id);
+      owner.permissions = permissions;
+      await owner.save();
+      
+      console.log(`✅ Updated permissions for owner: ${owner.email}`);
+      
+      // Notify owner about permission update via WebSocket
+      try {
+        const PermissionSyncService = require('../services/permissionSyncService');
+        await PermissionSyncService.notifyPermissionUpdate(owner._id, {
+          permissions: owner.permissions,
+          tenancy: tenancy._id,
+          recipientType: 'tenancy_owner'
+        });
+        console.log('📢 Notified tenancy owner about permission update via WebSocket');
+      } catch (notifyError) {
+        console.log('⚠️ WebSocket notification failed:', notifyError.message);
+      }
+      
+      res.json({
+        success: true,
+        message: 'Owner permissions updated successfully',
+        data: {
+          tenancy: {
+            _id: tenancy._id,
+            name: tenancy.name,
+            owner: {
+              _id: owner._id,
+              name: owner.name,
+              email: owner.email,
+              permissions: owner.permissions
+            }
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Error updating owner permissions:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to update owner permissions'
+      });
+    }
+  },
+
+  // Get tenancy owner permissions
+  getOwnerPermissions: async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      const tenancy = await Tenancy.findById(id).populate('owner', 'name email permissions');
+      if (!tenancy) {
+        return res.status(404).json({
+          success: false,
+          message: 'Tenancy not found'
+        });
+      }
+      
+      if (!tenancy.owner) {
+        return res.status(404).json({
+          success: false,
+          message: 'Tenancy owner not found'
+        });
+      }
+      
+      // Count permissions
+      const permissions = tenancy.owner.permissions || {};
+      let modules = 0;
+      let totalPermissions = 0;
+      
+      for (const [moduleName, modulePerms] of Object.entries(permissions)) {
+        if (typeof modulePerms === 'object' && modulePerms !== null) {
+          let moduleHasPermission = false;
+          for (const value of Object.values(modulePerms)) {
+            if (value === true) {
+              totalPermissions++;
+              moduleHasPermission = true;
+            }
+          }
+          if (moduleHasPermission) modules++;
+        }
+      }
+      
+      res.json({
+        success: true,
+        data: {
+          owner: {
+            _id: tenancy.owner._id,
+            name: tenancy.owner.name,
+            email: tenancy.owner.email,
+            permissions: tenancy.owner.permissions,
+            permissionSummary: { modules, totalPermissions }
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Error getting owner permissions:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to get owner permissions'
+      });
+    }
+  },
+
   // Get tenancy stats
   getTenancyStats: async (req, res) => {
     try {

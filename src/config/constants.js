@@ -5,7 +5,8 @@ const USER_ROLES = {
   ADMIN: 'admin',                // Tenancy admin - manages entire tenancy
   BRANCH_ADMIN: 'branch_admin',  // Branch admin - manages single branch only
   STAFF: 'staff',                // Workers (washer, ironer, etc.)
-  CUSTOMER: 'customer'           // End users
+  CUSTOMER: 'customer',          // End users
+  SUPPORT: 'support'             // Customer support agents
 };
 
 // Legacy role mappings for backward compatibility
@@ -358,7 +359,8 @@ const RECIPIENT_TYPES = {
   ADMIN: 'admin',
   BRANCH_ADMIN: 'branch_admin',
   SUPERADMIN: 'superadmin',
-  STAFF: 'staff'
+  STAFF: 'staff',
+  SUPPORT: 'support'
 };
 
 // Consumption Rates (per service)

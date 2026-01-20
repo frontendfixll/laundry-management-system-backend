@@ -116,6 +116,18 @@ class TenancyCreationService {
       await tenancy.save();
       console.log('✅ Tenancy created:', tenancy._id);
 
+      // Create subdomain automatically
+      console.log('🌐 Creating subdomain for tenancy...');
+      const subdomainService = require('./subdomainService');
+      const subdomainResult = await subdomainService.createSubdomain(subdomain, tenancy._id);
+      
+      if (subdomainResult.success) {
+        console.log(`✅ Subdomain created: ${subdomainResult.subdomain}`);
+      } else {
+        console.error(`⚠️ Subdomain creation failed: ${subdomainResult.error}`);
+        // Don't fail tenancy creation if subdomain fails
+      }
+
       // Hash admin password
       const hashedPassword = await bcrypt.hash(adminData.password, 12);
 

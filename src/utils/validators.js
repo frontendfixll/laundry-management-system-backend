@@ -1,5 +1,5 @@
 const Joi = require('joi');
-const { USER_ROLES, SERVICES, CLOTHING_CATEGORIES, ITEM_TYPES, TICKET_CATEGORIES, TICKET_PRIORITY } = require('../config/constants');
+const { USER_ROLES, SERVICES, CLOTHING_CATEGORIES, ITEM_TYPES, TICKET_CATEGORIES, TICKET_PRIORITY, TICKET_STATUS } = require('../config/constants');
 
 // Common validation schemas
 const commonSchemas = {
@@ -168,25 +168,19 @@ const ticketValidation = {
     isInternal: Joi.boolean().default(false)
   }),
 
-  updateStatus: {
-    body: Joi.object({
-      status: Joi.string().valid(...Object.values(TICKET_STATUS)).required(),
-      resolution: Joi.string().trim().optional()
-    })
-  },
+  updateStatus: Joi.object({
+    status: Joi.string().valid(...Object.values(TICKET_STATUS)).required(),
+    resolution: Joi.string().trim().optional()
+  }),
 
-  escalate: {
-    body: Joi.object({
-      escalationReason: Joi.string().trim().required(),
-      escalateTo: Joi.string().optional()
-    })
-  },
+  escalate: Joi.object({
+    escalationReason: Joi.string().trim().required(),
+    escalateTo: Joi.string().optional()
+  }),
 
-  updatePriority: {
-    body: Joi.object({
-      priority: Joi.string().valid(...Object.values(TICKET_PRIORITY)).required()
-    })
-  }
+  updatePriority: Joi.object({
+    priority: Joi.string().valid(...Object.values(TICKET_PRIORITY)).required()
+  })
 };
 
 // Staff validation schemas
@@ -229,40 +223,102 @@ const validate = (schema) => {
 
 // Support validation schemas
 const supportValidation = {
-  createUser: {
-    body: Joi.object({
-      name: Joi.string().required().trim().max(50),
-      email: Joi.string().email().required(),
-      phone: Joi.string().pattern(/^[6-9]\d{9}$/).required(),
-      password: Joi.string().min(6).required(),
-      assignedBranch: Joi.string().optional()
-    })
-  },
-  
-  updateUser: {
-    body: Joi.object({
-      name: Joi.string().trim().max(50).optional(),
-      phone: Joi.string().pattern(/^[6-9]\d{9}$/).optional(),
-      assignedBranch: Joi.string().allow(null).optional(),
-      isActive: Joi.boolean().optional(),
-      permissions: Joi.object({
-        tickets: Joi.object({
-          view: Joi.boolean().optional(),
-          create: Joi.boolean().optional(),
-          update: Joi.boolean().optional(),
-          assign: Joi.boolean().optional(),
-          resolve: Joi.boolean().optional(),
-          escalate: Joi.boolean().optional()
-        }).optional()
+  createUser: Joi.object({
+    name: Joi.string().required().trim().max(50),
+    email: Joi.string().email().required(),
+    phone: Joi.string().pattern(/^[6-9]\d{9}$/).required(),
+    password: Joi.string().min(6).required(),
+    assignedBranch: Joi.string().optional(),
+    role: Joi.string().valid('support').optional(),
+    isActive: Joi.boolean().optional(),
+    permissions: Joi.object({
+      support: Joi.object({
+        view: Joi.boolean().optional(),
+        create: Joi.boolean().optional(),
+        update: Joi.boolean().optional(),
+        delete: Joi.boolean().optional(),
+        assign: Joi.boolean().optional(),
+        respond: Joi.boolean().optional(),
+        resolve: Joi.boolean().optional(),
+        escalate: Joi.boolean().optional()
+      }).optional(),
+      tickets: Joi.object({
+        view: Joi.boolean().optional(),
+        create: Joi.boolean().optional(),
+        update: Joi.boolean().optional(),
+        assign: Joi.boolean().optional(),
+        resolve: Joi.boolean().optional(),
+        escalate: Joi.boolean().optional()
       }).optional()
-    })
-  },
+    }).optional()
+  }),
   
-  resetPassword: {
-    body: Joi.object({
-      newPassword: Joi.string().min(6).required()
-    })
-  }
+  updateUser: Joi.object({
+    name: Joi.string().trim().max(50).optional(),
+    phone: Joi.string().pattern(/^[6-9]\d{9}$/).optional(),
+    assignedBranch: Joi.string().allow(null).optional(),
+    isActive: Joi.boolean().optional(),
+    permissions: Joi.object({
+      tickets: Joi.object({
+        view: Joi.boolean().optional(),
+        create: Joi.boolean().optional(),
+        update: Joi.boolean().optional(),
+        assign: Joi.boolean().optional(),
+        resolve: Joi.boolean().optional(),
+        escalate: Joi.boolean().optional()
+      }).optional()
+    }).optional()
+  }),
+  
+  resetPassword: Joi.object({
+    newPassword: Joi.string().min(6).required()
+  })
+};
+
+// Knowledge Base validation schemas
+const knowledgeBaseValidation = {
+  createArticle: Joi.object({
+    title: Joi.string().trim().required().max(200),
+    content: Joi.string().trim().required(),
+    category: Joi.string().trim().required().max(50),
+    tags: Joi.array().items(Joi.string().trim().max(30)).max(10).default([]),
+    status: Joi.string().valid('draft', 'published', 'archived').default('published'),
+    visibility: Joi.string().valid('public', 'internal', 'tenancy').default('tenancy'),
+    searchKeywords: Joi.array().items(Joi.string().trim().max(50)).max(20).default([]),
+    relatedArticles: Joi.array().items(commonSchemas.objectId).max(5).default([])
+  }),
+
+  updateArticle: Joi.object({
+    title: Joi.string().trim().max(200).optional(),
+    content: Joi.string().trim().optional(),
+    category: Joi.string().trim().max(50).optional(),
+    tags: Joi.array().items(Joi.string().trim().max(30)).max(10).optional(),
+    status: Joi.string().valid('draft', 'published', 'archived').optional(),
+    visibility: Joi.string().valid('public', 'internal', 'tenancy').optional(),
+    searchKeywords: Joi.array().items(Joi.string().trim().max(50)).max(20).optional(),
+    relatedArticles: Joi.array().items(commonSchemas.objectId).max(5).optional()
+  }),
+
+  markHelpful: Joi.object({
+    helpful: Joi.boolean().required()
+  }),
+
+  createCategory: Joi.object({
+    name: Joi.string().trim().required().max(50),
+    description: Joi.string().trim().max(200).optional(),
+    color: Joi.string().valid('blue', 'green', 'purple', 'orange', 'red', 'yellow', 'indigo', 'pink').default('blue'),
+    icon: Joi.string().trim().max(50).default('BookOpen'),
+    sortOrder: Joi.number().integer().min(0).default(0)
+  }),
+
+  updateCategory: Joi.object({
+    name: Joi.string().trim().max(50).optional(),
+    description: Joi.string().trim().max(200).optional(),
+    color: Joi.string().valid('blue', 'green', 'purple', 'orange', 'red', 'yellow', 'indigo', 'pink').optional(),
+    icon: Joi.string().trim().max(50).optional(),
+    sortOrder: Joi.number().integer().min(0).optional(),
+    isActive: Joi.boolean().optional()
+  })
 };
 
 module.exports = {
@@ -274,5 +330,6 @@ module.exports = {
   ticketValidation,
   staffValidation,
   supportValidation,
+  knowledgeBaseValidation,
   commonSchemas
 };

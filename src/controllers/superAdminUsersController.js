@@ -125,8 +125,8 @@ exports.updateUserRole = async (req, res) => {
     const { userId } = req.params;
     const { role, assignedBranch } = req.body;
 
-    const validRoles = ['customer', 'branch_manager', 'staff', 'admin'];
-    if (!validRoles.includes(role)) {
+    const validRoles = ['customer', 'branch_manager', 'staff', 'admin', 'support'];
+    if (role && !validRoles.includes(role)) {
       return res.status(400).json({ success: false, message: 'Invalid role' });
     }
 
@@ -168,6 +168,16 @@ exports.updateUserRole = async (req, res) => {
     }
 
     user.role = role;
+    
+    // Update permissions based on new role
+    if (role === 'support') {
+      user.permissions = User.getDefaultSupportPermissions();
+    } else if (role === 'admin') {
+      user.permissions = User.getDefaultAdminPermissions();
+    } else if (role === 'branch_admin') {
+      user.permissions = User.getDefaultBranchAdminPermissions();
+    }
+    
     await user.save();
 
     const updatedUser = await User.findById(userId)
@@ -182,6 +192,69 @@ exports.updateUserRole = async (req, res) => {
   } catch (error) {
     console.error('Update user role error:', error);
     res.status(500).json({ success: false, message: 'Failed to update user role' });
+  }
+};
+
+// Update user information
+exports.updateUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { name, email, phone } = req.body;
+
+    // Validate required fields
+    if (!name || !email) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Name and email are required' 
+      });
+    }
+
+    // Check if email is already taken by another user
+    const existingUser = await User.findOne({
+      email,
+      _id: { $ne: userId }
+    });
+
+    if (existingUser) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Email is already taken by another user' 
+      });
+    }
+
+    // Check if phone is already taken by another user (if provided)
+    if (phone) {
+      const existingPhoneUser = await User.findOne({
+        phone,
+        _id: { $ne: userId }
+      });
+
+      if (existingPhoneUser) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Phone number is already taken by another user' 
+        });
+      }
+    }
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { name, email, phone },
+      { new: true, runValidators: true }
+    ).select('-password').populate('assignedBranch', 'name code');
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    res.json({
+      success: true,
+      message: 'User updated successfully',
+      data: { user }
+    });
+  } catch (error) {
+    console.error('Update user error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update user' });
   }
 };
 
@@ -211,7 +284,7 @@ exports.createUser = async (req, res) => {
     }
 
     // Validate role
-    const validRoles = ['customer', 'branch_manager', 'staff', 'admin'];
+    const validRoles = ['customer', 'branch_manager', 'staff', 'admin', 'support'];
     if (role && !validRoles.includes(role)) {
       return res.status(400).json({ success: false, message: 'Invalid role' });
     }
@@ -246,7 +319,11 @@ exports.createUser = async (req, res) => {
       role: role || 'customer',
       assignedBranch: (role === 'branch_manager' || role === 'staff') ? assignedBranch : undefined,
       isActive: true,
-      isEmailVerified: true // Auto-verify for admin-created users
+      isEmailVerified: true, // Auto-verify for admin-created users
+      // Set default permissions based on role
+      permissions: role === 'support' ? User.getDefaultSupportPermissions() : 
+                  role === 'admin' ? User.getDefaultAdminPermissions() :
+                  role === 'branch_admin' ? User.getDefaultBranchAdminPermissions() : undefined
     });
 
     await user.save();

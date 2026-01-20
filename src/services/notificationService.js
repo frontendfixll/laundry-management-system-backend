@@ -358,11 +358,16 @@ class NotificationService {
       recipientType: RECIPIENT_TYPES.ADMIN,
       tenancy,
       type: NOTIFICATION_TYPES.PERMISSION_GRANTED,
-      title: 'New Permission Granted',
-      message: `You have been granted ${permission.module}.${permission.action} permission`,
+      title: 'Permissions Updated',
+      message: `Your permissions have been updated by an administrator`,
       icon: 'shield-check',
-      severity: 'success',
-      data: { permission, link: '/admin/settings' }
+      severity: 'info',
+      data: { 
+        permission, 
+        type: 'permission_update',
+        action: 'granted',
+        // No link - permission updates should refresh current page
+      }
     });
   }
 
@@ -372,11 +377,16 @@ class NotificationService {
       recipientType: RECIPIENT_TYPES.ADMIN,
       tenancy,
       type: NOTIFICATION_TYPES.PERMISSION_REVOKED,
-      title: 'Permission Revoked',
-      message: `Your ${permission.module}.${permission.action} permission has been revoked`,
+      title: 'Permissions Updated',
+      message: `Your permissions have been updated by an administrator`,
       icon: 'shield-x',
-      severity: 'warning',
-      data: { permission, link: '/admin/settings' }
+      severity: 'info',
+      data: { 
+        permission, 
+        type: 'permission_update',
+        action: 'revoked',
+        // No link - permission updates should refresh current page
+      }
     });
   }
 
