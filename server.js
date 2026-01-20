@@ -1,6 +1,9 @@
 const app = require('./src/app');
 const connectDB = require('./src/config/database');
 
+// Force deployment update - timestamp: 2025-01-20
+console.log('🚀 Starting Laundry Management System Backend v2.0.1');
+
 // Check if running on Vercel
 const isVercel = process.env.VERCEL || process.env.VERCEL_ENV;
 
