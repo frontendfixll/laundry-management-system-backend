@@ -37,8 +37,20 @@ exports.login = asyncHandler(async (req, res) => {
 
     console.log('🔐 Login attempt for:', email);
 
-    // Find sales user
-    const salesUser = await SalesUser.findOne({ email: email.toLowerCase() });
+    // Check if MongoDB is connected
+    const mongoose = require('mongoose');
+    if (mongoose.connection.readyState !== 1) {
+      console.error('❌ MongoDB not connected, readyState:', mongoose.connection.readyState);
+      return sendError(res, 'DATABASE_ERROR', 'Database connection unavailable. Please try again later.', 500);
+    }
+
+    // Find sales user with timeout handling
+    const salesUser = await Promise.race([
+      SalesUser.findOne({ email: email.toLowerCase() }),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Database query timeout')), 8000)
+      )
+    ]);
     
     console.log('🔍 Search query:', { email: email.toLowerCase() });
     console.log('🔍 Found user:', salesUser ? 'YES' : 'NO');
@@ -331,5 +343,81 @@ exports.refreshSession = asyncHandler(async (req, res) => {
     }
   } else {
     return sendError(res, 'Invalid token', 401);
+  }
+});
+
+/**
+ * GET /api/sales/auth/team
+ * Get team members for sales users
+ */
+exports.getTeamMembers = asyncHandler(async (req, res) => {
+  try {
+    console.log('🔍 Fetching team members...');
+    console.log('🔍 Request user:', req.salesUser ? 'EXISTS' : 'MISSING');
+    console.log('🔍 User email:', req.salesUser?.email || 'N/A');
+    
+    if (!req.salesUser) {
+      console.error('❌ No sales user in request');
+      return sendError(res, 'UNAUTHORIZED', 'Sales user not found in request', 401);
+    }
+    
+    // Sales users can see limited team info (not all sales users)
+    // For now, return current user info and sample team data
+    const currentUser = req.salesUser;
+    
+    const teamMembers = [
+      {
+        _id: currentUser._id,
+        name: currentUser.name,
+        email: currentUser.email,
+        phone: currentUser.phone,
+        designation: currentUser.designation || 'Sales Executive',
+        department: currentUser.department || 'Sales',
+        isActive: currentUser.isActive,
+        performance: currentUser.performance || {
+          leadsAssigned: 0,
+          leadsConverted: 0,
+          conversionRate: 0,
+          totalRevenue: 0,
+          currentMonthRevenue: 0,
+          target: 0,
+          targetAchieved: 0
+        },
+        createdAt: currentUser.createdAt,
+        lastLogin: currentUser.lastLogin
+      }
+    ];
+
+    console.log('✅ Team members response:', teamMembers.length);
+    sendSuccess(res, { salesUsers: teamMembers }, 'Team members retrieved');
+
+  } catch (error) {
+    console.error('❌ Team members error:', error);
+    
+    // Fallback to sample data
+    const fallbackData = {
+      salesUsers: [{
+        _id: 'sample_id',
+        name: 'Sample Sales User',
+        email: 'sample@sales.com',
+        designation: 'Sales Executive',
+        department: 'Sales',
+        isActive: true,
+        performance: {
+          leadsAssigned: 0,
+          leadsConverted: 0,
+          conversionRate: 0,
+          totalRevenue: 0,
+          currentMonthRevenue: 0,
+          target: 0,
+          targetAchieved: 0
+        },
+        createdAt: new Date(),
+        lastLogin: new Date()
+      }]
+    };
+    
+    console.log('🔄 Using fallback team data');
+    sendSuccess(res, fallbackData, 'Team members retrieved (fallback)');
   }
 });

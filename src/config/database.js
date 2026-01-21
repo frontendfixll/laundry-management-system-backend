@@ -2,24 +2,26 @@ const mongoose = require('mongoose');
 
 const connectDB = async () => {
   try {
-    // Optimized connection options for both local and Vercel
+    // For Vercel serverless, use more aggressive timeouts
+    const isVercel = process.env.VERCEL || process.env.NODE_ENV === 'production';
+    
+    // Don't disable buffering initially - let connection establish first
+    console.log('🔄 Connecting to MongoDB...');
+    console.log('🌍 Environment:', process.env.NODE_ENV);
+    console.log('🚀 Platform:', isVercel ? 'Vercel Serverless' : 'Traditional Server');
+    
+    // Optimized connection options for serverless
     const options = {
-      serverSelectionTimeoutMS: process.env.VERCEL ? 5000 : 30000,
-      socketTimeoutMS: process.env.VERCEL ? 10000 : 60000,
-      maxPoolSize: process.env.VERCEL ? 5 : 10,
-      minPoolSize: 1,
-      maxIdleTimeMS: process.env.VERCEL ? 10000 : 30000,
-      // Remove unsupported options
-      // bufferMaxEntries: 0, // This option is not supported
-      // bufferCommands: false, // This causes issues with mongoose
+      serverSelectionTimeoutMS: isVercel ? 3000 : 30000,
+      socketTimeoutMS: isVercel ? 5000 : 60000,
+      connectTimeoutMS: isVercel ? 3000 : 30000,
+      maxPoolSize: isVercel ? 3 : 10,
+      minPoolSize: 0, // Allow 0 connections in serverless
+      maxIdleTimeMS: isVercel ? 5000 : 30000,
       family: 4, // Use IPv4, skip trying IPv6
       retryWrites: true,
       w: 'majority'
     };
-
-    console.log('🔄 Connecting to MongoDB...');
-    console.log('🌍 Environment:', process.env.NODE_ENV);
-    console.log('🚀 Platform:', process.env.VERCEL ? 'Vercel Serverless' : 'Traditional Server');
     
     const conn = await mongoose.connect(process.env.MONGODB_URI, options);
 
@@ -27,18 +29,30 @@ const connectDB = async () => {
     console.log(`📊 Database: ${conn.connection.name}`);
     console.log(`🔗 Connection State: ${conn.connection.readyState}`);
     
+    // Only disable buffering AFTER successful connection
+    mongoose.set('bufferCommands', false);
+    // Note: bufferMaxEntries is deprecated in newer mongoose versions
+    console.log('🔧 Disabled mongoose buffering after successful connection');
+    
     // Handle connection events (only for non-serverless)
-    if (!process.env.VERCEL) {
+    if (!isVercel) {
       mongoose.connection.on('error', (err) => {
         console.error('❌ MongoDB connection error:', err);
+        // Re-enable buffering on error
+        mongoose.set('bufferCommands', true);
       });
 
       mongoose.connection.on('disconnected', () => {
         console.log('⚠️ MongoDB disconnected');
+        // Re-enable buffering on disconnect
+        mongoose.set('bufferCommands', true);
       });
 
       mongoose.connection.on('reconnected', () => {
         console.log('🔄 MongoDB reconnected');
+        // Disable buffering again on reconnect
+        mongoose.set('bufferCommands', false);
+        // Note: bufferMaxEntries is deprecated
       });
     }
 
@@ -59,12 +73,7 @@ const connectDB = async () => {
       console.error('💡 Network timeout - check your internet connection and MongoDB Atlas status');
     }
     
-    // For Vercel, don't throw error - continue without DB
-    if (process.env.VERCEL) {
-      console.warn('⚠️ Running in serverless mode without database connection');
-      return null;
-    }
-    
+    // For production/Vercel, throw error to fail fast
     throw error;
   }
 };

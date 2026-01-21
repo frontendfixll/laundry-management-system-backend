@@ -1,4 +1,12 @@
 const bannerLifecycleService = require('../services/bannerLifecycleService');
+const mongoose = require('mongoose');
+
+/**
+ * Check if database is connected before running jobs
+ */
+function isDatabaseConnected() {
+  return mongoose.connection.readyState === 1;
+}
 
 /**
  * Auto-activate scheduled banners
@@ -6,6 +14,12 @@ const bannerLifecycleService = require('../services/bannerLifecycleService');
  */
 async function autoActivateBanners() {
   try {
+    // Check database connection first
+    if (!isDatabaseConnected()) {
+      console.log('⚠️ Skipping auto-activate banners job - database not connected');
+      return { success: false, error: 'Database not connected' };
+    }
+
     console.log('🔄 Running auto-activate banners job...');
     const result = await bannerLifecycleService.autoActivateBanners();
     
@@ -26,6 +40,12 @@ async function autoActivateBanners() {
  */
 async function autoCompleteBanners() {
   try {
+    // Check database connection first
+    if (!isDatabaseConnected()) {
+      console.log('⚠️ Skipping auto-complete banners job - database not connected');
+      return { success: false, error: 'Database not connected' };
+    }
+
     console.log('🔄 Running auto-complete banners job...');
     const result = await bannerLifecycleService.autoCompleteBanners();
     
@@ -46,6 +66,12 @@ async function autoCompleteBanners() {
  */
 async function syncWithCampaigns() {
   try {
+    // Check database connection first
+    if (!isDatabaseConnected()) {
+      console.log('⚠️ Skipping sync banners job - database not connected');
+      return { success: false, error: 'Database not connected' };
+    }
+
     console.log('🔄 Running sync banners with campaigns job...');
     const result = await bannerLifecycleService.syncWithCampaigns();
     
@@ -64,6 +90,11 @@ async function syncWithCampaigns() {
  * Run all lifecycle jobs
  */
 async function runAllJobs() {
+  if (!isDatabaseConnected()) {
+    console.log('⚠️ Skipping all banner lifecycle jobs - database not connected');
+    return { success: false, error: 'Database not connected' };
+  }
+
   console.log('🚀 Running all banner lifecycle jobs...');
   
   const results = {

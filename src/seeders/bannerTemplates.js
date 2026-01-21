@@ -445,7 +445,6 @@ async function seedBannerTemplates(superAdminId) {
 
 // Run seed if called directly
 if (require.main === module) {
-  const mongoose = require('mongoose');
   require('dotenv').config();
   
   mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/laundry-management')

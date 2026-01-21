@@ -259,6 +259,16 @@ const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    // Check if MongoDB is connected
+    const mongoose = require('mongoose');
+    if (mongoose.connection.readyState !== 1) {
+      console.error('❌ MongoDB not connected, readyState:', mongoose.connection.readyState);
+      return res.status(500).json({
+        success: false,
+        message: 'Database connection unavailable. Please try again later.'
+      });
+    }
+
     // Find user and include password
     const user = await User.findOne({ email }).select('+password').populate('tenancy', 'name slug subdomain branding status subscription');
     
@@ -411,40 +421,66 @@ const login = async (req, res) => {
 // Get current user profile
 const getProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id);
+    const user = await User.findById(req.user._id).populate('tenancy');
     
-    // Get tenancy slug if customer has tenancy
-    let tenancySlug = null;
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    // Get tenancy features if user has tenancy
+    let features = {};
+    let tenancyData = null;
+    
     if (user.tenancy) {
       const Tenancy = require('../models/Tenancy');
-      const tenancy = await Tenancy.findById(user.tenancy).select('slug');
+      const tenancy = await Tenancy.findById(user.tenancy._id).select('name slug subdomain branding subscription');
+      
       if (tenancy) {
-        tenancySlug = tenancy.slug;
+        // Extract features from tenancy subscription
+        features = tenancy.subscription?.features || {};
+        
+        tenancyData = {
+          _id: tenancy._id,
+          name: tenancy.name,
+          slug: tenancy.slug,
+          subdomain: tenancy.subdomain,
+          branding: tenancy.branding,
+          subscription: tenancy.subscription
+        };
       }
     }
+
+    console.log(`🔍 Profile request for user ${user.email}:`, {
+      role: user.role,
+      permissionModules: Object.keys(user.permissions || {}),
+      featureCount: Object.keys(features).length,
+      tenancyId: user.tenancy?._id
+    });
 
     res.status(200).json({
       success: true,
       data: {
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          phone: user.phone,
-          role: user.role,
-          permissions: user.permissions || {},
-          isEmailVerified: user.isEmailVerified,
-          phoneVerified: user.phoneVerified,
-          addresses: user.addresses,
-          preferences: user.preferences,
-          rewardPoints: user.rewardPoints,
-          totalOrders: user.totalOrders,
-          isVIP: user.isVIP,
-          lastLogin: user.lastLogin,
-          createdAt: user.createdAt,
-          tenancy: user.tenancy,
-          tenancySlug: tenancySlug
-        }
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        permissions: user.permissions || {},
+        features: features, // Include tenancy features
+        isEmailVerified: user.isEmailVerified,
+        phoneVerified: user.phoneVerified,
+        addresses: user.addresses,
+        preferences: user.preferences,
+        rewardPoints: user.rewardPoints,
+        totalOrders: user.totalOrders,
+        isVIP: user.isVIP,
+        lastLogin: user.lastLogin,
+        createdAt: user.createdAt,
+        tenancy: tenancyData,
+        tenancySlug: tenancyData?.slug
       }
     });
 

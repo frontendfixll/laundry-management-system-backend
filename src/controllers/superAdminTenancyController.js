@@ -429,6 +429,76 @@ const tenancyController = {
       
       await tenancy.save();
       
+      // Emit real-time update for tenancy features
+      try {
+        const socketService = require('../services/socketService');
+        const User = require('../models/User');
+        
+        // Notify all SuperAdmin users about tenancy update
+        socketService.sendToRecipientType('superadmin', {
+          type: 'tenancyFeaturesUpdated',
+          tenancyId: id,
+          tenancyName: tenancy.name,
+          features: tenancy.subscription.features,
+          message: `Features updated for ${tenancy.name}`,
+          timestamp: new Date()
+        });
+        
+        // Find ALL admins in this tenancy (not just owner)
+        const tenancyAdmins = await User.find({ 
+          tenancy: id, 
+          role: 'admin',
+          isActive: true 
+        }).select('_id email name');
+        
+        console.log(`🎯 Found ${tenancyAdmins.length} admins in tenancy ${tenancy.name}:`);
+        tenancyAdmins.forEach(admin => {
+          console.log(`  - ${admin.email} (${admin._id})`);
+        });
+        
+        // Notify ALL tenancy admins
+        for (const admin of tenancyAdmins) {
+          console.log(`🎯 Attempting to notify tenancy admin: ${admin.email} (${admin._id})`);
+          
+          // Send as regular notification for notification center
+          const notificationSent = socketService.sendToUser(admin._id.toString(), {
+            _id: `tenancy-features-${Date.now()}-${admin._id}`,
+            type: 'tenancy_features_updated',
+            title: 'Tenancy Features Updated',
+            message: `Your tenancy features have been updated by SuperAdmin`,
+            severity: 'info',
+            data: {
+              tenancyId: id,
+              tenancyName: tenancy.name,
+              features: tenancy.subscription.features
+            },
+            isRead: false,
+            createdAt: new Date().toISOString()
+          });
+          
+          // Also send as custom event for slide notifications
+          const eventSent = socketService.sendEventToUser(admin._id.toString(), 'tenancyFeaturesUpdated', {
+            type: 'tenancyFeaturesUpdated',
+            tenancyId: id,
+            tenancyName: tenancy.name,
+            features: tenancy.subscription.features,
+            message: `Your tenancy features have been updated by SuperAdmin`,
+            timestamp: new Date()
+          });
+          
+          console.log(`📢 Notification sent to admin ${admin.email}: ${notificationSent}`);
+          console.log(`📢 Event sent to admin ${admin.email}: ${eventSent}`);
+          
+          if (!notificationSent && !eventSent) {
+            console.log(`⚠️ Admin ${admin.email} not connected to WebSocket`);
+          }
+        }
+        
+        console.log(`📢 Emitted tenancyFeaturesUpdated event for tenancy: ${tenancy.name} to ${tenancyAdmins.length} admins`);
+      } catch (socketError) {
+        console.log('⚠️ WebSocket notification failed:', socketError.message);
+      }
+      
       res.json({
         success: true,
         message: 'Features updated successfully',
@@ -524,13 +594,72 @@ const tenancyController = {
       
       // Notify owner about permission update via WebSocket
       try {
-        const PermissionSyncService = require('../services/permissionSyncService');
-        await PermissionSyncService.notifyPermissionUpdate(owner._id, {
+        const socketService = require('../services/socketService');
+        
+        // Send tenancyPermissionsUpdated event directly to the owner
+        const notificationSent = socketService.sendEventToUser(owner._id.toString(), 'tenancyPermissionsUpdated', {
+          type: 'tenancyPermissionsUpdated',
+          tenancyId: tenancy._id,
+          tenancyName: tenancy.name,
+          ownerName: owner.name,
           permissions: owner.permissions,
-          tenancy: tenancy._id,
-          recipientType: 'tenancy_owner'
+          message: `Your access permissions have been updated by SuperAdmin`,
+          timestamp: new Date()
         });
-        console.log('📢 Notified tenancy owner about permission update via WebSocket');
+        
+        console.log(`📢 Sent tenancyPermissionsUpdated to owner ${owner._id}: ${notificationSent}`);
+        
+        // Also send regular notification for notification center
+        const regularNotificationSent = socketService.sendToUser(owner._id.toString(), {
+          _id: `tenancy-permissions-${Date.now()}`,
+          type: 'tenancy_permissions_updated',
+          title: 'Your Permissions Updated',
+          message: `Your access permissions have been updated by SuperAdmin`,
+          severity: 'info',
+          data: {
+            tenancyId: tenancy._id,
+            tenancyName: tenancy.name,
+            permissions: owner.permissions
+          },
+          isRead: false,
+          createdAt: new Date().toISOString()
+        });
+        
+        console.log(`📢 Sent regular notification to owner ${owner._id}: ${regularNotificationSent}`);
+        
+        // Also notify ALL tenancy admins (in case there are multiple admins)
+        const User = require('../models/User');
+        const tenancyAdmins = await User.find({ 
+          tenancy: tenancy._id, 
+          role: 'admin',
+          isActive: true,
+          _id: { $ne: owner._id } // Exclude the owner we already notified
+        }).select('_id email name');
+        
+        for (const admin of tenancyAdmins) {
+          const adminNotificationSent = socketService.sendEventToUser(admin._id.toString(), 'tenancyPermissionsUpdated', {
+            type: 'tenancyPermissionsUpdated',
+            tenancyId: tenancy._id,
+            tenancyName: tenancy.name,
+            ownerName: owner.name,
+            permissions: admin.permissions, // Use their own permissions
+            message: `Tenancy permissions have been updated by SuperAdmin`,
+            timestamp: new Date()
+          });
+          console.log(`📢 Sent tenancyPermissionsUpdated to admin ${admin.email}: ${adminNotificationSent}`);
+        }
+        
+        // Also notify SuperAdmin users about tenancy permission update
+        socketService.sendToRecipientType('superadmin', {
+          type: 'tenancyPermissionsUpdated',
+          tenancyId: tenancy._id,
+          tenancyName: tenancy.name,
+          ownerName: owner.name,
+          permissions: owner.permissions,
+          message: `Permissions updated for ${tenancy.name} owner`,
+          timestamp: new Date()
+        });
+        console.log('📢 Emitted tenancyPermissionsUpdated event for SuperAdmin users');
       } catch (notifyError) {
         console.log('⚠️ WebSocket notification failed:', notifyError.message);
       }

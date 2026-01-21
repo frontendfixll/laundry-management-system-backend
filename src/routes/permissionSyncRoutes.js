@@ -13,9 +13,10 @@ router.get('/sync', protect, async (req, res) => {
     const User = require('../models/User');
     const Tenancy = require('../models/Tenancy');
     
-    // Fetch fresh user data from database
+    // Fetch fresh user data from database with tenancy populated
     const user = await User.findById(req.user._id)
       .select('email name role tenancy permissions isActive')
+      .populate('tenancy', 'name slug subdomain branding subscription')
       .lean();
 
     if (!user) {
@@ -34,21 +35,17 @@ router.get('/sync', protect, async (req, res) => {
       });
     }
 
-    // Fetch tenancy features (if user has tenancy)
+    // Extract features from tenancy subscription
     let features = {};
-    if (user.tenancy) {
-      const tenancy = await Tenancy.findById(user.tenancy)
-        .select('subscription.features')
-        .lean();
-      
-      if (tenancy && tenancy.subscription && tenancy.subscription.features) {
-        features = tenancy.subscription.features;
-      }
+    if (user.tenancy && user.tenancy.subscription && user.tenancy.subscription.features) {
+      features = user.tenancy.subscription.features;
     }
 
-    console.log(`🔄 Syncing permissions for user ${user._id}:`, {
+    console.log(`🔄 Permission sync for user ${user._id} (${user.email}):`, {
       permissions: Object.keys(user.permissions || {}),
-      features: Object.keys(features)
+      features: Object.keys(features),
+      tenancyId: user.tenancy?._id,
+      tenancyName: user.tenancy?.name
     });
 
     // Generate new JWT with updated permissions and features from tenancy
@@ -57,7 +54,7 @@ router.get('/sync', protect, async (req, res) => {
       email: user.email,
       role: user.role,
       type: 'access_token', // Add type field
-      tenancyId: user.tenancy, // Match login token format
+      tenancyId: user.tenancy?._id, // Match login token format
       permissions: user.permissions || {},
       features: features,
       iat: Math.floor(Date.now() / 1000)

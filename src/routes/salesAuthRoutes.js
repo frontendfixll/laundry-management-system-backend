@@ -84,4 +84,9 @@ router.post('/refresh-session',
   salesAuthController.refreshSession
 );
 
+// Get Team Members (for sales users to see their team)
+router.get('/team',
+  salesAuthController.getTeamMembers
+);
+
 module.exports = router;

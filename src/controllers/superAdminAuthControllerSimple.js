@@ -12,6 +12,16 @@ class CenterAdminAuthController {
   // Login - Simplified version
   async login(req, res) {
     try {
+      // Check MongoDB connection first
+      const mongoose = require('mongoose');
+      if (mongoose.connection.readyState !== 1) {
+        console.error('❌ MongoDB not connected, readyState:', mongoose.connection.readyState);
+        return res.status(503).json({
+          success: false,
+          message: 'Database connection unavailable. Please try again.'
+        });
+      }
+
       const errors = validationResult(req)
       if (!errors.isEmpty()) {
         return res.status(400).json({
@@ -24,11 +34,11 @@ class CenterAdminAuthController {
       const { email, password, rememberMe } = req.body
 
       // Find admin by email - try SuperAdmin first, then CenterAdmin
-      let admin = await SuperAdmin.findOne({ email })
+      let admin = await SuperAdmin.findOne({ email }).maxTimeMS(5000) // 5 second timeout
       let adminType = 'superadmin'
       
       if (!admin) {
-        admin = await CenterAdmin.findOne({ email })
+        admin = await CenterAdmin.findOne({ email }).maxTimeMS(5000) // 5 second timeout
         adminType = 'center_admin'
       }
       

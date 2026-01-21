@@ -26,19 +26,36 @@ const setupCronJobs = () => {
     return;
   }
 
+  // Helper function to check MongoDB connection before running jobs
+  const runJobWithConnectionCheck = async (jobName, jobFunction) => {
+    const mongoose = require('mongoose');
+    if (mongoose.connection.readyState !== 1) {
+      console.log(`⚠️ Skipping ${jobName} - MongoDB not connected (state: ${mongoose.connection.readyState})`);
+      return;
+    }
+    
+    try {
+      console.log(`🔄 Running ${jobName} job...`);
+      await jobFunction();
+      console.log(`✅ ${jobName} job completed successfully`);
+    } catch (error) {
+      console.error(`❌ Error in ${jobName}:`, error.message);
+    }
+  };
+
   // Auto-activate scheduled banners (every 5 minutes)
   cron.schedule('*/5 * * * *', async () => {
-    await bannerLifecycleJob.autoActivateBanners();
+    await runJobWithConnectionCheck('auto-activate banners', bannerLifecycleJob.autoActivateBanners);
   });
   
   // Auto-complete expired banners (every hour)
   cron.schedule('0 * * * *', async () => {
-    await bannerLifecycleJob.autoCompleteBanners();
+    await runJobWithConnectionCheck('auto-complete banners', bannerLifecycleJob.autoCompleteBanners);
   });
   
   // Sync banners with campaigns (every 15 minutes)
   cron.schedule('*/15 * * * *', async () => {
-    await bannerLifecycleJob.syncWithCampaigns();
+    await runJobWithConnectionCheck('sync banners with campaigns', bannerLifecycleJob.syncWithCampaigns);
   });
   
   console.log('⏰ Banner lifecycle cron jobs scheduled:');
@@ -74,13 +91,17 @@ if (isVercel) {
   // Traditional server setup for local development
   // Connect to MongoDB and WAIT for connection
   const startServer = async () => {
+    let dbConnected = false;
+    
     try {
       await connectDB();
       console.log('✅ Database connected successfully');
+      dbConnected = true;
     } catch (err) {
       console.warn('⚠️  MongoDB connection failed, running without database');
       console.warn('💡 Some features will be limited without database connection');
       console.warn('🔧 Error:', err.message);
+      dbConnected = false;
     }
 
     // Start server after database connection attempt
@@ -103,8 +124,14 @@ if (isVercel) {
         socketService.initialize(server);
       }
       
-      // Setup cron jobs
-      setupCronJobs();
+      // Setup cron jobs only after server is fully started
+      if (dbConnected) {
+        console.log('✅ Database connected - setting up cron jobs');
+        setupCronJobs();
+      } else {
+        console.log('⚠️ Database not connected - cron jobs will check connection before running');
+        setupCronJobs(); // Still setup jobs, but they'll check connection before running
+      }
     });
 
     // Handle unhandled promise rejections

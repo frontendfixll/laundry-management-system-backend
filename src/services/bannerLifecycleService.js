@@ -1,12 +1,26 @@
 const Banner = require('../models/Banner');
 const Campaign = require('../models/Campaign');
+const mongoose = require('mongoose');
 
 class BannerLifecycleService {
+  /**
+   * Check if database is connected
+   */
+  isDatabaseConnected() {
+    return mongoose.connection.readyState === 1;
+  }
+
   /**
    * Auto-activate scheduled banners whose start date has been reached
    */
   async autoActivateBanners() {
     try {
+      // Check database connection first
+      if (!this.isDatabaseConnected()) {
+        console.log('⚠️ Skipping auto-activate banners - database not connected');
+        return { success: false, error: 'Database not connected', activatedCount: 0 };
+      }
+
       const now = new Date();
       
       const bannersToActivate = await Banner.find({
@@ -35,7 +49,7 @@ class BannerLifecycleService {
       return { success: true, activatedCount };
     } catch (error) {
       console.error('Error in autoActivateBanners:', error);
-      return { success: false, error: error.message };
+      return { success: false, error: error.message, activatedCount: 0 };
     }
   }
   
@@ -44,6 +58,12 @@ class BannerLifecycleService {
    */
   async autoCompleteBanners() {
     try {
+      // Check database connection first
+      if (!this.isDatabaseConnected()) {
+        console.log('⚠️ Skipping auto-complete banners - database not connected');
+        return { success: false, error: 'Database not connected', completedCount: 0 };
+      }
+
       const now = new Date();
       
       const bannersToComplete = await Banner.find({
@@ -70,7 +90,7 @@ class BannerLifecycleService {
       return { success: true, completedCount };
     } catch (error) {
       console.error('Error in autoCompleteBanners:', error);
-      return { success: false, error: error.message };
+      return { success: false, error: error.message, completedCount: 0 };
     }
   }
   
@@ -80,6 +100,12 @@ class BannerLifecycleService {
    */
   async syncWithCampaigns() {
     try {
+      // Check database connection first
+      if (!this.isDatabaseConnected()) {
+        console.log('⚠️ Skipping sync banners with campaigns - database not connected');
+        return { success: false, error: 'Database not connected', syncedCount: 0 };
+      }
+
       const activeBanners = await Banner.find({
         state: { $in: ['ACTIVE', 'SCHEDULED'] }
       }).populate('linkedCampaign');
@@ -117,7 +143,7 @@ class BannerLifecycleService {
       return { success: true, syncedCount };
     } catch (error) {
       console.error('Error in syncWithCampaigns:', error);
-      return { success: false, error: error.message };
+      return { success: false, error: error.message, syncedCount: 0 };
     }
   }
   
