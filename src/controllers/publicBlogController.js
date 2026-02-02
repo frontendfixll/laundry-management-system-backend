@@ -391,6 +391,22 @@ exports.recordFeedback = async (req, res) => {
 // Get popular/trending posts
 exports.getPopularPosts = async (req, res) => {
   try {
+    // Check if MongoDB is connected and attempt to connect if not
+    const mongoose = require('mongoose');
+    if (mongoose.connection.readyState !== 1) {
+      console.log('🔄 MongoDB not connected, attempting to connect...');
+      try {
+        const connectDB = require('../config/database');
+        await connectDB();
+      } catch (dbError) {
+        console.error('❌ Failed to connect to database:', dbError.message);
+        return res.status(500).json({
+          success: false,
+          message: 'Database connection unavailable. Please try again later.'
+        });
+      }
+    }
+
     const { 
       limit = 5, 
       timeframe = 7,
@@ -410,15 +426,32 @@ exports.getPopularPosts = async (req, res) => {
     if (audience !== 'both') {
       query.targetAudience = { $in: [audience, 'both'] };
     }
+
+    // Use timeout for serverless environment
+    const isVercel = process.env.VERCEL || process.env.VERCEL_ENV || process.env.NODE_ENV === 'production';
+    const queryTimeout = isVercel ? 3000 : 10000;
     
     const posts = await BlogPost.find(query)
       .populate('category', 'name slug color')
       .select('title slug excerpt featuredImage publishedAt viewCount')
       .sort({ viewCount: -1, publishedAt: -1 })
-      .limit(parseInt(limit));
+      .limit(parseInt(limit))
+      .maxTimeMS(queryTimeout);
     
     res.json({ success: true, data: posts });
   } catch (error) {
+    console.error('❌ Popular posts query error:', error);
+    
+    // Return empty result instead of error for better UX
+    if (error.name === 'MongooseError' || error.message.includes('buffering timed out')) {
+      console.log('🔄 Returning empty popular posts due to connection timeout');
+      return res.json({
+        success: true,
+        data: [],
+        message: 'Popular posts temporarily unavailable'
+      });
+    }
+    
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -426,6 +459,22 @@ exports.getPopularPosts = async (req, res) => {
 // Get recent posts
 exports.getRecentPosts = async (req, res) => {
   try {
+    // Check if MongoDB is connected and attempt to connect if not
+    const mongoose = require('mongoose');
+    if (mongoose.connection.readyState !== 1) {
+      console.log('🔄 MongoDB not connected, attempting to connect...');
+      try {
+        const connectDB = require('../config/database');
+        await connectDB();
+      } catch (dbError) {
+        console.error('❌ Failed to connect to database:', dbError.message);
+        return res.status(500).json({
+          success: false,
+          message: 'Database connection unavailable. Please try again later.'
+        });
+      }
+    }
+
     const { 
       limit = 5,
       visibility = 'both',
@@ -444,15 +493,32 @@ exports.getRecentPosts = async (req, res) => {
     if (audience !== 'both') {
       query.targetAudience = { $in: [audience, 'both'] };
     }
+
+    // Use timeout for serverless environment
+    const isVercel = process.env.VERCEL || process.env.VERCEL_ENV || process.env.NODE_ENV === 'production';
+    const queryTimeout = isVercel ? 3000 : 10000;
     
     const posts = await BlogPost.find(query)
       .populate('category', 'name slug color')
       .select('title slug excerpt featuredImage publishedAt')
       .sort({ publishedAt: -1 })
-      .limit(parseInt(limit));
+      .limit(parseInt(limit))
+      .maxTimeMS(queryTimeout);
     
     res.json({ success: true, data: posts });
   } catch (error) {
+    console.error('❌ Recent posts query error:', error);
+    
+    // Return empty result instead of error for better UX
+    if (error.name === 'MongooseError' || error.message.includes('buffering timed out')) {
+      console.log('🔄 Returning empty recent posts due to connection timeout');
+      return res.json({
+        success: true,
+        data: [],
+        message: 'Recent posts temporarily unavailable'
+      });
+    }
+    
     res.status(500).json({ success: false, message: error.message });
   }
 };

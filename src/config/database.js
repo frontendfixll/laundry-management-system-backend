@@ -32,10 +32,8 @@ const connectDB = async () => {
       maxIdleTimeMS: isVercel ? 5000 : 30000, // Reduced from 10000 to 5000
       family: 4, // Use IPv4, skip trying IPv6
       retryWrites: true,
-      w: 'majority',
-      // Add these for better serverless performance
-      bufferCommands: false, // Disable mongoose buffering
-      bufferMaxEntries: 0 // Disable mongoose buffering
+      w: 'majority'
+      // Don't disable buffering in connection options - do it after connection
     };
     
     const conn = await mongoose.connect(process.env.MONGODB_URI, options);
