@@ -267,6 +267,14 @@ const login = async (req, res) => {
       .populate('tenancy', 'name slug subdomain branding subscription status');
     
     if (!user) {
+      // Track failed attempt (safe version)
+      try {
+        const { trackFailedAttempt } = require('../middlewares/auth');
+        await trackFailedAttempt(email, 'user');
+      } catch (error) {
+        console.log('Failed attempt tracking failed, but continuing login');
+      }
+      
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password'
@@ -277,10 +285,26 @@ const login = async (req, res) => {
     const isPasswordValid = await comparePassword(password, user.password);
     
     if (!isPasswordValid) {
+      // Track failed attempt (safe version)
+      try {
+        const { trackFailedAttempt } = require('../middlewares/auth');
+        await trackFailedAttempt(email, 'user');
+      } catch (error) {
+        console.log('Failed attempt tracking failed, but continuing login');
+      }
+      
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password'
       });
+    }
+
+    // Clear failed attempts on successful login (safe version)
+    try {
+      const { clearFailedAttempts } = require('../middlewares/auth');
+      clearFailedAttempts(email, 'user');
+    } catch (error) {
+      console.log('Clear failed attempts failed, but continuing login');
     }
 
     // Check if user is active
@@ -301,6 +325,38 @@ const login = async (req, res) => {
       }
     }
 
+    // TENANCY ISOLATION: Ensure admin/staff users have tenancy
+    if (user.role === 'admin' || user.role === 'branch_admin' || user.role === 'staff') {
+      if (!user.tenancy) {
+        return res.status(403).json({
+          success: false,
+          message: 'User is not associated with any tenancy. Please contact SuperAdmin.'
+        });
+      }
+      
+      // CRITICAL: Validate user belongs to the tenancy being accessed via subdomain
+      if (req.tenancy && req.tenancyId) {
+        // User is accessing via subdomain - ensure they belong to this tenancy
+        if (user.tenancy._id.toString() !== req.tenancyId.toString()) {
+          console.log(`🚨 TENANCY ISOLATION VIOLATION: User ${user.email} (tenancy: ${user.tenancy.name}) tried to access ${req.tenancy.name} via subdomain`);
+          return res.status(403).json({
+            success: false,
+            message: 'Access denied. You do not have permission to access this laundry portal.',
+            code: 'TENANCY_MISMATCH'
+          });
+        }
+        console.log(`✅ TENANCY VALIDATION: User ${user.email} accessing correct tenancy: ${req.tenancy.name}`);
+      }
+    }
+
+    // Update last login (safe version - non-blocking)
+    try {
+      user.lastLogin = new Date();
+      user.save({ validateBeforeSave: false }); // Don't await, don't block login
+    } catch (error) {
+      console.log('LastLogin update failed, but login continues:', error.message);
+    }
+
     // Generate access token
     const accessToken = generateAccessToken(
       user._id, 
@@ -312,6 +368,9 @@ const login = async (req, res) => {
 
     // Set HTTP-only cookie
     setAuthCookie(res, accessToken);
+
+    console.log(`✅ Login successful for ${user.email} (${user.role})`);
+    console.log(`🏢 Tenancy: ${user.tenancy?.name || 'None'}`);
 
     return res.status(200).json({
       success: true,
@@ -344,6 +403,21 @@ const login = async (req, res) => {
 
   } catch (error) {
     console.error('Login error:', error);
+    
+    // Provide more specific error messages for debugging
+    if (error.name === 'MongoTimeoutError' || error.message.includes('timeout')) {
+      return res.status(503).json({
+        success: false,
+        message: 'Database connection timeout. Please try again later.'
+      });
+    }
+    
+    if (error.name === 'MongoNetworkError') {
+      return res.status(503).json({
+        success: false,
+        message: 'Database connection unavailable. Please try again later.'
+      });
+    }
     
     res.status(500).json({
       success: false,
