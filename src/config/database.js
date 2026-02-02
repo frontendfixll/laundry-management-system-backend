@@ -33,7 +33,7 @@ const connectDB = async () => {
       family: 4, // Use IPv4, skip trying IPv6
       retryWrites: true,
       w: 'majority'
-      // Don't disable buffering in connection options - do it after connection
+      // Removed bufferMaxEntries as it's deprecated and not supported
     };
     
     const conn = await mongoose.connect(process.env.MONGODB_URI, options);
