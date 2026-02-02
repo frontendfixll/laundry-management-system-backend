@@ -16,8 +16,8 @@ const ensureConnection = async () => {
       mongoose.connection.once('connected', () => resolve(mongoose.connection));
       mongoose.connection.once('error', reject);
       
-      // Timeout after 5 seconds
-      setTimeout(() => reject(new Error('Connection timeout')), 5000);
+      // Timeout after 3 seconds for serverless
+      setTimeout(() => reject(new Error('Connection timeout')), 3000);
     });
   }
   
@@ -38,11 +38,34 @@ const withConnection = async (operation, fallbackResult = null) => {
     return await operation();
   } catch (error) {
     console.error('❌ Database operation failed:', error.message);
+    console.error('❌ Error type:', error.name);
+    
+    // Log more details for debugging
+    if (error.name === 'MongoServerSelectionError') {
+      console.error('💡 Server selection failed - MongoDB cluster might be unreachable');
+    } else if (error.name === 'MongoNetworkTimeoutError') {
+      console.error('💡 Network timeout - check MongoDB Atlas status');
+    } else if (error.name === 'MongoTimeoutError') {
+      console.error('💡 Query timeout - operation took too long');
+    }
     
     // Return fallback result for better UX
     if (fallbackResult !== null) {
       console.log('🔄 Returning fallback result due to database error');
       return fallbackResult;
+    }
+    
+    // Re-throw with more specific error for better handling
+    if (error.name === 'MongoTimeoutError' || error.message.includes('timeout')) {
+      const timeoutError = new Error('Database connection timeout. Please try again later.');
+      timeoutError.name = 'MongoTimeoutError';
+      throw timeoutError;
+    }
+    
+    if (error.name === 'MongoServerSelectionError' || error.name === 'MongoNetworkError') {
+      const networkError = new Error('Database connection unavailable. Please try again later.');
+      networkError.name = 'MongoNetworkError';
+      throw networkError;
     }
     
     throw error;
@@ -62,8 +85,46 @@ const addTimeout = (query, timeout = 3000) => {
   return query;
 };
 
+/**
+ * Test database connection with comprehensive diagnostics
+ */
+const testConnection = async () => {
+  try {
+    console.log('🧪 Testing database connection...');
+    
+    const startTime = Date.now();
+    await ensureConnection();
+    const connectionTime = Date.now() - startTime;
+    
+    console.log(`✅ Connection established in ${connectionTime}ms`);
+    
+    // Test a simple query
+    const testStart = Date.now();
+    const collections = await mongoose.connection.db.listCollections().toArray();
+    const queryTime = Date.now() - testStart;
+    
+    console.log(`✅ Query test successful in ${queryTime}ms`);
+    console.log(`📊 Found ${collections.length} collections`);
+    
+    return {
+      success: true,
+      connectionTime,
+      queryTime,
+      collectionsCount: collections.length
+    };
+  } catch (error) {
+    console.error('❌ Connection test failed:', error.message);
+    return {
+      success: false,
+      error: error.message,
+      errorType: error.name
+    };
+  }
+};
+
 module.exports = {
   ensureConnection,
   withConnection,
-  addTimeout
+  addTimeout,
+  testConnection
 };

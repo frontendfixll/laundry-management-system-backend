@@ -275,20 +275,13 @@ app.use(subdomainRouter);
 
 // Health check
 app.get('/health', (req, res) => {
-  const mongoose = require('mongoose');
   res.status(200).json({
     success: true,
     message: 'Laundry Management API is running',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV,
     version: process.env.APP_VERSION || '2.0.0',
-    database: {
-      connected: mongoose.connection.readyState === 1,
-      state: mongoose.connection.readyState,
-      stateText: mongoose.connection.readyState === 1 ? 'connected' :
-        mongoose.connection.readyState === 2 ? 'connecting' :
-          mongoose.connection.readyState === 3 ? 'disconnecting' : 'disconnected'
-    },
+    platform: process.env.VERCEL ? 'vercel' : 'traditional',
     env_check: {
       mongodb_uri: !!process.env.MONGODB_URI,
       jwt_secret: !!process.env.JWT_SECRET,
@@ -300,20 +293,13 @@ app.get('/health', (req, res) => {
 
 // API Health check
 app.get('/api/health', (req, res) => {
-  const mongoose = require('mongoose');
   res.status(200).json({
     success: true,
     message: 'Laundry Management API is running',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV,
     version: process.env.APP_VERSION || '2.0.0',
-    database: {
-      connected: mongoose.connection.readyState === 1,
-      state: mongoose.connection.readyState,
-      stateText: mongoose.connection.readyState === 1 ? 'connected' :
-        mongoose.connection.readyState === 2 ? 'connecting' :
-          mongoose.connection.readyState === 3 ? 'disconnecting' : 'disconnected'
-    },
+    platform: process.env.VERCEL ? 'vercel' : 'traditional',
     env_check: {
       mongodb_uri: !!process.env.MONGODB_URI,
       jwt_secret: !!process.env.JWT_SECRET,
@@ -321,6 +307,45 @@ app.get('/api/health', (req, res) => {
       vercel: !!process.env.VERCEL
     }
   });
+});
+
+// Database health check (separate endpoint)
+app.get('/health/database', async (req, res) => {
+  try {
+    const mongoose = require('mongoose');
+    const { testConnection } = require('./utils/serverlessDB');
+    
+    // Quick connection state check
+    const connectionState = mongoose.connection.readyState;
+    const stateText = connectionState === 1 ? 'connected' :
+      connectionState === 2 ? 'connecting' :
+        connectionState === 3 ? 'disconnecting' : 'disconnected';
+    
+    // If not connected, try to test connection
+    let testResult = null;
+    if (connectionState !== 1) {
+      testResult = await testConnection();
+    }
+    
+    res.status(200).json({
+      success: true,
+      message: 'Database health check',
+      timestamp: new Date().toISOString(),
+      database: {
+        connected: connectionState === 1,
+        state: connectionState,
+        stateText,
+        testResult
+      }
+    });
+  } catch (error) {
+    res.status(503).json({
+      success: false,
+      message: 'Database health check failed',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // Version endpoint

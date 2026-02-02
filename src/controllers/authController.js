@@ -259,171 +259,177 @@ const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Check if MongoDB is connected and attempt to connect if not
-    const mongoose = require('mongoose');
-    if (mongoose.connection.readyState !== 1) {
-      console.log('🔄 MongoDB not connected, attempting to connect...');
-      try {
-        const connectDB = require('../config/database');
-        await connectDB();
-      } catch (dbError) {
-        console.error('❌ Failed to connect to database:', dbError.message);
-        return res.status(500).json({
-          success: false,
-          message: 'Database connection unavailable. Please try again later.'
-        });
-      }
-    }
-
-    // Use timeout for serverless environment
-    const isVercel = process.env.VERCEL || process.env.VERCEL_ENV || process.env.NODE_ENV === 'production';
-    const queryTimeout = isVercel ? 3000 : 10000;
-
-    // Find user and include password
-    const user = await User.findOne({ email })
-      .select('+password')
-      .populate('tenancy', 'name slug subdomain branding status subscription')
-      .maxTimeMS(queryTimeout);
+    // Use serverless DB utility for better connection handling
+    const { withConnection, addTimeout } = require('../utils/serverlessDB');
     
-    if (!user) {
-      // Track failed attempt for unknown email
-      const { trackFailedAttempt } = require('../middlewares/auth');
-      await trackFailedAttempt(email, 'user');
+    const loginOperation = async () => {
+      // Find user and include password
+      const userQuery = User.findOne({ email })
+        .select('+password')
+        .populate('tenancy', 'name slug subdomain branding status subscription');
       
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid email or password'
-      });
-    }
-
-    // Check password
-    const isPasswordValid = await comparePassword(password, user.password);
-    
-    if (!isPasswordValid) {
-      // Track failed attempt for wrong password
-      const { trackFailedAttempt } = require('../middlewares/auth');
-      await trackFailedAttempt(email, 'user');
+      // Add timeout for serverless environment
+      const user = await addTimeout(userQuery, 3000);
       
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid email or password'
-      });
-    }
-
-    // Clear failed attempts on successful login
-    const { clearFailedAttempts } = require('../middlewares/auth');
-    clearFailedAttempts(email, 'user');
-
-    // Check if user is active
-    if (!user.isActive) {
-      return res.status(401).json({
-        success: false,
-        message: 'Account is deactivated. Please contact support.'
-      });
-    }
-
-    // Check tenancy status for admin/branch_admin users
-    if ((user.role === 'admin' || user.role === 'branch_admin') && user.tenancy) {
-      if (user.tenancy.status !== 'active' && user.tenancy.status !== 'trial') {
-        return res.status(403).json({
+      if (!user) {
+        // Track failed attempt for unknown email
+        const { trackFailedAttempt } = require('../middlewares/auth');
+        await trackFailedAttempt(email, 'user');
+        
+        return res.status(401).json({
           success: false,
-          message: 'Your laundry portal is currently inactive. Please contact support.'
+          message: 'Invalid email or password'
         });
       }
-    }
 
-    // TENANCY ISOLATION: Ensure admin/staff users have tenancy
-    if (user.role === 'admin' || user.role === 'branch_admin' || user.role === 'staff') {
-      if (!user.tenancy) {
-        return res.status(403).json({
+      // Check password
+      const isPasswordValid = await comparePassword(password, user.password);
+      
+      if (!isPasswordValid) {
+        // Track failed attempt for wrong password
+        const { trackFailedAttempt } = require('../middlewares/auth');
+        await trackFailedAttempt(email, 'user');
+        
+        return res.status(401).json({
           success: false,
-          message: 'User is not associated with any tenancy. Please contact SuperAdmin.'
+          message: 'Invalid email or password'
         });
       }
-      
-      // CRITICAL: Validate user belongs to the tenancy being accessed via subdomain
-      if (req.tenancy && req.tenancyId) {
-        // User is accessing via subdomain - ensure they belong to this tenancy
-        if (user.tenancy._id.toString() !== req.tenancyId.toString()) {
-          console.log(`🚨 TENANCY ISOLATION VIOLATION: User ${user.email} (tenancy: ${user.tenancy.name}) tried to access ${req.tenancy.name} via subdomain`);
+
+      // Clear failed attempts on successful login
+      const { clearFailedAttempts } = require('../middlewares/auth');
+      clearFailedAttempts(email, 'user');
+
+      // Check if user is active
+      if (!user.isActive) {
+        return res.status(401).json({
+          success: false,
+          message: 'Account is deactivated. Please contact support.'
+        });
+      }
+
+      // Check tenancy status for admin/branch_admin users
+      if ((user.role === 'admin' || user.role === 'branch_admin') && user.tenancy) {
+        if (user.tenancy.status !== 'active' && user.tenancy.status !== 'trial') {
           return res.status(403).json({
             success: false,
-            message: 'Access denied. You do not have permission to access this laundry portal.',
-            code: 'TENANCY_MISMATCH'
+            message: 'Your laundry portal is currently inactive. Please contact support.'
           });
         }
-        console.log(`✅ TENANCY VALIDATION: User ${user.email} accessing correct tenancy: ${req.tenancy.name}`);
       }
-    }
 
-    // TENANCY ISOLATION: For customers accessing via subdomain
-    if (user.role === 'customer' && req.tenancy && req.tenancyId) {
-      // Customers can access any tenancy's services, but we log it for analytics
-      console.log(`📊 Customer ${user.email} accessing tenancy: ${req.tenancy.name}`);
-    }
-
-    // Validate branch_admin has assigned branch
-    if (user.role === 'branch_admin' && !user.assignedBranch) {
-      return res.status(400).json({
-        success: false,
-        message: 'Branch admin account must have an assigned branch. Please contact your admin.'
-      });
-    }
-
-    // Validate admin has assigned branch (for legacy support)
-    if (user.role === 'admin' && !user.assignedBranch && !user.tenancy) {
-      return res.status(400).json({
-        success: false,
-        message: 'Admin account must have an assigned branch or tenancy. Please contact SuperAdmin.'
-      });
-    }
-
-    // Update last login
-    await user.updateLastLogin();
-
-    // Generate access token (include assignedBranch and tenancy for admin)
-    const accessToken = generateAccessToken(
-      user._id, 
-      user.email, 
-      user.role, 
-      user.assignedBranch,
-      user.tenancy?._id
-    );
-
-    // Set HTTP-only cookie
-    setAuthCookie(res, accessToken);
-
-    res.status(200).json({
-      success: true,
-      message: 'Login successful!',
-      data: {
-        user: {
-          _id: user._id,
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          phone: user.phone,
-          role: user.role,
-          permissions: user.permissions || {},
-          assignedBranch: user.assignedBranch,
-          tenancy: user.tenancy ? {
-            _id: user.tenancy._id,
-            name: user.tenancy.name,
-            slug: user.tenancy.slug,
-            subdomain: user.tenancy.subdomain,
-            branding: user.tenancy.branding,
-            subscription: user.tenancy.subscription
-          } : null,
-          isEmailVerified: user.isEmailVerified,
-          isActive: user.isActive,
-          lastLogin: user.lastLogin
-        },
-        token: accessToken  // Still send token for backward compatibility
+      // TENANCY ISOLATION: Ensure admin/staff users have tenancy
+      if (user.role === 'admin' || user.role === 'branch_admin' || user.role === 'staff') {
+        if (!user.tenancy) {
+          return res.status(403).json({
+            success: false,
+            message: 'User is not associated with any tenancy. Please contact SuperAdmin.'
+          });
+        }
+        
+        // CRITICAL: Validate user belongs to the tenancy being accessed via subdomain
+        if (req.tenancy && req.tenancyId) {
+          // User is accessing via subdomain - ensure they belong to this tenancy
+          if (user.tenancy._id.toString() !== req.tenancyId.toString()) {
+            console.log(`🚨 TENANCY ISOLATION VIOLATION: User ${user.email} (tenancy: ${user.tenancy.name}) tried to access ${req.tenancy.name} via subdomain`);
+            return res.status(403).json({
+              success: false,
+              message: 'Access denied. You do not have permission to access this laundry portal.',
+              code: 'TENANCY_MISMATCH'
+            });
+          }
+          console.log(`✅ TENANCY VALIDATION: User ${user.email} accessing correct tenancy: ${req.tenancy.name}`);
+        }
       }
-    });
+
+      // TENANCY ISOLATION: For customers accessing via subdomain
+      if (user.role === 'customer' && req.tenancy && req.tenancyId) {
+        // Customers can access any tenancy's services, but we log it for analytics
+        console.log(`📊 Customer ${user.email} accessing tenancy: ${req.tenancy.name}`);
+      }
+
+      // Validate branch_admin has assigned branch
+      if (user.role === 'branch_admin' && !user.assignedBranch) {
+        return res.status(400).json({
+          success: false,
+          message: 'Branch admin account must have an assigned branch. Please contact your admin.'
+        });
+      }
+
+      // Validate admin has assigned branch (for legacy support)
+      if (user.role === 'admin' && !user.assignedBranch && !user.tenancy) {
+        return res.status(400).json({
+          success: false,
+          message: 'Admin account must have an assigned branch or tenancy. Please contact SuperAdmin.'
+        });
+      }
+
+      // Update last login with timeout
+      await addTimeout(user.updateLastLogin(), 2000);
+
+      // Generate access token (include assignedBranch and tenancy for admin)
+      const accessToken = generateAccessToken(
+        user._id, 
+        user.email, 
+        user.role, 
+        user.assignedBranch,
+        user.tenancy?._id
+      );
+
+      // Set HTTP-only cookie
+      setAuthCookie(res, accessToken);
+
+      return res.status(200).json({
+        success: true,
+        message: 'Login successful!',
+        data: {
+          user: {
+            _id: user._id,
+            id: user._id,
+            name: user.name,
+            email: user.email,
+            phone: user.phone,
+            role: user.role,
+            permissions: user.permissions || {},
+            assignedBranch: user.assignedBranch,
+            tenancy: user.tenancy ? {
+              _id: user.tenancy._id,
+              name: user.tenancy.name,
+              slug: user.tenancy.slug,
+              subdomain: user.tenancy.subdomain,
+              branding: user.tenancy.branding,
+              subscription: user.tenancy.subscription
+            } : null,
+            isEmailVerified: user.isEmailVerified,
+            isActive: user.isActive,
+            lastLogin: user.lastLogin
+          },
+          token: accessToken  // Still send token for backward compatibility
+        }
+      });
+    };
+
+    // Execute with connection handling and fallback
+    await withConnection(loginOperation, null);
 
   } catch (error) {
     console.error('Login error:', error);
+    
+    // Provide more specific error messages for debugging
+    if (error.name === 'MongoTimeoutError' || error.message.includes('timeout')) {
+      return res.status(503).json({
+        success: false,
+        message: 'Database connection timeout. Please try again later.'
+      });
+    }
+    
+    if (error.name === 'MongoNetworkError') {
+      return res.status(503).json({
+        success: false,
+        message: 'Database connection unavailable. Please try again later.'
+      });
+    }
+    
     res.status(500).json({
       success: false,
       message: 'Login failed. Please try again.'
