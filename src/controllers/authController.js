@@ -268,7 +268,7 @@ const login = async (req, res) => {
       // Find user and include password
       const userQuery = User.findOne({ email })
         .select('+password')
-        .populate('tenancy', 'name slug subdomain br
+        .populate('tenancy', 'name slug subdomain branding subscription status');
       const user = await addTimeout(userQuery, 3000);
       
       if (!user) {
