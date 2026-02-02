@@ -1,5 +1,5 @@
 const express = require('express');
-const { protect, requirePermission } = require('../../middlewares/auth');
+const { protect, requirePermission, protectAny } = require('../../middlewares/auth');
 const { injectTenancyFromUser } = require('../../middlewares/tenancyMiddleware');
 const { checkLimit } = require('../../middlewares/subscriptionLimits');
 const User = require('../../models/User');
@@ -47,7 +47,8 @@ const {
   getNotifications,
   getUnreadNotificationCount,
   markNotificationsAsRead,
-  markAllNotificationsAsRead
+  markAllNotificationsAsRead,
+  clearAllNotifications
 } = require('../../controllers/admin/adminController');
 
 // Import inventory functions from center admin controller
@@ -100,13 +101,14 @@ const campaignRoutes = require('./campaignRoutes');
 const router = express.Router();
 
 // Apply authentication and tenancy injection
-router.use(protect);
+router.use(protectAny);
 router.use(injectTenancyFromUser);
 
 // Middleware to allow branch_admin to access admin routes
 // Branch admin will have data filtered by their assigned branch
 const allowBranchAdmin = (req, res, next) => {
-  if (req.user.role === 'admin' || req.user.role === 'branch_admin') {
+  // Allow SuperAdmin, admin, and branch_admin roles
+  if (req.isSuperAdmin || req.user.role === 'admin' || req.user.role === 'branch_admin') {
     return next();
   }
   return res.status(403).json({
@@ -199,11 +201,11 @@ router.get('/analytics', getAnalytics);
 // Staff management routes
 router.get('/staff', getStaff);
 router.get('/staff/:staffId', getStaffById);
-router.post('/staff', 
-  checkLimit('max_staff', User, (req) => ({ 
-    tenancy: req.user.tenancy, 
+router.post('/staff',
+  checkLimit('max_staff', User, (req) => ({
+    tenancy: req.user.tenancy,
     role: { $in: ['admin', 'branch_admin', 'staff'] },
-    isActive: true 
+    isActive: true
   })),
   createStaff
 );
@@ -228,6 +230,7 @@ router.get('/notifications', getNotifications);
 router.get('/notifications/unread-count', getUnreadNotificationCount);
 router.put('/notifications/mark-read', markNotificationsAsRead);
 router.put('/notifications/mark-all-read', markAllNotificationsAsRead);
+router.delete('/notifications/all', clearAllNotifications);
 
 // Support Ticket routes (RBAC controlled - requires support permission)
 router.get('/support/dashboard', getSupportDashboard);

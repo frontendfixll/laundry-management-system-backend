@@ -38,9 +38,9 @@ class SocketService {
         origin: (origin, callback) => {
           // Allow requests with no origin (mobile apps, etc.)
           if (!origin) return callback(null, true);
-          
+
           console.log('🔌 WebSocket CORS check for origin:', origin);
-          
+
           // Check if origin is allowed
           const isAllowed = allowedOrigins.some(allowed => {
             if (typeof allowed === 'string') {
@@ -51,7 +51,7 @@ class SocketService {
             }
             return false;
           });
-          
+
           if (isAllowed) {
             console.log('✅ WebSocket CORS allowed:', origin);
             callback(null, true);
@@ -72,7 +72,7 @@ class SocketService {
     this.io.use(async (socket, next) => {
       try {
         const token = socket.handshake.auth.token || socket.handshake.headers.authorization?.split(' ')[1];
-        
+
         if (!token) {
           return next(new Error('Authentication token required'));
         }
@@ -82,7 +82,7 @@ class SocketService {
         socket.userId = decoded.userId || decoded.id || decoded._id;
         socket.userRole = decoded.role;
         socket.tenancy = decoded.tenancy || decoded.tenancyId;
-        
+
         next();
       } catch (error) {
         console.error('Socket authentication error:', error.message);
@@ -105,13 +105,13 @@ class SocketService {
   handleConnection(socket) {
     const userId = socket.userId;
     const recipientType = this.mapRoleToRecipientType(socket.userRole);
-    
+
     // Store socket connection
     if (!this.userSockets.has(userId)) {
       this.userSockets.set(userId, new Set());
     }
     this.userSockets.get(userId).add(socket.id);
-    
+
     // Store metadata
     this.socketMetadata.set(socket.id, {
       userId,
@@ -124,10 +124,10 @@ class SocketService {
 
     // Join user-specific room
     socket.join(`user:${userId}`);
-    
+
     // Join recipient type room
     socket.join(`type:${recipientType}`);
-    
+
     // Join tenancy room (if applicable)
     if (socket.tenancy) {
       socket.join(`tenant:${socket.tenancy}`);
@@ -165,7 +165,7 @@ class SocketService {
           { _id: notificationId, recipient: userId },
           { isRead: true, readAt: new Date() }
         );
-        
+
         socket.emit('notificationMarkedRead', { notificationId });
       } catch (error) {
         socket.emit('error', { message: 'Failed to mark notification as read' });
@@ -180,7 +180,7 @@ class SocketService {
           { _id: { $in: notificationIds }, recipient: userId },
           { isRead: true, readAt: new Date() }
         );
-        
+
         socket.emit('notificationsMarkedRead', { notificationIds });
       } catch (error) {
         socket.emit('error', { message: 'Failed to mark notifications as read' });
@@ -235,7 +235,7 @@ class SocketService {
    */
   handleDisconnect(socket) {
     const userId = socket.userId;
-    
+
     // Remove from user sockets
     if (this.userSockets.has(userId)) {
       this.userSockets.get(userId).delete(socket.id);
@@ -243,10 +243,10 @@ class SocketService {
         this.userSockets.delete(userId);
       }
     }
-    
+
     // Remove metadata
     this.socketMetadata.delete(socket.id);
-    
+
     console.log(`🔌 Socket disconnected: ${socket.id} | User: ${userId}`);
   }
 
@@ -254,32 +254,77 @@ class SocketService {
    * Send notification to specific user
    */
   sendToUser(userId, notification) {
+    // Delegate to new integration if possible
+    try {
+      const notificationServiceIntegration = require('./notificationServiceIntegration');
+      if (notificationServiceIntegration && notificationServiceIntegration.useSocketIO) {
+        notificationServiceIntegration.createNotification({
+          userId,
+          ...notification
+        });
+        return true;
+      }
+    } catch (e) {
+      console.warn('⚠️ Delegation to notificationServiceIntegration failed:', e.message);
+    }
+
     const room = `user:${userId}`;
     this.io.to(room).emit('notification', notification);
-    
+
     const socketCount = this.userSockets.get(userId)?.size || 0;
     console.log(`📤 Sent notification to user ${userId} (${socketCount} devices)`);
-    
+
+    return socketCount > 0;
+  }
+
+  sendEventToUser(userId, eventName, data) {
+    console.log(`📡 socketService.sendEventToUser: userId=${userId}, event=${eventName}`);
+    // Delegate to new integration if possible
+    try {
+      const notificationServiceIntegration = require('./notificationServiceIntegration');
+      if (notificationServiceIntegration && notificationServiceIntegration.useSocketIO) {
+        console.log(`➡️ Delegating ${eventName} to notificationServiceIntegration`);
+        notificationServiceIntegration.emitToUser(userId, eventName, data);
+        return true;
+      }
+    } catch (e) {
+      console.warn('⚠️ Delegation to notificationServiceIntegration failed:', e.message);
+    }
+
+    const room = `user:${userId}`;
+    this.io.to(room).emit(eventName, data);
+
+    const socketCount = this.userSockets.get(userId)?.size || 0;
+    console.log(`📤 Sent ${eventName} event to user ${userId} (${socketCount} devices)`);
+
     return socketCount > 0;
   }
 
   /**
-   * Send custom event to specific user
+   * Alias for sendEventToUser to support legacy routes
    */
-  sendEventToUser(userId, eventName, data) {
-    const room = `user:${userId}`;
-    this.io.to(room).emit(eventName, data);
-    
-    const socketCount = this.userSockets.get(userId)?.size || 0;
-    console.log(`📤 Sent ${eventName} event to user ${userId} (${socketCount} devices)`);
-    
-    return socketCount > 0;
+  emitToUser(userId, eventName, data) {
+    return this.sendEventToUser(userId, eventName, data);
   }
 
   /**
    * Send to all users of a specific type
    */
   sendToRecipientType(recipientType, notification) {
+    // Delegate to new integration if possible
+    try {
+      const notificationServiceIntegration = require('./notificationServiceIntegration');
+      if (notificationServiceIntegration && notificationServiceIntegration.useSocketIO) {
+        notificationServiceIntegration.createNotification({
+          recipientType,
+          ...notification
+        });
+        return true;
+      }
+    } catch (e) {
+      console.warn('⚠️ Delegation to notificationServiceIntegration failed (recipientType):', e.message);
+    }
+
     const room = `type:${recipientType}`;
     this.io.to(room).emit('notification', notification);
     console.log(`📤 Sent notification to all ${recipientType}s`);
@@ -289,6 +334,20 @@ class SocketService {
    * Send to all users of a tenancy
    */
   sendToTenancy(tenancyId, notification) {
+    // Delegate to new integration if possible
+    try {
+      const notificationServiceIntegration = require('./notificationServiceIntegration');
+      if (notificationServiceIntegration && notificationServiceIntegration.useSocketIO) {
+        notificationServiceIntegration.createNotification({
+          tenancyId,
+          ...notification
+        });
+        return true;
+      }
+    } catch (e) {
+      console.warn('⚠️ Delegation to notificationServiceIntegration failed (tenancy):', e.message);
+    }
+
     const room = `tenant:${tenancyId}`;
     this.io.to(room).emit('notification', notification);
     console.log(`📤 Sent notification to tenancy ${tenancyId}`);
@@ -298,6 +357,24 @@ class SocketService {
    * Send to specific recipient type within a tenancy
    */
   sendToTenancyRecipients(tenancyId, recipientType, notification) {
+    // Delegate to new integration if possible
+    try {
+      const notificationServiceIntegration = require('./notificationServiceIntegration');
+      if (notificationServiceIntegration && notificationServiceIntegration.useSocketIO) {
+        console.log(`📡 Delegating tenancy recipients for ${tenancyId} | ${recipientType}`);
+
+        // Use createNotification to ensure it goes through the priority pipeline
+        notificationServiceIntegration.createNotification({
+          tenancy: tenancyId,
+          recipientType: recipientType,
+          ...notification
+        });
+        return true;
+      }
+    } catch (e) {
+      console.warn('⚠️ Delegation to notificationServiceIntegration failed (tenancy recipients):', e.message);
+    }
+
     const room = `tenant:${tenancyId}:${recipientType}`;
     this.io.to(room).emit('notification', notification);
     console.log(`📤 Sent notification to ${recipientType}s in tenancy ${tenancyId}`);
@@ -323,12 +400,12 @@ class SocketService {
   getStats() {
     const totalConnections = this.socketMetadata.size;
     const uniqueUsers = this.userSockets.size;
-    
+
     const byType = {};
     this.socketMetadata.forEach((metadata) => {
       byType[metadata.recipientType] = (byType[metadata.recipientType] || 0) + 1;
     });
-    
+
     return {
       totalConnections,
       uniqueUsers,
@@ -349,7 +426,7 @@ class SocketService {
       'staff': RECIPIENT_TYPES.STAFF,
       'sales_admin': RECIPIENT_TYPES.SUPERADMIN // Sales users treated as superadmin for notifications
     };
-    
+
     return roleMap[role] || RECIPIENT_TYPES.CUSTOMER;
   }
 

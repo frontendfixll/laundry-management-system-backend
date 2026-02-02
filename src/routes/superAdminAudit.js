@@ -1,116 +1,116 @@
 const express = require('express')
 const router = express.Router()
-const superAdminAuditController = require('../controllers/superAdminAuditController')
+const auditController = require('../controllers/auditController')
 const { authenticateSuperAdmin } = require('../middlewares/superAdminAuthSimple')
 const { requirePermission, logAdminAction } = require('../middlewares/superAdminAuth')
 const { param, query } = require('express-validator')
 
-// Validation rules
-const validateAuditQuery = [
-  query('page')
-    .optional()
-    .isInt({ min: 1 })
-    .withMessage('Page must be a positive integer'),
-  query('limit')
-    .optional()
-    .isInt({ min: 1, max: 100 })
-    .withMessage('Limit must be between 1 and 100'),
-  query('category')
-    .optional()
-    .isIn(['auth', 'orders', 'branches', 'users', 'finances', 'settings', 'system', 'audit', 'risk_management'])
-    .withMessage('Invalid category'),
-  query('riskLevel')
-    .optional()
-    .isIn(['low', 'medium', 'high', 'critical'])
-    .withMessage('Invalid risk level'),
-  query('status')
-    .optional()
-    .isIn(['success', 'failure', 'warning'])
-    .withMessage('Invalid status'),
-  query('startDate')
-    .optional()
-    .isISO8601()
-    .withMessage('Invalid start date'),
-  query('endDate')
-    .optional()
-    .isISO8601()
-    .withMessage('Invalid end date'),
-  query('sortBy')
-    .optional()
-    .isIn(['timestamp', 'action', 'userEmail', 'riskLevel', 'status'])
-    .withMessage('Invalid sort field'),
-  query('sortOrder')
-    .optional()
-    .isIn(['asc', 'desc'])
-    .withMessage('Invalid sort order')
-]
-
-const validateStatsQuery = [
-  query('timeframe')
-    .optional()
-    .isIn(['24h', '7d', '30d', '90d'])
-    .withMessage('Invalid timeframe')
-]
-
-const validateExportQuery = [
-  query('format')
-    .optional()
-    .isIn(['json', 'csv'])
-    .withMessage('Invalid export format'),
-  query('category')
-    .optional()
-    .isIn(['auth', 'orders', 'branches', 'users', 'finances', 'settings', 'system', 'audit', 'risk_management'])
-    .withMessage('Invalid category'),
-  query('riskLevel')
-    .optional()
-    .isIn(['low', 'medium', 'high', 'critical'])
-    .withMessage('Invalid risk level'),
-  query('startDate')
-    .optional()
-    .isISO8601()
-    .withMessage('Invalid start date'),
-  query('endDate')
-    .optional()
-    .isISO8601()
-    .withMessage('Invalid end date')
-]
-
-// All routes require authentication and settings permission (audit is part of settings)
+// All routes require authentication (auditor role is allowed)
 router.use(authenticateSuperAdmin)
-router.use(requirePermission('settings'))
 
-// Get audit logs
-router.get('/',
-  validateAuditQuery,
-  logAdminAction('view_audit_logs', 'audit'),
-  superAdminAuditController.getAuditLogs
-)
+// Audit Dashboard
+router.get('/dashboard', auditController.getAuditDashboard)
 
-// Get audit statistics
-router.get('/stats',
-  validateStatsQuery,
-  logAdminAction('view_audit_stats', 'audit'),
-  superAdminAuditController.getAuditStats
-)
+// Audit Logs
+router.get('/logs', auditController.getAuditLogs)
+router.get('/logs/users', auditController.getAuditLogs) // Filter by user actions
+router.get('/logs/roles', auditController.getAuditLogs) // Filter by role assignments
+router.get('/logs/system', auditController.getAuditLogs) // Filter by system events
+router.get('/logs/auth', auditController.getAuditLogs) // Filter by auth events
 
-// Get activity summary
-router.get('/activity-summary',
-  logAdminAction('view_activity_summary', 'audit'),
-  superAdminAuditController.getActivitySummary
-)
+// Cross-Tenant Visibility
+router.get('/tenants', auditController.getCrossTenantOverview)
+router.get('/tenants/financials', auditController.getCrossTenantOverview)
+router.get('/tenants/patterns', auditController.getCrossTenantOverview)
+router.get('/tenants/anomalies', auditController.getCrossTenantOverview)
 
-// Export audit logs
-router.get('/export',
-  validateExportQuery,
-  logAdminAction('export_audit_logs', 'audit'),
-  superAdminAuditController.exportAuditLogs
-)
+// Financial Transparency
+router.get('/financial/payments', (req, res, next) => {
+  req.query.type = 'payments'
+  auditController.getFinancialAudit(req, res, next)
+})
+router.get('/financial/refunds', (req, res, next) => {
+  req.query.type = 'refunds'
+  auditController.getFinancialAudit(req, res, next)
+})
+router.get('/financial/settlements', (req, res, next) => {
+  req.query.type = 'settlements'
+  auditController.getFinancialAudit(req, res, next)
+})
+router.get('/financial/ledger', (req, res, next) => {
+  req.query.type = 'ledger'
+  auditController.getFinancialAudit(req, res, next)
+})
 
-// Get single audit log
-router.get('/:logId',
-  param('logId').isMongoId().withMessage('Valid log ID is required'),
-  logAdminAction('view_audit_log_details', 'audit'),
-  superAdminAuditController.getAuditLog
-)
+// Security Monitoring
+router.get('/security/failed-logins', (req, res, next) => {
+  req.query.type = 'failed-logins'
+  auditController.getSecurityAudit(req, res, next)
+})
+router.get('/security/permissions', (req, res, next) => {
+  req.query.type = 'permissions'
+  auditController.getSecurityAudit(req, res, next)
+})
+router.get('/security/suspicious', (req, res, next) => {
+  req.query.type = 'suspicious'
+  auditController.getSecurityAudit(req, res, next)
+})
+router.get('/security/exports', (req, res, next) => {
+  req.query.type = 'exports'
+  auditController.getSecurityAudit(req, res, next)
+})
+
+// Support & Ticket Oversight
+router.get('/support/tickets', auditController.getAuditLogs) // All support tickets
+router.get('/support/sla', auditController.getAuditLogs) // SLA compliance
+router.get('/support/escalations', auditController.getAuditLogs) // Escalation history
+router.get('/support/impersonation', auditController.getAuditLogs) // Impersonation logs
+
+// RBAC Audit
+router.get('/rbac/roles', (req, res, next) => {
+  req.query.type = 'roles'
+  auditController.getRBACaudit(req, res, next)
+})
+router.get('/rbac/permissions', (req, res, next) => {
+  req.query.type = 'permissions'
+  auditController.getRBACaudit(req, res, next)
+})
+router.get('/rbac/assignments', (req, res, next) => {
+  req.query.type = 'assignments'
+  auditController.getRBACaudit(req, res, next)
+})
+router.get('/rbac/cross-tenant', (req, res, next) => {
+  req.query.type = 'cross-tenant'
+  auditController.getRBACaudit(req, res, next)
+})
+
+// Compliance & Reports
+router.get('/compliance/dashboard', auditController.getComplianceDashboard)
+router.get('/reports/financial', (req, res, next) => {
+  req.query.type = 'financial'
+  auditController.getFinancialAudit(req, res, next)
+})
+router.get('/reports/refund-abuse', auditController.getAuditLogs)
+router.get('/reports/tenant-behavior', auditController.getCrossTenantOverview)
+router.get('/reports/sla-support', auditController.getAuditLogs)
+router.get('/reports/security', (req, res, next) => {
+  req.query.type = 'suspicious'
+  auditController.getSecurityAudit(req, res, next)
+})
+
+// Export Capabilities
+router.post('/export/pdf', (req, res, next) => {
+  req.query.format = 'pdf'
+  auditController.exportAuditData(req, res, next)
+})
+router.post('/export/csv', (req, res, next) => {
+  req.query.format = 'csv'
+  auditController.exportAuditData(req, res, next)
+})
+router.post('/export/excel', (req, res, next) => {
+  req.query.format = 'excel'
+  auditController.exportAuditData(req, res, next)
+})
+router.get('/export/history', auditController.getAuditLogs) // Export history
 
 module.exports = router

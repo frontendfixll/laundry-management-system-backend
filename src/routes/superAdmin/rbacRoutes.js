@@ -81,10 +81,10 @@ router.use(authenticateSuperAdmin);
  * Get all roles with pagination and filters
  * Permission: superadmins.view
  */
-router.get('/roles', 
+router.get('/roles',
   validatePagination,
   requireSuperAdminPermission('superadmins', 'view'),
-  roleController.getRoles
+  (req, res) => roleController.getRoles(req, res)
 );
 
 /**
@@ -95,7 +95,7 @@ router.get('/roles',
 router.get('/roles/:id',
   param('id').isMongoId().withMessage('Valid role ID is required'),
   requireSuperAdminPermission('superadmins', 'view'),
-  roleController.getRole
+  (req, res) => roleController.getRole(req, res)
 );
 
 /**
@@ -106,7 +106,7 @@ router.get('/roles/:id',
 router.post('/roles',
   validateRoleCreation,
   requireSuperAdminPermission('superadmins', 'create'),
-  roleController.createRole
+  (req, res) => roleController.createRole(req, res)
 );
 
 /**
@@ -118,7 +118,7 @@ router.put('/roles/:id',
   param('id').isMongoId().withMessage('Valid role ID is required'),
   validateRoleUpdate,
   requireSuperAdminPermission('superadmins', 'update'),
-  roleController.updateRole
+  (req, res) => roleController.updateRole(req, res)
 );
 
 /**
@@ -129,7 +129,18 @@ router.put('/roles/:id',
 router.delete('/roles/:id',
   param('id').isMongoId().withMessage('Valid role ID is required'),
   requireSuperAdminPermission('superadmins', 'delete'),
-  roleController.deleteRole
+  (req, res) => roleController.deleteRole(req, res)
+);
+
+/**
+ * GET /api/superadmin/rbac/superadmins
+ * Get SuperAdmin users for role assignment
+ * Permission: superadmins.view
+ */
+router.get('/superadmins',
+  validatePagination,
+  requireSuperAdminPermission('superadmins', 'view'),
+  (req, res) => roleController.getSuperAdmins(req, res)
 );
 
 /**
@@ -140,7 +151,7 @@ router.delete('/roles/:id',
 router.post('/assign',
   validateRoleAssignment,
   requireSuperAdminPermission('superadmins', 'update'),
-  roleController.assignRoles
+  (req, res) => roleController.assignRoles(req, res)
 );
 
 module.exports = router;

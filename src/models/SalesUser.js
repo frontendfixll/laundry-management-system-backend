@@ -19,6 +19,17 @@ const salesUserSchema = new mongoose.Schema({
   phone: { type: String },
   role: { type: String, default: 'sales_admin' },
   
+  // New RBAC Role System
+  roleSlug: { 
+    type: String, 
+    default: 'platform-sales',
+    enum: ['platform-sales', 'platform-sales-junior', 'platform-sales-senior']
+  },
+  roles: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'SuperAdminRole'
+  }],
+  
   // Session Management
   sessions: [sessionSchema],
   
@@ -195,12 +206,71 @@ salesUserSchema.methods.removeSession = function(sessionId) {
   return this.save();
 };
 
-// Check permission
+// Check permission (legacy method - kept for backward compatibility)
 salesUserSchema.methods.hasPermission = function(module, action) {
   if (!this.permissions || !this.permissions[module]) {
     return false;
   }
   return this.permissions[module][action] === true;
+};
+
+// New RBAC permission check method
+salesUserSchema.methods.hasRBACPermission = async function(module, action) {
+  // If no roles assigned, fall back to legacy permissions
+  if (!this.roles || this.roles.length === 0) {
+    return this.hasPermission(module, action);
+  }
+
+  // Populate roles if not already populated
+  if (!this.populated('roles')) {
+    await this.populate('roles');
+  }
+
+  // Check permissions across all assigned roles
+  for (const role of this.roles) {
+    if (role && role.hasPermission && role.hasPermission(module, action)) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
+// Get effective permissions from roles
+salesUserSchema.methods.getEffectivePermissions = async function() {
+  const permissions = {};
+
+  // If no roles assigned, return legacy permissions
+  if (!this.roles || this.roles.length === 0) {
+    return this.permissions || {};
+  }
+
+  // Populate roles if not already populated
+  if (!this.populated('roles')) {
+    await this.populate('roles');
+  }
+
+  // Merge permissions from all roles
+  for (const role of this.roles) {
+    if (role && role.permissions) {
+      Object.entries(role.permissions).forEach(([module, permString]) => {
+        if (permString && typeof permString === 'string') {
+          if (!permissions[module]) {
+            permissions[module] = {};
+          }
+          
+          // Convert permission string to boolean flags
+          permissions[module].view = permissions[module].view || permString.includes('r');
+          permissions[module].create = permissions[module].create || permString.includes('c');
+          permissions[module].update = permissions[module].update || permString.includes('u');
+          permissions[module].delete = permissions[module].delete || permString.includes('d');
+          permissions[module].export = permissions[module].export || permString.includes('e');
+        }
+      });
+    }
+  }
+
+  return permissions;
 };
 
 // Update performance metrics

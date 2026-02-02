@@ -23,6 +23,7 @@ class CenterAdminAuthController {
 
       // Find admin
       const admin = await CenterAdmin.findOne({ email: email.toLowerCase() })
+        .populate('roles', 'name slug description color permissions')
       if (!admin) {
         sessionService.recordFailedAttempt(ipAddress)
         
@@ -183,6 +184,7 @@ class CenterAdminAuthController {
 
       // Find admin
       const admin = await CenterAdmin.findById(decoded.adminId)
+        .populate('roles', 'name slug description color permissions')
       if (!admin) {
         return res.status(401).json({
           success: false,
@@ -268,6 +270,7 @@ class CenterAdminAuthController {
           name: admin.name,
           email: admin.email,
           role: admin.role,
+          roles: admin.roles || [], // Add RBAC roles
           permissions: admin.permissions,
           avatar: admin.avatar,
           mfaEnabled: admin.mfa ? admin.mfa.isEnabled : false

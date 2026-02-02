@@ -152,7 +152,7 @@ const canAccessOrder = async (req, res, next) => {
 
 // Check if user has specific RBAC permission
 const requirePermission = (module, action) => {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({
         success: false,
@@ -162,14 +162,19 @@ const requirePermission = (module, action) => {
     }
 
     // Check if user has the permission
-    if (req.user.hasPermission && req.user.hasPermission(module, action)) {
-      return next();
+    if (req.user.hasPermission) {
+      try {
+        const hasPerm = await req.user.hasPermission(module, action);
+        if (hasPerm) return next();
+      } catch (err) {
+        console.error('RBAC check error:', err);
+      }
     }
 
     // Fallback: check permissions object directly
-    if (req.user.permissions && 
-        req.user.permissions[module] && 
-        req.user.permissions[module][action]) {
+    if (req.user.permissions &&
+      req.user.permissions[module] &&
+      req.user.permissions[module][action]) {
       return next();
     }
 

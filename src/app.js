@@ -23,6 +23,7 @@ const superAdminDashboardRoutes = require('./routes/superAdminDashboardRoutes');
 const superAdminBranchRoutes = require('./routes/superAdminBranches');
 const superAdminRoleRoutes = require('./routes/superAdminRoles');
 const superAdminRBACRoutes = require('./routes/superAdmin/rbacRoutes');
+const superAdminUserManagementRoutes = require('./routes/superAdmin/userManagementRoutes');
 const superAdminPricingRoutes = require('./routes/superAdminPricing');
 const superAdminFinancialRoutes = require('./routes/superAdminFinancial');
 const superAdminRiskRoutes = require('./routes/superAdminRisk');
@@ -44,6 +45,12 @@ const superAdminCampaignRoutes = require('./routes/superAdminCampaigns');
 const superAdminInventoryRequestRoutes = require('./routes/superAdmin/inventoryRequestRoutes');
 const adminCampaignRoutes = require('./routes/adminCampaigns');
 
+// Support routes
+const supportRoutes = require('./routes/support/index');
+
+// Tenant ticket routes
+const tenantTicketRoutes = require('./routes/tenant/tenantTicketRoutes');
+
 // Sales routes
 const salesAuthRoutes = require('./routes/salesAuthRoutes');
 const salesLeadRoutes = require('./routes/salesLeadRoutes');
@@ -57,6 +64,9 @@ const upgradeRoutes = require('./routes/upgradeRoutes');
 const testNotificationRoutes = require('./routes/testNotificationRoutes');
 const permissionSyncRoutes = require('./routes/permissionSyncRoutes');
 
+// Socket.IO Notification routes
+const socketIONotificationRoutes = require('./routes/socketIONotifications');
+
 // Banner routes
 const adminBannerRoutes = require('./routes/admin/bannerRoutes');
 const superAdminBannerRoutes = require('./routes/superAdmin/bannerRoutes');
@@ -65,9 +75,16 @@ const customerBannerRoutes = require('./routes/customer/bannerRoutes');
 // Branch Admin routes
 const branchAdminRoutes = require('./routes/admin/branchAdminRoutes');
 
-// Support routes
-const supportRoutes = require('./routes/support');
 const adminSupportRoutes = require('./routes/admin/supportRoutes');
+
+// Add-on routes
+const addOnRoutes = require('./routes/addOnRoutes');
+const superAdminAddOnRoutes = require('./routes/superAdmin/superAdminAddOnRoutes');
+
+// Blog routes
+const blogRoutes = require('./routes/blogRoutes');
+const publicBlogRoutes = require('./routes/publicBlogRoutes');
+const tenantBlogRoutes = require('./routes/tenantBlogRoutes');
 
 const servicePricesRoutes = require('./routes/servicePrices');
 const serviceItemsRoutes = require('./routes/serviceItems');
@@ -94,7 +111,7 @@ app.use((req, res, next) => {
   const origin = req.headers.origin;
   console.log('🚨 EMERGENCY CORS FIX - Origin:', origin);
   console.log('🚨 EMERGENCY CORS FIX - Method:', req.method);
-  
+
   // Set CORS headers for all requests
   res.header('Access-Control-Allow-Origin', origin || '*');
   res.header('Access-Control-Allow-Credentials', 'true');
@@ -102,12 +119,12 @@ app.use((req, res, next) => {
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Subdomain, X-Tenancy-ID, X-Tenancy-Slug');
   res.header('Access-Control-Expose-Headers', 'Set-Cookie');
   res.header('Access-Control-Max-Age', '86400'); // 24 hours
-  
+
   if (req.method === 'OPTIONS') {
     console.log('🚨 EMERGENCY CORS - Handling OPTIONS for origin:', origin);
     return res.status(200).end();
   }
-  
+
   next();
 });
 
@@ -161,12 +178,12 @@ app.use(cors({
     console.log('🌐 CORS check for origin:', origin);
     callback(null, true);
     return;
-    
+
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
-    
+
     console.log('🌐 CORS check for origin:', origin);
-    
+
     // Check if origin matches allowed patterns
     const isAllowed = allowedOrigins.some(allowed => {
       if (typeof allowed === 'string') {
@@ -181,7 +198,7 @@ app.use(cors({
       }
       return false;
     });
-    
+
     if (isAllowed) {
       callback(null, true);
     } else {
@@ -202,19 +219,19 @@ app.use((req, res, next) => {
   // TEMPORARY: Allow all origins for debugging
   const origin = req.headers.origin;
   console.log('🌐 Additional CORS middleware for origin:', origin);
-  
+
   res.header('Access-Control-Allow-Origin', origin || '*');
   res.header('Access-Control-Allow-Credentials', 'true');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
   res.header('Access-Control-Expose-Headers', 'Set-Cookie');
-  
+
   // Handle preflight requests
   if (req.method === 'OPTIONS') {
     console.log('🔧 Handling OPTIONS preflight request');
     return res.status(200).end();
   }
-  
+
   next();
 });
 
@@ -231,10 +248,10 @@ const limiter = rateLimit({
   message: 'Too many requests from this IP, please try again later.'
 });
 
-// Only apply rate limiting in production
-if (process.env.NODE_ENV === 'production') {
-  app.use('/api/', limiter);
-}
+// Temporarily disable rate limiting for debugging
+// if (process.env.NODE_ENV === 'production') {
+//   app.use('/api/', limiter);
+// }
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
@@ -258,20 +275,51 @@ app.use(subdomainRouter);
 
 // Health check
 app.get('/health', (req, res) => {
+  const mongoose = require('mongoose');
   res.status(200).json({
     success: true,
     message: 'Laundry Management API is running',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV,
+    version: process.env.APP_VERSION || '2.0.0',
+    database: {
+      connected: mongoose.connection.readyState === 1,
+      state: mongoose.connection.readyState,
+      stateText: mongoose.connection.readyState === 1 ? 'connected' :
+        mongoose.connection.readyState === 2 ? 'connecting' :
+          mongoose.connection.readyState === 3 ? 'disconnecting' : 'disconnected'
+    },
+    env_check: {
+      mongodb_uri: !!process.env.MONGODB_URI,
+      jwt_secret: !!process.env.JWT_SECRET,
+      frontend_url: !!process.env.FRONTEND_URL,
+      vercel: !!process.env.VERCEL
+    }
   });
 });
 
 // API Health check
 app.get('/api/health', (req, res) => {
+  const mongoose = require('mongoose');
   res.status(200).json({
     success: true,
     message: 'Laundry Management API is running',
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV
+    environment: process.env.NODE_ENV,
+    version: process.env.APP_VERSION || '2.0.0',
+    database: {
+      connected: mongoose.connection.readyState === 1,
+      state: mongoose.connection.readyState,
+      stateText: mongoose.connection.readyState === 1 ? 'connected' :
+        mongoose.connection.readyState === 2 ? 'connecting' :
+          mongoose.connection.readyState === 3 ? 'disconnecting' : 'disconnected'
+    },
+    env_check: {
+      mongodb_uri: !!process.env.MONGODB_URI,
+      jwt_secret: !!process.env.JWT_SECRET,
+      frontend_url: !!process.env.FRONTEND_URL,
+      vercel: !!process.env.VERCEL
+    }
   });
 });
 
@@ -309,6 +357,7 @@ app.use('/api/superadmin/dashboard', superAdminDashboardRoutes);
 app.use('/api/superadmin/branches', superAdminBranchRoutes);
 app.use('/api/superadmin/roles', superAdminRoleRoutes);
 app.use('/api/superadmin/rbac', superAdminRBACRoutes);
+app.use('/api/superadmin/rbac/users', superAdminUserManagementRoutes);
 app.use('/api/superadmin/pricing', superAdminPricingRoutes);
 app.use('/api/superadmin/financial', superAdminFinancialRoutes);
 app.use('/api/superadmin/risk', superAdminRiskRoutes);
@@ -329,6 +378,17 @@ app.use('/api/superadmin/promotional', superAdminPromotionalRoutes);
 app.use('/api/superadmin/campaigns', superAdminCampaignRoutes);
 app.use('/api/superadmin/inventory-requests', superAdminInventoryRequestRoutes);
 app.use('/api/superadmin/leads', leadSuperadminRoutes);
+
+// Support routes - Accept both SuperAdmin and User tokens
+const { protectAny, protect } = require('./middlewares/auth');
+app.use('/api/support', protectAny, supportRoutes);
+
+// Tenant chat routes (requires tenant authentication)
+const tenantChatRoutes = require('./routes/tenant/chatRoutes');
+app.use('/api/tenant/chat', tenantChatRoutes);
+
+// Tenant ticket routes (requires tenant authentication)
+app.use('/api/tenant/tickets', protect, tenantTicketRoutes);
 app.use('/api/admin/campaigns', adminCampaignRoutes);
 app.use('/api/admin/banners', adminBannerRoutes);
 app.use('/api/admin/branch-admins', branchAdminRoutes);
@@ -339,6 +399,15 @@ app.use('/api/superadmin/services', adminServiceRoutes);
 app.use('/api/superadmin/branch-services', branchServiceRoutes);
 app.use('/api/superadmin/sales-users', superAdminSalesRoutes);
 
+// Add-on routes
+app.use('/api/addons', addOnRoutes);
+app.use('/api/superadmin/addons', superAdminAddOnRoutes);
+
+// Blog routes
+app.use('/api/superadmin/blog', blogRoutes);
+app.use('/api/blog', publicBlogRoutes);
+app.use('/api/admin/blog', tenantBlogRoutes);
+
 // Sales routes
 app.use('/api/sales/auth', salesAuthRoutes);
 app.use('/api/sales/leads', salesLeadRoutes);
@@ -347,20 +416,24 @@ app.use('/api/sales/payments', salesPaymentRoutes);
 app.use('/api/sales/analytics', salesAnalyticsRoutes);
 app.use('/api/sales/upgrades', upgradeRoutes);
 
+// Permission management routes
+const permissionMigrationRoutes = require('./routes/permissionMigration');
+app.use('/api/permissions', permissionMigrationRoutes);
+
+// Quick permission fix (temporary)
+const quickPermissionFixRoutes = require('./routes/quickPermissionFix');
+app.use('/api', quickPermissionFixRoutes);
+
 // Test routes (development only)
 if (process.env.NODE_ENV !== 'production') {
   app.use('/api', testNotificationRoutes);
+  app.use('/api/socketio-notifications', socketIONotificationRoutes);
+  app.use('/api/permission-sync', permissionSyncRoutes);
 }
-
-// Permission sync routes
-app.use('/api/permissions', permissionSyncRoutes);
 
 // Refresh permissions route
 const refreshPermissionsRoutes = require('./routes/refreshPermissions');
 app.use('/api', refreshPermissionsRoutes);
-
-// Support routes
-app.use('/api/support', supportRoutes);
 
 // Center Admin routes (previously branch manager)
 app.use('/api/center-admin', centerAdminRoutes);
@@ -402,11 +475,19 @@ app.use('/api/public/leads', leadPublicRoutes);
 const billingPublicRoutes = require('./routes/billingPublicRoutes');
 app.use('/api/public/billing', billingPublicRoutes);
 
+// Add-on public routes (no auth required - for marketing site)
+const publicAddOnRoutes = require('./routes/publicAddOnRoutes');
+app.use('/api/public/addons', publicAddOnRoutes);
+
 // Payment link routes
 const paymentLinkSuperadminRoutes = require('./routes/paymentLinkSuperadminRoutes');
 const paymentLinkPublicRoutes = require('./routes/paymentLinkPublicRoutes');
 app.use('/api/superadmin/payment-links', paymentLinkSuperadminRoutes);
 app.use('/api/public/pay', paymentLinkPublicRoutes);
+
+// Direct Stripe checkout routes (for marketing frontend)
+const stripeDirectRoutes = require('./routes/stripeDirectRoutes');
+app.use('/api/public', stripeDirectRoutes);
 
 // Feature definition routes
 const featureRoutes = require('./routes/featureRoutes');
@@ -456,6 +537,10 @@ const superAdminNotificationRoutes = require('./routes/superAdminNotificationRou
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/superadmin/notifications', superAdminNotificationRoutes);
 
+// Legacy DeepNoti SSE routes (DISABLED - Using Socket.IO instead)
+// const sseRoutes = require('./routes/sseRoutes');
+// app.use('/api/sse', sseRoutes);
+
 // 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({
@@ -467,5 +552,21 @@ app.use('*', (req, res) => {
 
 // Global error handler
 app.use(errorHandler);
+
+// Initialize services
+const addOnBillingService = require('./services/addOnBillingService');
+// const emailService = require('./services/emailService');
+
+// Test email service connection on startup - TEMPORARILY DISABLED
+// emailService.testConnection().then(result => {
+//   if (result) {
+//     console.log('✅ Email service ready');
+//   } else {
+//     console.log('⚠️ Email service connection failed - emails will not be sent');
+//   }
+// });
+
+console.log('⚠️ Email service temporarily disabled');
+console.log('🚀 Add-on billing service initialized with automated cron jobs');
 
 module.exports = app;

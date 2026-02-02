@@ -88,7 +88,7 @@ class OrderService {
           await order.save();
         }
       }
-      
+
       // When order is cancelled, handle refund if already paid
       if (newStatus === ORDER_STATUS.CANCELLED) {
         if (order.paymentStatus === 'paid' && order.paymentMethod !== 'cod') {
@@ -111,6 +111,11 @@ class OrderService {
   static async sendStatusNotifications(order, status) {
     try {
       const customerId = order.customer._id;
+
+      // Notify tenancy admins about any status change (persistent)
+      if (order.tenancy) {
+        await NotificationService.notifyAdminOrderStatusUpdate(order, order.tenancy);
+      }
 
       switch (status) {
         case ORDER_STATUS.PLACED:
@@ -157,7 +162,7 @@ class OrderService {
 
         case ORDER_STATUS.DELIVERED:
           await NotificationService.notifyOrderDelivered(customerId, order);
-          
+
           // Update customer stats
           await this.updateCustomerStats(customerId, order);
           break;
@@ -190,7 +195,7 @@ class OrderService {
       console.log('Order Tenancy:', order.tenancy);
       console.log('Order Total:', order.pricing?.total);
       console.log('========================================');
-      
+
       const customer = await User.findById(customerId);
       if (!customer) return;
 
@@ -203,7 +208,7 @@ class OrderService {
         console.error('Error awarding loyalty points:', loyaltyError);
         // Don't fail the whole process if loyalty fails
       }
-      
+
       // Process referral reward on first order
       try {
         await this.processReferralReward(customer, order);
@@ -239,60 +244,60 @@ class OrderService {
       console.error('Error updating customer stats:', error);
     }
   }
-  
+
   // Process referral reward when referee completes first order
   static async processReferralReward(customer, order) {
     // Check if customer was referred and hasn't claimed reward yet
     if (!customer.referralCode || customer.referralRewardClaimed) {
       return;
     }
-    
+
     console.log('🎁 Processing referral reward for:', customer.email);
     console.log('   Referral Code:', customer.referralCode);
-    
+
     const { Referral, ReferralProgram } = require('../models/Referral');
-    
+
     // Find the referral
     const referral = await Referral.findOne({
       code: customer.referralCode,
       referee: customer._id
     }).populate('program');
-    
+
     if (!referral) {
       console.log('   ❌ Referral not found');
       return;
     }
-    
+
     // Check if program is still valid
     if (!referral.program || !referral.program.isValid()) {
       console.log('   ❌ Referral program not valid');
       return;
     }
-    
+
     // Check minimum order value
     if (order.pricing?.total < referral.program.minOrderValue) {
       console.log(`   ❌ Order value (₹${order.pricing?.total}) below minimum (₹${referral.program.minOrderValue})`);
       return;
     }
-    
+
     // Record conversion
     await referral.recordConversion(order);
     console.log('   ✅ Conversion recorded');
-    
+
     // Give rewards to both referrer and referee
     await referral.giveRewards();
     console.log('   ✅ Rewards given');
-    
+
     // Mark customer as having claimed referral reward
     customer.referralRewardClaimed = true;
-    
+
     // Update referral program stats
     referral.program.totalRewardsGiven += 1;
     await referral.program.save();
-    
+
     // Send notifications
     const referrer = await User.findById(referral.referrer);
-    
+
     // Notify referrer
     if (referrer) {
       await NotificationService.createNotification({
@@ -300,34 +305,34 @@ class OrderService {
         type: NOTIFICATION_TYPES.REWARD_POINTS,
         title: 'Referral Reward Earned! 🎉',
         message: `Your friend ${customer.name} completed their first order! You earned ${referral.program.referrerReward.type === 'credit' ? '₹' : ''}${referral.program.referrerReward.value}${referral.program.referrerReward.type === 'discount' ? '%' : ''} ${referral.program.referrerReward.type}.`,
-        data: { 
+        data: {
           referralId: referral._id,
           rewardType: referral.program.referrerReward.type,
           rewardValue: referral.program.referrerReward.value
         }
       });
     }
-    
+
     // Notify referee (current customer)
     await NotificationService.createNotification({
       recipientId: customer._id,
       type: NOTIFICATION_TYPES.REWARD_POINTS,
       title: 'Referral Bonus Applied! 🎁',
       message: `Congratulations! Your referral bonus of ${referral.program.refereeReward.type === 'credit' ? '₹' : ''}${referral.program.refereeReward.value}${referral.program.refereeReward.type === 'discount' ? '%' : ''} ${referral.program.refereeReward.type} has been applied.`,
-      data: { 
+      data: {
         referralId: referral._id,
         rewardType: referral.program.refereeReward.type,
         rewardValue: referral.program.refereeReward.value
       }
     });
-    
+
     console.log('   ✅ Referral reward processing complete');
   }
 
   // Check and notify about customer milestones
   static async checkMilestones(customer, order) {
     const milestones = [5, 10, 25, 50, 100];
-    
+
     if (milestones.includes(customer.totalOrders)) {
       await NotificationService.createNotification({
         recipientId: customer._id,
@@ -340,7 +345,7 @@ class OrderService {
       // Auto-upgrade to VIP after 25 orders
       if (customer.totalOrders >= 25 && !customer.isVIP) {
         customer.isVIP = true;
-        
+
         await NotificationService.createNotification({
           recipientId: customer._id,
           type: NOTIFICATION_TYPES.VIP_UPGRADE,
@@ -410,8 +415,8 @@ class OrderService {
       twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
 
       const query = {
-        status: { 
-          $nin: [ORDER_STATUS.DELIVERED, ORDER_STATUS.CANCELLED] 
+        status: {
+          $nin: [ORDER_STATUS.DELIVERED, ORDER_STATUS.CANCELLED]
         },
         createdAt: { $lt: twoDaysAgo }
       };

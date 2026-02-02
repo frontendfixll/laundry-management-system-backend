@@ -34,14 +34,18 @@ class CenterAdminAuthController {
       const { email, password, rememberMe } = req.body
 
       // Find admin by email - try SuperAdmin first, then CenterAdmin
-      let admin = await SuperAdmin.findOne({ email }).maxTimeMS(5000) // 5 second timeout
+      let admin = await SuperAdmin.findOne({ email })
+        .populate('roles', 'name slug description color permissions')
+        .maxTimeMS(5000) // 5 second timeout
       let adminType = 'superadmin'
-      
+
       if (!admin) {
-        admin = await CenterAdmin.findOne({ email }).maxTimeMS(5000) // 5 second timeout
+        admin = await CenterAdmin.findOne({ email })
+          .populate('roles', 'name slug description color permissions')
+          .maxTimeMS(5000) // 5 second timeout
         adminType = 'center_admin'
       }
-      
+
       if (!admin) {
         return res.status(401).json({
           success: false,
@@ -68,11 +72,11 @@ class CenterAdminAuthController {
 
       // Create session
       const sessionResult = await sessionService.createSession(admin, req)
-      
+
       // Token expiry based on Remember Me
       // Remember Me: 30 days, Otherwise: 24 hours
       const tokenExpiry = rememberMe ? '30d' : '24h'
-      
+
       // Generate JWT token with real session ID
       const token = jwt.sign(
         {
@@ -118,6 +122,11 @@ class CenterAdminAuthController {
         // Don't fail login if logging fails
       }
 
+      // Get effective permissions (combining role and user-specific permissions)
+      const effectivePermissions = admin.getEffectivePermissions
+        ? await admin.getEffectivePermissions()
+        : admin.permissions;
+
       return res.json({
         success: true,
         token,
@@ -126,7 +135,8 @@ class CenterAdminAuthController {
           name: admin.name,
           email: admin.email,
           role: admin.role,
-          permissions: admin.permissions,
+          roles: admin.roles || [], // Add RBAC roles
+          permissions: effectivePermissions,
           avatar: admin.avatar,
           mfaEnabled: admin.mfa ? admin.mfa.isEnabled : false
         },
@@ -147,7 +157,7 @@ class CenterAdminAuthController {
     try {
       // Clear the auth cookie
       clearSuperAdminAuthCookie(res)
-      
+
       return res.json({
         success: true,
         message: 'Logged out successfully'
@@ -165,7 +175,12 @@ class CenterAdminAuthController {
   async getProfile(req, res) {
     try {
       const admin = req.admin
-      
+
+      // Get effective permissions (combining role and user-specific permissions)
+      const effectivePermissions = admin.getEffectivePermissions
+        ? await admin.getEffectivePermissions()
+        : admin.permissions;
+
       return res.json({
         success: true,
         admin: {
@@ -173,7 +188,8 @@ class CenterAdminAuthController {
           name: admin.name,
           email: admin.email,
           role: admin.role,
-          permissions: admin.permissions,
+          roles: admin.roles || [], // Add RBAC roles
+          permissions: effectivePermissions,
           avatar: admin.avatar,
           mfaEnabled: admin.mfa ? admin.mfa.isEnabled : false,
           lastLogin: admin.lastLogin,
@@ -236,7 +252,7 @@ class CenterAdminAuthController {
       // Find admin - try SuperAdmin first, then CenterAdmin
       let admin = await SuperAdmin.findOne({ email: email.toLowerCase() })
       let adminModel = SuperAdmin
-      
+
       if (!admin) {
         admin = await CenterAdmin.findOne({ email: email.toLowerCase() })
         adminModel = CenterAdmin
@@ -315,7 +331,7 @@ class CenterAdminAuthController {
             </div>
           `
         })
-        
+
         if (!emailResult.success) {
           throw new Error(emailResult.error || 'Failed to send email')
         }
@@ -325,7 +341,7 @@ class CenterAdminAuthController {
         admin.resetPasswordToken = undefined
         admin.resetPasswordExpires = undefined
         await admin.save()
-        
+
         return res.status(500).json({
           success: false,
           message: 'Failed to send reset email. Please try again.'
@@ -406,7 +422,7 @@ class CenterAdminAuthController {
         resetPasswordToken: tokenHash,
         resetPasswordExpires: { $gt: Date.now() }
       })
-      
+
       if (!admin) {
         admin = await CenterAdmin.findOne({
           resetPasswordToken: tokenHash,
@@ -425,12 +441,12 @@ class CenterAdminAuthController {
       admin.password = password
       admin.resetPasswordToken = undefined
       admin.resetPasswordExpires = undefined
-      
+
       // Clear all sessions for security
       if (admin.sessions) {
         admin.sessions = []
       }
-      
+
       await admin.save()
 
       // Log the action
@@ -469,7 +485,7 @@ class CenterAdminAuthController {
   async refreshSession(req, res) {
     try {
       const admin = req.admin
-      
+
       // Update last activity
       admin.lastActivity = new Date()
       await admin.save()

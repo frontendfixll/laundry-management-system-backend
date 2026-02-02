@@ -422,13 +422,36 @@ exports.getPaymentStats = asyncHandler(async (req, res) => {
     completedAmount: 0
   };
 
-  sendSuccess(res, stats[0] || {
-    total: 0,
-    totalAmount: 0,
-    completed: 0,
-    pending: 0,
-    failed: 0,
-    completedAmount: 0,
+  // Get current month stats
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+  const monthlyStats = await TenancyPayment.aggregate([
+    { 
+      $match: { 
+        status: 'completed',
+        createdAt: { $gte: startOfMonth, $lte: endOfMonth }
+      } 
+    },
+    {
+      $group: {
+        _id: null,
+        monthlyRevenue: { $sum: '$amount' },
+        monthlyCount: { $sum: 1 }
+      }
+    }
+  ]);
+
+  const monthlyResult = monthlyStats[0] || { monthlyRevenue: 0, monthlyCount: 0 };
+
+  sendSuccess(res, {
+    totalRevenue: result.completedAmount || 0,
+    monthlyRevenue: monthlyResult.monthlyRevenue || 0,
+    paidCount: result.completed || 0,
+    pendingCount: result.pending || 0,
+    failedCount: result.failed || 0,
+    totalCount: result.total || 0,
     methodDistribution,
     overdueInvoices
   }, 'Payment statistics retrieved successfully');

@@ -275,7 +275,7 @@ const getSupportDashboard = asyncHandler(async (req, res) => {
 
   // Get ticket stats
   const ticketStats = await Ticket.aggregate([
-    { $match: { tenancy: tenancyId } },
+    { $match: req.isSuperAdmin ? {} : { tenancy: tenancyId } },
     {
       $group: {
         _id: '$status',
@@ -299,7 +299,7 @@ const getSupportDashboard = asyncHandler(async (req, res) => {
   });
 
   // Get recent tickets
-  const recentTickets = await Ticket.find({ tenancy: tenancyId })
+  const recentTickets = await Ticket.find(req.isSuperAdmin ? {} : { tenancy: tenancyId })
     .populate('raisedBy', 'name email')
     .populate('assignedTo', 'name')
     .select('ticketNumber title status priority createdAt assignedTo')
@@ -308,7 +308,7 @@ const getSupportDashboard = asyncHandler(async (req, res) => {
 
   // Get support user performance
   const supportPerformance = await User.aggregate([
-    { $match: { role: 'support', tenancy: tenancyId, isActive: true } },
+    { $match: { role: 'support', ...(req.isSuperAdmin ? {} : { tenancy: tenancyId }), isActive: true } },
     {
       $lookup: {
         from: 'tickets',

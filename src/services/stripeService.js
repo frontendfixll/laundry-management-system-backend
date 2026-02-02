@@ -13,7 +13,7 @@ class StripeService {
   async createPaymentIntent(upgradeRequest) {
     try {
       const { tenancy, pricing, toPlan } = upgradeRequest;
-      
+
       const paymentIntent = await this.stripe.paymentIntents.create({
         amount: Math.round(pricing.customPrice * 100), // Convert to paise/cents
         currency: 'inr',
@@ -47,12 +47,60 @@ class StripeService {
   }
 
   /**
+   * Create Stripe Checkout Session for a Payment Link (New Lead)
+   */
+  async createPaymentLinkSession(paymentLink) {
+    try {
+      const marketingUrl = process.env.MARKETING_URL || 'http://localhost:3004';
+
+      const session = await this.stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price_data: {
+              currency: paymentLink.currency.toLowerCase(),
+              product_data: {
+                name: paymentLink.title,
+                description: paymentLink.description,
+              },
+              unit_amount: Math.round(paymentLink.amount.total * 100), // Convert to paise/cents
+            },
+            quantity: 1,
+          },
+        ],
+        mode: 'payment',
+        success_url: `${marketingUrl}/pay/${paymentLink.token}/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${marketingUrl}/pay/${paymentLink.token}?cancelled=true`,
+        customer_email: paymentLink.metadata?.customerEmail,
+        metadata: {
+          paymentLinkId: paymentLink._id.toString(),
+          leadId: paymentLink.lead.toString(),
+          type: 'direct_plan_purchase'
+        },
+      });
+
+      return {
+        success: true,
+        session,
+        sessionId: session.id,
+        url: session.url
+      };
+    } catch (error) {
+      console.error('Stripe payment link session creation failed:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
    * Create Stripe Checkout Session for upgrade
    */
   async createCheckoutSession(upgradeRequest, successUrl, cancelUrl) {
     try {
       const { tenancy, pricing, toPlan } = upgradeRequest;
-      
+
       const session = await this.stripe.checkout.sessions.create({
         payment_method_types: ['card'],
         line_items: [
@@ -124,7 +172,7 @@ class StripeService {
     try {
       const upgradeRequestId = paymentIntent.metadata.upgradeRequestId;
       const amount = paymentIntent.amount / 100; // Convert from paise to rupees
-      
+
       return {
         success: true,
         upgradeRequestId,

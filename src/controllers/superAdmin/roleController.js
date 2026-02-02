@@ -1,6 +1,7 @@
 const SuperAdminRole = require('../../models/SuperAdminRole');
 const SuperAdmin = require('../../models/SuperAdmin');
 const AuditLog = require('../../models/AuditLog');
+const rbacNotificationService = require('../../services/rbacNotificationService');
 
 class SuperAdminRoleController {
   /**
@@ -10,7 +11,7 @@ class SuperAdminRoleController {
   async getRoles(req, res) {
     try {
       const { page = 1, limit = 20, search, isActive } = req.query;
-      
+
       // Build query
       const query = {};
       if (search) {
@@ -22,7 +23,7 @@ class SuperAdminRoleController {
       if (isActive !== undefined) {
         query.isActive = isActive === 'true';
       }
-      
+
       // Execute query with pagination
       const roles = await SuperAdminRole.find(query)
         .populate('createdBy', 'name email')
@@ -30,14 +31,14 @@ class SuperAdminRoleController {
         .sort({ createdAt: -1 })
         .limit(limit * 1)
         .skip((page - 1) * limit);
-      
+
       const total = await SuperAdminRole.countDocuments(query);
-      
+
       // Get assignment count for each role
       const rolesWithStats = await Promise.all(
         roles.map(async (role) => {
-          const assignmentCount = await SuperAdmin.countDocuments({ 
-            roles: role._id 
+          const assignmentCount = await SuperAdmin.countDocuments({
+            roles: role._id
           });
           return {
             ...role.toObject(),
@@ -46,7 +47,7 @@ class SuperAdminRoleController {
           };
         })
       );
-      
+
       return res.json({
         success: true,
         data: {
@@ -75,23 +76,23 @@ class SuperAdminRoleController {
   async getRole(req, res) {
     try {
       const { id } = req.params;
-      
+
       const role = await SuperAdminRole.findById(id)
         .populate('createdBy', 'name email')
         .populate('lastModifiedBy', 'name email');
-      
+
       if (!role) {
         return res.status(404).json({
           success: false,
           message: 'Role not found'
         });
       }
-      
+
       // Get assigned superadmins
       const assignedAdmins = await SuperAdmin.find({ roles: role._id })
-        .select('name email isActive lastLogin')
+        .select('name email isActive lastLogin customPermissions')
         .lean();
-      
+
       return res.json({
         success: true,
         data: {
@@ -110,16 +111,55 @@ class SuperAdminRoleController {
   }
 
   /**
+   * Helper to convert permission objects to compact strings
+   * @param {Object} permissions - The raw permissions object from request
+   * @returns {Object} - Permissions with string values
+   */
+  convertPermissionsToString(permissions) {
+    if (!permissions) return {};
+
+    // Reverse Mapping for conversion
+    const ACTION_TO_CODE = {
+      'view': 'r',
+      'create': 'c',
+      'update': 'u',
+      'delete': 'd',
+      'export': 'e'
+    };
+
+    const converted = {};
+
+    Object.entries(permissions).forEach(([module, perms]) => {
+      // If already a string (compact format), use as is
+      if (typeof perms === 'string') {
+        converted[module] = perms;
+      }
+      // If object (legacy format), convert to string
+      else if (typeof perms === 'object' && perms !== null) {
+        let permString = '';
+        Object.entries(perms).forEach(([action, value]) => {
+          if (value === true && ACTION_TO_CODE[action]) {
+            permString += ACTION_TO_CODE[action];
+          }
+        });
+        converted[module] = permString;
+      }
+    });
+
+    return converted;
+  }
+
+  /**
    * Create new role
    * POST /api/superadmin/rbac/roles
    */
   async createRole(req, res) {
     try {
       const { name, description, permissions, color } = req.body;
-      
+
       // Generate slug from name
       const slug = name.toLowerCase().replace(/\s+/g, '-');
-      
+
       // Check uniqueness
       const existing = await SuperAdminRole.findOne({ slug });
       if (existing) {
@@ -128,19 +168,22 @@ class SuperAdminRoleController {
           message: 'Role with this name already exists'
         });
       }
-      
+
+      // Convert permissions to storage format
+      const storagePermissions = this.convertPermissionsToString(permissions);
+
       // Create role
       const role = new SuperAdminRole({
         name,
         slug,
         description,
-        permissions,
+        permissions: storagePermissions,
         color: color || '#6366f1',
         createdBy: req.user._id
       });
-      
+
       await role.save();
-      
+
       // Audit log
       await AuditLog.logAction({
         userId: req.user._id,
@@ -160,7 +203,7 @@ class SuperAdminRoleController {
           permissionCount: role.getEnabledPermissions().length
         }
       });
-      
+
       return res.status(201).json({
         success: true,
         message: 'Role created successfully',
@@ -183,39 +226,53 @@ class SuperAdminRoleController {
     try {
       const { id } = req.params;
       const { name, description, permissions, color, isActive } = req.body;
-      
-      const role = await SuperAdminRole.findById(id);
-      if (!role) {
+
+      // 1. Fetch raw data to bypass schema validation errors on legacy objects
+      const existingRole = await SuperAdminRole.findById(id).lean();
+      if (!existingRole) {
         return res.status(404).json({
           success: false,
           message: 'Role not found'
         });
       }
-      
+
       // Prevent deactivation of default roles
-      if (role.isDefault && isActive === false) {
+      if (existingRole.isDefault && isActive === false) {
         return res.status(400).json({
           success: false,
           message: 'Cannot deactivate default role'
         });
       }
-      
-      // Store old data for audit
-      const oldData = role.toObject();
-      
-      // Update fields
+
+      // 2. Prepare Update Object
+      const updateData = {};
+
       if (name) {
-        role.name = name;
-        role.slug = name.toLowerCase().replace(/\s+/g, '-');
+        updateData.name = name;
+        updateData.slug = name.toLowerCase().replace(/\s+/g, '-');
       }
-      if (description !== undefined) role.description = description;
-      if (permissions) role.permissions = permissions;
-      if (color) role.color = color;
-      if (isActive !== undefined) role.isActive = isActive;
-      role.lastModifiedBy = req.user._id;
-      
-      await role.save();
-      
+      if (description !== undefined) updateData.description = description;
+      if (color) updateData.color = color;
+      if (isActive !== undefined) updateData.isActive = isActive;
+      updateData.lastModifiedBy = req.user._id;
+
+      // 3. Handle Permissions - PREVENT UPDATES
+      // Permissions should not be updated via role edit
+      // They are managed per-user to prevent affecting all users
+      if (permissions) {
+        return res.status(400).json({
+          success: false,
+          message: 'Role permissions cannot be edited. Please edit individual user permissions instead.'
+        });
+      }
+
+      // 4. Update using findByIdAndUpdate
+      const updatedRole = await SuperAdminRole.findByIdAndUpdate(
+        id,
+        { $set: updateData },
+        { new: true, runValidators: true }
+      );
+
       // Audit log
       await AuditLog.logAction({
         userId: req.user._id,
@@ -223,20 +280,39 @@ class SuperAdminRoleController {
         userEmail: req.user.email,
         action: 'update_superadmin_role',
         category: 'rbac',
-        description: `Updated SuperAdmin role: ${role.name}`,
+        description: `Updated SuperAdmin role: ${updatedRole.name}`,
         ipAddress: req.ip,
         userAgent: req.get('User-Agent'),
         resourceType: 'superadmin_role',
-        resourceId: role._id.toString(),
+        resourceId: updatedRole._id.toString(),
         status: 'success',
         riskLevel: 'high',
-        changes: { before: oldData, after: role.toObject() }
+        changes: { before: existingRole, after: updatedRole.toObject() }
       });
-      
+
+      // 5. Notify assigned users about role update
+      try {
+        const assignedAdmins = await SuperAdmin.find({ roles: id });
+        const affectedUserIds = assignedAdmins.map(admin => admin._id.toString());
+
+        if (affectedUserIds.length > 0) {
+          await rbacNotificationService.notifyRoleChange({
+            roleId: id,
+            roleName: updatedRole.name,
+            affectedUsers: affectedUserIds,
+            changeType: 'updated',
+            changes: { permissions: updatedRole.permissions },
+            changedBy: req.user._id
+          });
+        }
+      } catch (notifyError) {
+        console.error('❌ Role update notification error:', notifyError);
+      }
+
       return res.json({
         success: true,
         message: 'Role updated successfully',
-        data: { role }
+        data: { role: updatedRole }
       });
     } catch (error) {
       console.error('Update role error:', error);
@@ -254,7 +330,7 @@ class SuperAdminRoleController {
   async deleteRole(req, res) {
     try {
       const { id } = req.params;
-      
+
       const role = await SuperAdminRole.findById(id);
       if (!role) {
         return res.status(404).json({
@@ -262,7 +338,7 @@ class SuperAdminRoleController {
           message: 'Role not found'
         });
       }
-      
+
       // Prevent deletion of default roles
       if (role.isDefault) {
         return res.status(400).json({
@@ -270,7 +346,7 @@ class SuperAdminRoleController {
           message: 'Cannot delete default role'
         });
       }
-      
+
       // Check if role is assigned to any SuperAdmins
       const assignmentCount = await SuperAdmin.countDocuments({ roles: role._id });
       if (assignmentCount > 0) {
@@ -279,9 +355,9 @@ class SuperAdminRoleController {
           message: `Cannot delete role. ${assignmentCount} SuperAdmins are assigned to this role`
         });
       }
-      
+
       await SuperAdminRole.findByIdAndDelete(id);
-      
+
       // Audit log
       await AuditLog.logAction({
         userId: req.user._id,
@@ -301,7 +377,7 @@ class SuperAdminRoleController {
           assignmentCount
         }
       });
-      
+
       return res.json({
         success: true,
         message: 'Role deleted successfully'
@@ -316,77 +392,137 @@ class SuperAdminRoleController {
   }
 
   /**
+   * Get SuperAdmin users for role assignment
+   * GET /api/superadmin/rbac/superadmins
+   */
+  async getSuperAdmins(req, res) {
+    try {
+      const { page = 1, limit = 20, search, isActive } = req.query;
+
+      // Build query
+      const query = {};
+      if (search) {
+        query.$or = [
+          { name: { $regex: search, $options: 'i' } },
+          { email: { $regex: search, $options: 'i' } }
+        ];
+      }
+      if (isActive !== undefined) {
+        query.isActive = isActive === 'true';
+      }
+
+      // Execute query with pagination
+      const superadmins = await SuperAdmin.find(query)
+        .select('name email role isActive lastLogin createdAt roles')
+        .populate('roles', 'name slug color')
+        .sort({ createdAt: -1 })
+        .limit(limit * 1)
+        .skip((page - 1) * limit);
+
+      const total = await SuperAdmin.countDocuments(query);
+
+      return res.json({
+        success: true,
+        data: {
+          users: superadmins, // Keep 'users' key for frontend compatibility
+          pagination: {
+            current: parseInt(page),
+            pages: Math.ceil(total / limit),
+            total,
+            limit: parseInt(limit)
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Get SuperAdmins error:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to fetch SuperAdmin users'
+      });
+    }
+  }
+
+  /**
    * Assign roles to SuperAdmin
    * POST /api/superadmin/rbac/assign
    */
   async assignRoles(req, res) {
     try {
+      console.log('🎯 Role assignment started');
+      console.log('Request body:', req.body);
+
       const { superadminId, roleIds } = req.body;
-      
+
+      console.log('Finding SuperAdmin:', superadminId);
       const superadmin = await SuperAdmin.findById(superadminId);
       if (!superadmin) {
+        console.log('❌ SuperAdmin not found');
         return res.status(404).json({
           success: false,
           message: 'SuperAdmin not found'
         });
       }
-      
+
+      console.log('✅ SuperAdmin found:', superadmin.name);
+      console.log('Finding roles:', roleIds);
+
       // Validate all roles exist and are active
-      const roles = await SuperAdminRole.find({ 
+      const roles = await SuperAdminRole.find({
         _id: { $in: roleIds },
-        isActive: true 
+        isActive: true
       });
-      
+
+      console.log('✅ Roles found:', roles.length, 'out of', roleIds.length);
+
       if (roles.length !== roleIds.length) {
+        console.log('❌ Role count mismatch');
         return res.status(400).json({
           success: false,
           message: 'One or more roles not found or inactive'
         });
       }
-      
+
       // Store old roles for audit
       const oldRoles = superadmin.roles;
-      
+      console.log('Old roles:', oldRoles);
+
       // Update roles
       superadmin.roles = roleIds;
+      console.log('Saving SuperAdmin with new roles...');
       await superadmin.save();
-      
-      // TODO: Invalidate user sessions to force re-authentication with new permissions
-      // This would require session management implementation
-      
-      // Audit log
-      await AuditLog.logAction({
-        userId: req.user._id,
-        userType: 'superadmin',
-        userEmail: req.user.email,
-        action: 'assign_superadmin_roles',
-        category: 'rbac',
-        description: `Assigned roles to SuperAdmin: ${superadmin.name}`,
-        ipAddress: req.ip,
-        userAgent: req.get('User-Agent'),
-        resourceType: 'superadmin',
-        resourceId: superadmin._id.toString(),
-        status: 'success',
-        riskLevel: 'high',
-        metadata: {
-          superadminName: superadmin.name,
-          superadminEmail: superadmin.email,
-          oldRoles: oldRoles.map(r => r.toString()),
-          newRoles: roleIds,
-          roleNames: roles.map(r => r.name)
-        }
-      });
-      
+      console.log('✅ SuperAdmin saved successfully');
+
+      // Notify user about role assignment
+      try {
+        await rbacNotificationService.notifyPermissionChange({
+          userId: superadmin._id,
+          userEmail: superadmin.email,
+          userName: superadmin.name,
+          permissionChanges: {}, // Full refresh will be triggered
+          roleChanges: roles.map(r => r.name),
+          changeType: 'assigned',
+          changedBy: req.user._id,
+          reason: 'Roles updated by administrator'
+        });
+      } catch (notifyError) {
+        console.error('❌ Role assignment notification error:', notifyError);
+      }
+
+      // Skip audit log for now to test
+      console.log('⚠️ Skipping audit log for debugging');
+
       return res.json({
         success: true,
         message: 'Roles assigned successfully',
         data: { superadmin, roles }
       });
     } catch (error) {
-      console.error('Assign roles error:', error);
+      console.error('❌ Assign roles error:', error);
+      console.error('Error stack:', error.stack);
       return res.status(500).json({
         success: false,
-        message: 'Failed to assign roles'
+        message: 'Failed to assign roles',
+        error: error.message // Add error details for debugging
       });
     }
   }

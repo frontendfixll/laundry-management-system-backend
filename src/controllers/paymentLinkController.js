@@ -3,6 +3,7 @@ const Lead = require('../models/Lead');
 const { BillingPlan } = require('../models/TenancyBilling');
 const Notification = require('../models/Notification');
 const { NOTIFICATION_TYPES } = require('../config/constants');
+const permissionSyncService = require('../services/permissionSyncService');
 
 // Initialize Stripe
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
@@ -41,11 +42,11 @@ const createPaymentLink = async (req, res) => {
     if (customAmount && customAmount > 0) {
       subtotal = customAmount;
     } else {
-      subtotal = billingCycle === 'yearly' 
-        ? billingPlan.price.yearly 
+      subtotal = billingCycle === 'yearly'
+        ? billingPlan.price.yearly
         : billingPlan.price.monthly;
     }
-    
+
     if (subtotal <= 0) {
       return res.status(400).json({
         success: false,
@@ -100,7 +101,7 @@ const createPaymentLink = async (req, res) => {
 const getPaymentLinks = async (req, res) => {
   try {
     const { status, leadId, page = 1, limit = 20 } = req.query;
-    
+
     const query = {};
     if (status) query.status = status;
     if (leadId) query.lead = leadId;
@@ -234,7 +235,7 @@ const getPaymentLinksForLead = async (req, res) => {
 const markPaymentAsPaid = async (req, res) => {
   try {
     const { paymentMethod, transactionId, notes } = req.body;
-    
+
     const paymentLink = await PaymentLink.findById(req.params.id).populate('lead');
 
     if (!paymentLink) {
@@ -519,10 +520,10 @@ const handleStripeWebhook = async (req, res) => {
   // Handle the event
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
-    
+
     try {
-      const paymentLink = await PaymentLink.findOne({ 
-        token: session.metadata.paymentLinkToken 
+      const paymentLink = await PaymentLink.findOne({
+        token: session.metadata.paymentLinkToken
       });
 
       if (paymentLink && paymentLink.status === 'pending') {
@@ -543,6 +544,11 @@ const handleStripeWebhook = async (req, res) => {
         }
 
         await notifyPaymentReceived(paymentLink, lead);
+
+        // Sync permissions if it's a tenancy payment (requires tenancy reference)
+        if (lead && lead.tenancy) {
+          await permissionSyncService.syncTenancyPermissions(lead.tenancy);
+        }
       }
     } catch (error) {
       console.error('Webhook processing error:', error);
@@ -559,14 +565,14 @@ async function notifyPaymentReceived(paymentLink, lead) {
   try {
     const SuperAdmin = require('../models/SuperAdmin');
     const superadmins = await SuperAdmin.find({ isActive: true }).select('_id');
-    
+
     const notifications = superadmins.map(admin => ({
       recipient: admin._id,
       type: NOTIFICATION_TYPES.PAYMENT_RECEIVED || 'payment_received',
       title: 'Payment Received',
       message: `${lead?.businessName || 'A lead'} has paid ₹${paymentLink.amount.total} for ${paymentLink.plan} plan`,
       data: {
-        additionalData: { 
+        additionalData: {
           paymentLinkId: paymentLink._id,
           leadId: paymentLink.lead
         }

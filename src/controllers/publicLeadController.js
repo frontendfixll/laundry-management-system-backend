@@ -84,11 +84,73 @@ exports.createPublicLead = async (req, res) => {
       await salesUser.updatePerformance({
         leadsAssigned: salesUser.performance.leadsAssigned + 1
       });
-      
+
       console.log(`✅ Lead assigned to sales user: ${salesUser.name} (${salesUser.email})`);
     }
 
-    sendSuccess(res, { leadId: lead._id }, 'Lead created successfully. Our team will contact you soon!', 201);
+    // 4. Update sales user performance (if assigned)
+    if (lead.assignedTo) {
+      await SalesUser.findByIdAndUpdate(lead.assignedTo, {
+        $inc: { 'performance.leadsCount': 1 }
+      });
+    }
+
+    // 5. Generate direct purchase link if a paid plan is selected
+    let checkoutUrl = null;
+    if (interestedPlan && !['free', 'undecided'].includes(interestedPlan)) {
+      try {
+        const plan = await BillingPlan.findOne({ name: interestedPlan, isActive: true });
+
+        if (plan) {
+          // Create a payment link for this lead
+          const paymentLink = await PaymentLink.create({
+            title: `Plan Purchase: ${plan.displayName}`,
+            description: `Subscription to ${plan.displayName} plan for ${businessName}`,
+            amount: plan.price.monthly,
+            currency: 'INR',
+            type: 'subscription_plan',
+            reference: {
+              model: 'Lead',
+              id: lead._id
+            },
+            metadata: {
+              leadId: lead._id.toString(),
+              planName: plan.name,
+              businessName: businessName,
+              customerEmail: email
+            },
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
+          });
+
+          // Create Stripe checkout session
+          const session = await stripeService.createPaymentLinkSession(paymentLink);
+          if (session.success) {
+            paymentLink.stripePriceId = session.priceId;
+            paymentLink.stripeSessionId = session.sessionId;
+            paymentLink.url = session.url;
+            await paymentLink.save();
+            checkoutUrl = session.url;
+
+            // Log this as a high-intent lead
+            lead.tags.push('direct_buy_intent');
+            lead.priority = 'high';
+            await lead.save(); // Save lead again to update tags and priority
+          }
+        }
+      } catch (error) {
+        console.error('Error generating checkout link for lead:', error);
+        // Don't fail the lead creation if payment link fails
+      }
+    }
+
+    sendSuccess(res, {
+      lead: {
+        id: lead._id,
+        status: lead.status,
+        priority: lead.priority
+      },
+      checkoutUrl
+    }, 'Lead submitted successfully', 201);
   } catch (error) {
     console.error('❌ Error creating public lead:', error);
     sendError(res, error, 'Failed to submit lead. Please try again.', 500);
@@ -99,9 +161,9 @@ exports.createPublicLead = async (req, res) => {
 async function findAvailableSalesUser() {
   try {
     // Find active sales users and sort by least assigned leads
-    const salesUsers = await SalesUser.find({ 
-      isActive: true 
-    }).sort({ 
+    const salesUsers = await SalesUser.find({
+      isActive: true
+    }).sort({
       'performance.leadsAssigned': 1 // Ascending order - least loaded first
     });
 
@@ -127,14 +189,14 @@ function calculateEstimatedRevenue(plan, orderVolume) {
   };
 
   const basePrice = planPrices[plan] || 999;
-  
+
   // Multiply by 12 for annual revenue
   return basePrice * 12;
 }
 
 function parseExpectedOrders(orderVolume) {
   if (!orderVolume) return 0;
-  
+
   const ranges = {
     '0-100': 50,
     '100-500': 300,

@@ -9,9 +9,9 @@ const { LoyaltyProgram } = require('../../models/LoyaltyProgram');
 const { Referral } = require('../../models/Referral');
 const OrderService = require('../../services/orderService');
 const { addTenancyFilter, addTenancyToDocument } = require('../../middlewares/tenancyMiddleware');
-const { 
-  sendSuccess, 
-  sendError, 
+const {
+  sendSuccess,
+  sendError,
   asyncHandler,
   getPagination,
   formatPaginationResponse,
@@ -30,16 +30,16 @@ const getDashboard = asyncHandler(async (req, res) => {
 
   // Get tenancy ID from request or user
   const tenancyId = req.tenancyId || req.user?.tenancy;
-  
+
   // Get branch info for branch_admin
   const branchInfo = await getUserBranchInfo(req.user);
   const isBranchAdmin = req.user.role === 'branch_admin';
-  
+
   console.log('🔍 getDashboard - tenancyId:', tenancyId, 'isBranchAdmin:', isBranchAdmin);
 
   // Base query with tenancy filter
   let baseQuery = addTenancyFilter({}, tenancyId);
-  
+
   // Add branch filter for branch_admin
   if (isBranchAdmin) {
     baseQuery = addBranchFilter(baseQuery, req.user);
@@ -48,16 +48,16 @@ const getDashboard = asyncHandler(async (req, res) => {
   // For customer counts, we need to count customers who have orders in this tenancy/branch
   let totalCustomers = 0;
   let activeCustomers = 0;
-  
+
   if (tenancyId) {
     // Get customer IDs from orders in this tenancy (and branch for branch_admin)
     const customerQuery = isBranchAdmin ? { tenancy: tenancyId, branch: req.user.assignedBranch } : { tenancy: tenancyId };
     const customerIds = await Order.distinct('customer', customerQuery);
     totalCustomers = customerIds.length;
-    activeCustomers = await User.countDocuments({ 
-      _id: { $in: customerIds }, 
-      role: USER_ROLES.CUSTOMER, 
-      isActive: true 
+    activeCustomers = await User.countDocuments({
+      _id: { $in: customerIds },
+      role: USER_ROLES.CUSTOMER,
+      isActive: true
     });
   } else {
     totalCustomers = await User.countDocuments({ role: USER_ROLES.CUSTOMER });
@@ -86,17 +86,17 @@ const getDashboard = asyncHandler(async (req, res) => {
   ] = await Promise.all([
     Order.countDocuments(baseQuery),
     Order.countDocuments(buildQuery({ createdAt: { $gte: startOfDay, $lte: endOfDay } })),
-    Order.countDocuments(buildQuery({ 
+    Order.countDocuments(buildQuery({
       status: { $in: [ORDER_STATUS.PLACED, ORDER_STATUS.ASSIGNED_TO_BRANCH] }
     })),
-    Order.countDocuments(buildQuery({ 
+    Order.countDocuments(buildQuery({
       status: ORDER_STATUS.DELIVERED,
       updatedAt: { $gte: startOfDay, $lte: endOfDay }
     })),
     Order.countDocuments(buildQuery({ isExpress: true, status: { $ne: ORDER_STATUS.DELIVERED } })),
     Ticket.countDocuments(buildQuery({ status: { $in: [TICKET_STATUS.OPEN, TICKET_STATUS.IN_PROGRESS] } })),
     isBranchAdmin ? 1 : Branch.countDocuments(addTenancyFilter({ isActive: true }, tenancyId)),
-    isBranchAdmin 
+    isBranchAdmin
       ? User.countDocuments({ tenancy: tenancyId, assignedBranch: req.user.assignedBranch, role: 'staff', isActive: true })
       : User.countDocuments({ tenancy: tenancyId, role: 'staff', isActive: true })
   ]);
@@ -152,12 +152,12 @@ const getDashboard = asyncHandler(async (req, res) => {
 // @route   GET /api/admin/orders
 // @access  Private (Admin/Branch Admin)
 const getAllOrders = asyncHandler(async (req, res) => {
-  const { 
-    page = 1, 
-    limit = 20, 
-    status, 
-    branch, 
-    isExpress, 
+  const {
+    page = 1,
+    limit = 20,
+    status,
+    branch,
+    isExpress,
     search,
     startDate,
     endDate
@@ -168,12 +168,12 @@ const getAllOrders = asyncHandler(async (req, res) => {
   // Get tenancy ID from request or user
   const tenancyId = req.tenancyId || req.user?.tenancy;
   const isBranchAdmin = req.user.role === 'branch_admin';
-  
+
   console.log('🔍 getAllOrders - tenancyId:', tenancyId, 'isBranchAdmin:', isBranchAdmin);
 
   // Build query with tenancy filter
   let query = addTenancyFilter({}, tenancyId);
-  
+
   // For branch_admin, always filter by their assigned branch
   if (isBranchAdmin) {
     query = addBranchFilter(query, req.user);
@@ -181,10 +181,10 @@ const getAllOrders = asyncHandler(async (req, res) => {
     // For admin, allow filtering by branch if specified
     query.branch = branch;
   }
-  
+
   if (status) query.status = status;
   if (isExpress !== undefined) query.isExpress = isExpress === 'true';
-  
+
   if (startDate || endDate) {
     query.createdAt = {};
     if (startDate) query.createdAt.$gte = new Date(startDate);
@@ -341,39 +341,39 @@ const getCustomers = asyncHandler(async (req, res) => {
 
   // Get tenancy ID from request or user
   const tenancyId = req.tenancyId || req.user?.tenancy;
-  
+
   console.log('🔍 getCustomers - tenancyId:', tenancyId);
 
   // Base query
   let query = { role: USER_ROLES.CUSTOMER };
-  
+
   // Apply tenancy filter if admin has a tenancy
   if (tenancyId) {
     // Get customer IDs who have placed orders in this tenancy
     const tenancyOrders = await Order.distinct('customer', { tenancy: tenancyId });
-    
+
     // Get customers directly associated with this tenancy
-    const directCustomerIds = await User.distinct('_id', { 
-      role: USER_ROLES.CUSTOMER, 
-      tenancy: tenancyId 
+    const directCustomerIds = await User.distinct('_id', {
+      role: USER_ROLES.CUSTOMER,
+      tenancy: tenancyId
     });
-    
+
     // Combine both lists
     const allCustomerIds = [...new Set([
-      ...tenancyOrders.map(id => id.toString()), 
+      ...tenancyOrders.map(id => id.toString()),
       ...directCustomerIds.map(id => id.toString())
     ])];
-    
+
     console.log('📦 Customers in this tenancy:', allCustomerIds.length);
-    
+
     // Only show customers that belong to this tenancy
     // If no customers found, return empty (not all customers!)
-    query = { 
+    query = {
       role: USER_ROLES.CUSTOMER,
       _id: { $in: allCustomerIds }
     };
   }
-  
+
   if (search) {
     const searchQuery = {
       $or: [
@@ -385,7 +385,7 @@ const getCustomers = asyncHandler(async (req, res) => {
     // Combine search with existing query
     query = { $and: [query, searchQuery] };
   }
-  
+
   if (isVIP !== undefined) query.isVIP = isVIP === 'true';
   if (isActive !== undefined) query.isActive = isActive === 'true';
 
@@ -398,7 +398,7 @@ const getCustomers = asyncHandler(async (req, res) => {
 
   // Get order counts for each customer (filtered by tenancy)
   const orderQuery = req.tenancyId ? { tenancy: req.tenancyId } : {};
-  
+
   const customersWithStats = await Promise.all(
     customers.map(async (customer) => {
       const orderCount = await Order.countDocuments({ ...orderQuery, customer: customer._id });
@@ -406,7 +406,7 @@ const getCustomers = asyncHandler(async (req, res) => {
         { $match: { ...orderQuery, customer: customer._id, status: ORDER_STATUS.DELIVERED } },
         { $group: { _id: null, total: { $sum: '$pricing.total' } } }
       ]);
-      
+
       return {
         ...customer.toObject(),
         stats: {
@@ -429,18 +429,18 @@ const toggleCustomerStatus = asyncHandler(async (req, res) => {
 
   // Verify customer has orders in this tenancy (if tenancy filter applies)
   if (req.tenancyId) {
-    const hasOrdersInTenancy = await Order.exists({ 
-      customer: customerId, 
-      tenancy: req.tenancyId 
+    const hasOrdersInTenancy = await Order.exists({
+      customer: customerId,
+      tenancy: req.tenancyId
     });
     if (!hasOrdersInTenancy) {
       return sendError(res, 'CUSTOMER_NOT_FOUND', 'Customer not found in your laundry', 404);
     }
   }
 
-  const customer = await User.findOne({ 
-    _id: customerId, 
-    role: USER_ROLES.CUSTOMER 
+  const customer = await User.findOne({
+    _id: customerId,
+    role: USER_ROLES.CUSTOMER
   });
 
   if (!customer) {
@@ -450,12 +450,12 @@ const toggleCustomerStatus = asyncHandler(async (req, res) => {
   customer.isActive = !customer.isActive;
   await customer.save();
 
-  sendSuccess(res, { 
-    customer: { 
-      _id: customer._id, 
-      name: customer.name, 
-      isActive: customer.isActive 
-    } 
+  sendSuccess(res, {
+    customer: {
+      _id: customer._id,
+      name: customer.name,
+      isActive: customer.isActive
+    }
   }, `Customer ${customer.isActive ? 'activated' : 'deactivated'} successfully`);
 });
 
@@ -468,18 +468,18 @@ const tagVIPCustomer = asyncHandler(async (req, res) => {
 
   // Verify customer has orders in this tenancy (if tenancy filter applies)
   if (req.tenancyId) {
-    const hasOrdersInTenancy = await Order.exists({ 
-      customer: customerId, 
-      tenancy: req.tenancyId 
+    const hasOrdersInTenancy = await Order.exists({
+      customer: customerId,
+      tenancy: req.tenancyId
     });
     if (!hasOrdersInTenancy) {
       return sendError(res, 'CUSTOMER_NOT_FOUND', 'Customer not found in your laundry', 404);
     }
   }
 
-  const customer = await User.findOne({ 
-    _id: customerId, 
-    role: USER_ROLES.CUSTOMER 
+  const customer = await User.findOne({
+    _id: customerId,
+    role: USER_ROLES.CUSTOMER
   });
 
   if (!customer) {
@@ -489,12 +489,12 @@ const tagVIPCustomer = asyncHandler(async (req, res) => {
   customer.isVIP = isVIP;
   await customer.save();
 
-  sendSuccess(res, { 
-    customer: { 
-      _id: customer._id, 
-      name: customer.name, 
-      isVIP: customer.isVIP 
-    } 
+  sendSuccess(res, {
+    customer: {
+      _id: customer._id,
+      name: customer.name,
+      isVIP: customer.isVIP
+    }
   }, `Customer VIP status updated successfully`);
 });
 
@@ -507,9 +507,9 @@ const getCustomerDetails = asyncHandler(async (req, res) => {
 
   // Verify customer has orders in this tenancy (if tenancy filter applies)
   if (tenancyId) {
-    const hasOrdersInTenancy = await Order.exists({ 
-      customer: customerId, 
-      tenancy: tenancyId 
+    const hasOrdersInTenancy = await Order.exists({
+      customer: customerId,
+      tenancy: tenancyId
     });
     if (!hasOrdersInTenancy) {
       return sendError(res, 'CUSTOMER_NOT_FOUND', 'Customer not found in your laundry', 404);
@@ -517,9 +517,9 @@ const getCustomerDetails = asyncHandler(async (req, res) => {
   }
 
   // Get customer basic info
-  const customer = await User.findOne({ 
-    _id: customerId, 
-    role: USER_ROLES.CUSTOMER 
+  const customer = await User.findOne({
+    _id: customerId,
+    role: USER_ROLES.CUSTOMER
   }).select('-password');
 
   if (!customer) {
@@ -528,12 +528,12 @@ const getCustomerDetails = asyncHandler(async (req, res) => {
 
   // Get order statistics
   const orderQuery = tenancyId ? { customer: customerId, tenancy: tenancyId } : { customer: customerId };
-  
+
   const totalOrders = await Order.countDocuments(orderQuery);
   const completedOrders = await Order.countDocuments({ ...orderQuery, status: ORDER_STATUS.DELIVERED });
-  const pendingOrders = await Order.countDocuments({ 
-    ...orderQuery, 
-    status: { $in: [ORDER_STATUS.PENDING, ORDER_STATUS.PROCESSING, ORDER_STATUS.READY, ORDER_STATUS.OUT_FOR_DELIVERY] } 
+  const pendingOrders = await Order.countDocuments({
+    ...orderQuery,
+    status: { $in: [ORDER_STATUS.PENDING, ORDER_STATUS.PROCESSING, ORDER_STATUS.READY, ORDER_STATUS.OUT_FOR_DELIVERY] }
   });
   const cancelledOrders = await Order.countDocuments({ ...orderQuery, status: ORDER_STATUS.CANCELLED });
 
@@ -578,7 +578,7 @@ const getCustomerDetails = asyncHandler(async (req, res) => {
 
   // Get referral information
   const referralCode = customer.referralCode || null;
-  const referredCustomers = await Referral.countDocuments({ 
+  const referredCustomers = await Referral.countDocuments({
     referrer: customerId,
     status: 'completed'
   });
@@ -594,11 +594,13 @@ const getCustomerDetails = asyncHandler(async (req, res) => {
   const favoriteServices = await Order.aggregate([
     { $match: orderQuery },
     { $unwind: '$services' },
-    { $group: { 
-      _id: '$services.service',
-      count: { $sum: 1 },
-      serviceName: { $first: '$services.serviceName' }
-    }},
+    {
+      $group: {
+        _id: '$services.service',
+        count: { $sum: 1 },
+        serviceName: { $first: '$services.serviceName' }
+      }
+    },
     { $sort: { count: -1 } },
     { $limit: 5 }
   ]);
@@ -612,7 +614,7 @@ const getCustomerDetails = asyncHandler(async (req, res) => {
     isActive: customer.isActive,
     isVIP: customer.isVIP,
     createdAt: customer.createdAt,
-    
+
     // Order statistics
     orderStats: {
       total: totalOrders,
@@ -622,7 +624,7 @@ const getCustomerDetails = asyncHandler(async (req, res) => {
       totalSpent: totalSpent,
       lastOrderDate: lastOrder?.createdAt || null
     },
-    
+
     // Recent orders
     recentOrders: recentOrders.map(order => ({
       _id: order._id,
@@ -632,7 +634,7 @@ const getCustomerDetails = asyncHandler(async (req, res) => {
       date: order.createdAt,
       serviceCount: order.services?.length || 0
     })),
-    
+
     // Addresses
     addresses: addresses.map(addr => ({
       _id: addr._id,
@@ -643,22 +645,22 @@ const getCustomerDetails = asyncHandler(async (req, res) => {
       pincode: addr.pincode,
       isDefault: addr.isDefault
     })),
-    
+
     // Loyalty information
     loyalty: loyaltyInfo,
-    
+
     // Referral information
     referral: {
       code: referralCode,
       referredCount: referredCustomers,
       totalEarnings: referralEarnings[0]?.total || 0
     },
-    
+
     // Wallet
     wallet: {
       balance: walletBalance
     },
-    
+
     // Favorite services
     favoriteServices: favoriteServices.map(fs => ({
       name: fs.serviceName || 'Unknown Service',
@@ -673,11 +675,11 @@ const getCustomerDetails = asyncHandler(async (req, res) => {
 // @route   GET /api/admin/complaints
 // @access  Private (Admin)
 const getComplaints = asyncHandler(async (req, res) => {
-  const { 
-    page = 1, 
-    limit = 20, 
-    status, 
-    priority, 
+  const {
+    page = 1,
+    limit = 20,
+    status,
+    priority,
     category,
     search,
     isOverdue
@@ -688,11 +690,11 @@ const getComplaints = asyncHandler(async (req, res) => {
   // Add tenancy filter
   const tenancyId = req.tenancyId || req.user?.tenancy;
   const query = {};
-  
+
   if (tenancyId) {
     query.tenancy = tenancyId;
   }
-  
+
   if (status) query.status = status;
   if (priority) query.priority = priority;
   if (category) query.category = category;
@@ -790,7 +792,7 @@ const updateComplaintStatus = asyncHandler(async (req, res) => {
   }
 
   complaint.status = status;
-  
+
   if (status === TICKET_STATUS.RESOLVED && resolution) {
     complaint.resolution = resolution;
     complaint.resolvedBy = req.user._id;
@@ -810,10 +812,10 @@ const updateComplaintStatus = asyncHandler(async (req, res) => {
 // @route   GET /api/admin/refunds
 // @access  Private (Admin)
 const getRefundRequests = asyncHandler(async (req, res) => {
-  const { 
-    page = 1, 
-    limit = 20, 
-    status, 
+  const {
+    page = 1,
+    limit = 20,
+    status,
     isEscalated,
     search,
     startDate,
@@ -825,10 +827,10 @@ const getRefundRequests = asyncHandler(async (req, res) => {
   // Apply tenancy filtering
   const tenancyId = req.tenancyId || req.user?.tenancy;
   const query = addTenancyFilter({}, tenancyId);
-  
+
   if (status) query.status = status;
   if (isEscalated !== undefined) query.isEscalated = isEscalated === 'true';
-  
+
   if (startDate || endDate) {
     query.createdAt = {};
     if (startDate) query.createdAt.$gte = new Date(startDate);
@@ -953,7 +955,7 @@ const approveRefund = asyncHandler(async (req, res) => {
 
   // Check admin refund limit (₹500 for admin)
   const adminLimit = REFUND_LIMITS[USER_ROLES.ADMIN] || 500;
-  
+
   if (refund.amount > adminLimit) {
     return sendError(res, 'LIMIT_EXCEEDED', `Refund amount exceeds your limit of ₹${adminLimit}. Please escalate to Center Admin.`, 400);
   }
@@ -1056,7 +1058,7 @@ const processRefund = asyncHandler(async (req, res) => {
 
   // Generate transaction ID if not provided
   const txnId = transactionId || `TXN${Date.now()}`;
-  
+
   await refund.process(req.user._id, txnId);
 
   const updatedRefund = await Refund.findById(refundId)
@@ -1083,17 +1085,17 @@ const getSupportAgents = asyncHandler(async (req, res) => {
 const getLogisticsPartners = asyncHandler(async (req, res) => {
   const { status, search } = req.query;
   const tenancyId = req.tenancyId || req.user?.tenancy;
-  
+
   // Build query - show partners belonging to this tenancy OR global partners (no tenancy)
   const query = {};
-  
+
   if (tenancyId) {
     query.$or = [{ tenancy: tenancyId }, { tenancy: null }, { tenancy: { $exists: false } }];
   }
-  
+
   if (status === 'active') query.isActive = true;
   else if (status === 'inactive') query.isActive = false;
-  
+
   if (search) {
     const searchQuery = [
       { companyName: { $regex: search, $options: 'i' } },
@@ -1118,7 +1120,7 @@ const getLogisticsPartners = asyncHandler(async (req, res) => {
       logisticsPartner: partner._id,
       status: { $in: ['assigned_to_logistics_pickup', 'out_for_pickup', 'assigned_to_logistics_delivery', 'out_for_delivery'] }
     });
-    
+
     const totalDeliveries = await Order.countDocuments({
       logisticsPartner: partner._id,
       status: 'delivered'
@@ -1138,8 +1140,8 @@ const getLogisticsPartners = asyncHandler(async (req, res) => {
       performance: {
         rating: partner.performance?.rating || 0,
         totalDeliveries: totalDeliveries,
-        onTimeRate: partner.performance?.completedOrders > 0 
-          ? Math.round((partner.performance.completedOrders / partner.performance.totalOrders) * 100) 
+        onTimeRate: partner.performance?.completedOrders > 0
+          ? Math.round((partner.performance.completedOrders / partner.performance.totalOrders) * 100)
           : 0,
         activeOrders: activeOrders
       },
@@ -1165,7 +1167,7 @@ const getLogisticsPartnerById = asyncHandler(async (req, res) => {
   }
 
   const partner = await LogisticsPartner.findOne(query);
-  
+
   if (!partner) {
     return sendError(res, 'NOT_FOUND', 'Logistics partner not found', 404);
   }
@@ -1178,7 +1180,7 @@ const getLogisticsPartnerById = asyncHandler(async (req, res) => {
 // @access  Private (Admin with logistics.create permission)
 const createLogisticsPartner = asyncHandler(async (req, res) => {
   const tenancyId = req.tenancyId || req.user?.tenancy;
-  
+
   const { companyName, contactPerson, coverageAreas, sla, rateCard } = req.body;
 
   // Validation
@@ -1301,10 +1303,10 @@ const toggleLogisticsPartnerStatus = asyncHandler(async (req, res) => {
 // @route   GET /api/admin/payments
 // @access  Private (Admin)
 const getPayments = asyncHandler(async (req, res) => {
-  const { 
-    page = 1, 
-    limit = 20, 
-    status, 
+  const {
+    page = 1,
+    limit = 20,
+    status,
     paymentMethod,
     search,
     startDate,
@@ -1318,7 +1320,7 @@ const getPayments = asyncHandler(async (req, res) => {
 
   // Build query - get payments from orders with tenancy filter
   const query = tenancyId ? { tenancy: tenancyId } : {};
-  
+
   if (status) {
     if (status === 'completed') {
       query.paymentStatus = 'paid';
@@ -1328,11 +1330,11 @@ const getPayments = asyncHandler(async (req, res) => {
       query.paymentStatus = 'failed';
     }
   }
-  
+
   if (paymentMethod) {
     query.paymentMethod = paymentMethod;
   }
-  
+
   if (startDate || endDate) {
     query.createdAt = {};
     if (startDate) query.createdAt.$gte = new Date(startDate);
@@ -1362,13 +1364,13 @@ const getPayments = asyncHandler(async (req, res) => {
     orderNumber: order.orderNumber,
     customer: order.customer,
     amount: order.pricing?.total || 0,
-    method: order.paymentMethod === 'cod' ? 'Cash' : 
-            order.paymentMethod === 'online' ? 'UPI' : 
-            order.paymentMethod || 'Cash',
-    status: order.paymentStatus === 'paid' ? 'completed' : 
-            order.paymentStatus === 'pending' ? 'pending' :
-            order.paymentStatus === 'failed' ? 'failed' :
-            order.status === 'delivered' ? 'completed' : 'pending',
+    method: order.paymentMethod === 'cod' ? 'Cash' :
+      order.paymentMethod === 'online' ? 'UPI' :
+        order.paymentMethod || 'Cash',
+    status: order.paymentStatus === 'paid' ? 'completed' :
+      order.paymentStatus === 'pending' ? 'pending' :
+        order.paymentStatus === 'failed' ? 'failed' :
+          order.status === 'delivered' ? 'completed' : 'pending',
     createdAt: order.createdAt
   }));
 
@@ -1434,21 +1436,21 @@ const getPaymentStats = asyncHandler(async (req, res) => {
 // @access  Private (Admin)
 const getAnalytics = asyncHandler(async (req, res) => {
   const { timeframe = '30d' } = req.query;
-  
+
   // Get tenancy and branch filter
   const tenancyId = req.tenancyId || req.user?.tenancy;
   const branchId = req.user?.assignedBranch;
-  
+
   const baseFilter = {};
   if (tenancyId) baseFilter.tenancy = tenancyId;
   if (branchId) baseFilter.branch = branchId;
-  
+
   console.log('📊 Analytics filter:', JSON.stringify(baseFilter), 'User:', req.user?.email);
-  
+
   // Calculate date range
   const now = new Date();
   let startDate;
-  
+
   switch (timeframe) {
     case '24h':
       startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -1510,11 +1512,13 @@ const getAnalytics = asyncHandler(async (req, res) => {
     ]),
     Order.aggregate([
       { $match: dateFilter },
-      { $group: { 
-        _id: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' }, day: { $dayOfMonth: '$createdAt' } },
-        revenue: { $sum: '$pricing.total' },
-        orders: { $sum: 1 }
-      }},
+      {
+        $group: {
+          _id: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' }, day: { $dayOfMonth: '$createdAt' } },
+          revenue: { $sum: '$pricing.total' },
+          orders: { $sum: 1 }
+        }
+      },
       { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 } }
     ]),
     Order.find(baseFilter)
@@ -1574,20 +1578,20 @@ const getStaff = asyncHandler(async (req, res) => {
   const isBranchAdmin = req.user.role === 'branch_admin';
 
   // Query for non-customer users with tenancy filter
-  const query = { 
+  const query = {
     role: { $in: ['staff', 'admin', 'branch_admin'] }, // Staff, admin, and branch_admin roles
     tenancy: tenancyId // Filter by tenancy
   };
-  
+
   // For branch_admin, only show staff from their branch
   if (isBranchAdmin) {
     query.assignedBranch = req.user.assignedBranch;
     query.role = 'staff'; // Branch admin can only see staff, not other admins
   }
-  
+
   if (role && !isBranchAdmin) query.role = role;
   if (isActive !== undefined) query.isActive = isActive === 'true';
-  
+
   if (search) {
     query.$or = [
       { name: { $regex: search, $options: 'i' } },
@@ -1679,12 +1683,12 @@ const updateStaff = asyncHandler(async (req, res) => {
   const tenancyId = req.tenancyId || req.user?.tenancy;
 
   // Only allow updating staff from same tenancy
-  const staff = await User.findOne({ 
-    _id: staffId, 
+  const staff = await User.findOne({
+    _id: staffId,
     role: { $in: ['staff', 'admin'] },
-    tenancy: tenancyId 
+    tenancy: tenancyId
   });
-  
+
   if (!staff) {
     return sendError(res, 'STAFF_NOT_FOUND', 'Staff member not found', 404);
   }
@@ -1714,12 +1718,12 @@ const deleteStaff = asyncHandler(async (req, res) => {
   // Get tenancy ID from request or user
   const tenancyId = req.tenancyId || req.user?.tenancy;
 
-  const staff = await User.findOne({ 
-    _id: staffId, 
+  const staff = await User.findOne({
+    _id: staffId,
     role: { $in: ['staff', 'admin'] },
-    tenancy: tenancyId 
+    tenancy: tenancyId
   });
-  
+
   if (!staff) {
     return sendError(res, 'STAFF_NOT_FOUND', 'Staff member not found', 404);
   }
@@ -1745,12 +1749,12 @@ const reactivateStaff = asyncHandler(async (req, res) => {
   // Get tenancy ID from request or user
   const tenancyId = req.tenancyId || req.user?.tenancy;
 
-  const staff = await User.findOne({ 
-    _id: staffId, 
+  const staff = await User.findOne({
+    _id: staffId,
     role: { $in: ['staff', 'admin'] },
-    tenancy: tenancyId 
+    tenancy: tenancyId
   });
-  
+
   if (!staff) {
     return sendError(res, 'STAFF_NOT_FOUND', 'Staff member not found', 404);
   }
@@ -1780,8 +1784,8 @@ const toggleStaffStatus = asyncHandler(async (req, res) => {
   user.isActive = !user.isActive;
   await user.save();
 
-  sendSuccess(res, { 
-    user: { _id: user._id, name: user.name, isActive: user.isActive } 
+  sendSuccess(res, {
+    user: { _id: user._id, name: user.name, isActive: user.isActive }
   }, `Staff member ${user.isActive ? 'activated' : 'deactivated'} successfully`);
 });
 
@@ -1794,22 +1798,22 @@ const getBranches = asyncHandler(async (req, res) => {
 
   // Get tenancy filter
   const tenancyId = req.tenancyId || req.user?.tenancy;
-  
+
   const query = {};
-  
+
   // Add tenancy filter
   if (tenancyId) {
     query.tenancy = tenancyId;
   }
-  
+
   if (status) {
     if (status === 'active') query.isActive = true;
     else if (status === 'inactive') query.isActive = false;
     else query.status = status;
   }
-  
+
   if (city) query['address.city'] = { $regex: city, $options: 'i' };
-  
+
   if (search) {
     query.$or = [
       { name: { $regex: search, $options: 'i' } },
@@ -1845,7 +1849,7 @@ const getBranches = asyncHandler(async (req, res) => {
           efficiency: 85 // placeholder
         },
         staffCount,
-        utilizationRate: branch.capacity?.currentLoad 
+        utilizationRate: branch.capacity?.currentLoad
           ? Math.round((branch.capacity.currentLoad / branch.capacity.maxOrdersPerDay) * 100)
           : 0
       };
@@ -1869,7 +1873,7 @@ const getBranches = asyncHandler(async (req, res) => {
 const getNotifications = asyncHandler(async (req, res) => {
   const { page = 1, limit = 20, unreadOnly } = req.query;
   const NotificationService = require('../../services/notificationService');
-  
+
   const result = await NotificationService.getUserNotifications(req.user._id, {
     page: parseInt(page),
     limit: parseInt(limit),
@@ -1884,7 +1888,7 @@ const getNotifications = asyncHandler(async (req, res) => {
 // @access  Private (Admin)
 const getUnreadNotificationCount = asyncHandler(async (req, res) => {
   const NotificationService = require('../../services/notificationService');
-  
+
   const result = await NotificationService.getUserNotifications(req.user._id, {
     page: 1,
     limit: 1
@@ -1914,10 +1918,21 @@ const markNotificationsAsRead = asyncHandler(async (req, res) => {
 // @access  Private (Admin)
 const markAllNotificationsAsRead = asyncHandler(async (req, res) => {
   const NotificationService = require('../../services/notificationService');
-  
+
   await NotificationService.markAllAsRead(req.user._id);
 
   sendSuccess(res, null, 'All notifications marked as read');
+});
+
+// @desc    Clear all notifications (delete)
+// @route   DELETE /api/admin/notifications/all
+// @access  Private (Admin)
+const clearAllNotifications = asyncHandler(async (req, res) => {
+  const NotificationService = require('../../services/notificationService');
+
+  await NotificationService.clearAllNotifications(req.user._id);
+
+  sendSuccess(res, null, 'All notifications cleared successfully');
 });
 
 // @desc    Update payment status
@@ -1938,7 +1953,7 @@ const updatePaymentStatus = asyncHandler(async (req, res) => {
   }
 
   order.paymentStatus = paymentStatus;
-  
+
   if (paymentStatus === 'paid') {
     order.paymentDetails = {
       ...order.paymentDetails,
@@ -1962,16 +1977,16 @@ const updatePaymentStatus = asyncHandler(async (req, res) => {
 const fixDeliveredPayments = asyncHandler(async (req, res) => {
   const result = await Order.updateMany(
     { status: ORDER_STATUS.DELIVERED, paymentStatus: 'pending' },
-    { 
-      $set: { 
+    {
+      $set: {
         paymentStatus: 'paid',
         'paymentDetails.paidAt': new Date()
       }
     }
   );
 
-  sendSuccess(res, { 
-    modifiedCount: result.modifiedCount 
+  sendSuccess(res, {
+    modifiedCount: result.modifiedCount
   }, `Fixed ${result.modifiedCount} orders with pending payment`);
 });
 
@@ -2019,5 +2034,6 @@ module.exports = {
   getNotifications,
   getUnreadNotificationCount,
   markNotificationsAsRead,
-  markAllNotificationsAsRead
+  markAllNotificationsAsRead,
+  clearAllNotifications
 };

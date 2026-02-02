@@ -1,147 +1,158 @@
+/**
+ * Permission Sync API Routes
+ * Endpoints for testing and managing real-time permission synchronization
+ */
+
 const express = require('express');
 const router = express.Router();
-const { protect } = require('../middlewares/auth');
-const jwt = require('jsonwebtoken');
+const permissionSyncService = require('../services/permissionSyncService');
+const { protect, protectSuperAdmin } = require('../middlewares/auth');
 
 /**
- * @route GET /api/permissions/sync
- * @desc Get updated permissions and new JWT token
- * @access Private
+ * Test permission sync notification
+ * POST /api/permission-sync/test
  */
-router.get('/sync', protect, async (req, res) => {
+router.post('/test', protect, async (req, res) => {
   try {
-    const User = require('../models/User');
-    const Tenancy = require('../models/Tenancy');
+    const { userId, permissions, features, role } = req.body;
     
-    // Fetch fresh user data from database with tenancy populated
-    const user = await User.findById(req.user._id)
-      .select('email name role tenancy permissions isActive')
-      .populate('tenancy', 'name slug subdomain branding subscription')
-      .lean();
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-
-    // Check if account is active
-    if (!user.isActive) {
-      return res.status(403).json({
-        success: false,
-        message: 'Account is suspended',
-        suspended: true
-      });
-    }
-
-    // Extract features from tenancy subscription
-    let features = {};
-    if (user.tenancy && user.tenancy.subscription && user.tenancy.subscription.features) {
-      features = user.tenancy.subscription.features;
-    }
-
-    console.log(`🔄 Permission sync for user ${user._id} (${user.email}):`, {
-      permissions: Object.keys(user.permissions || {}),
-      features: Object.keys(features),
-      tenancyId: user.tenancy?._id,
-      tenancyName: user.tenancy?.name
-    });
-
-    // Generate new JWT with updated permissions and features from tenancy
-    const payload = {
-      userId: user._id.toString(), // Match login token format
-      email: user.email,
-      role: user.role,
-      type: 'access_token', // Add type field
-      tenancyId: user.tenancy?._id, // Match login token format
-      permissions: user.permissions || {},
-      features: features,
-      iat: Math.floor(Date.now() / 1000)
-    };
-
-    const token = jwt.sign(payload, process.env.JWT_SECRET, {
-      expiresIn: '7d'
+    const targetUserId = userId || req.user.id;
+    
+    const result = await permissionSyncService.notifyPermissionUpdate(targetUserId, {
+      permissions: permissions || { test: { view: true, create: true } },
+      features: features || { testFeature: true },
+      role: role || req.user.role
     });
 
     res.json({
       success: true,
-      message: 'Permissions synced successfully',
-      data: {
-        token,
-        user: {
-          id: user._id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-          permissions: user.permissions || {},
-          features: features,
-          tenancy: user.tenancy
-        }
-      }
+      message: 'Test permission sync notification sent',
+      result
     });
+
   } catch (error) {
-    console.error('Permission sync error:', error);
+    console.error('❌ Error sending test permission sync:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to sync permissions'
+      error: error.message
     });
   }
 });
 
 /**
- * @route GET /api/permissions/check
- * @desc Check if permissions have changed
- * @access Private
+ * Force token refresh for user
+ * POST /api/permission-sync/force-refresh
  */
-router.get('/check', protect, async (req, res) => {
+router.post('/force-refresh', protectSuperAdmin, async (req, res) => {
   try {
-    const User = require('../models/User');
-    const Tenancy = require('../models/Tenancy');
+    const { userId, reason } = req.body;
     
-    const user = await User.findById(req.user._id)
-      .select('role tenancy permissions isActive updatedAt')
-      .lean();
-
-    if (!user) {
-      return res.status(404).json({
+    if (!userId) {
+      return res.status(400).json({
         success: false,
-        message: 'User not found'
+        error: 'userId is required'
       });
     }
 
-    // Fetch tenancy features
-    let features = {};
-    if (user.tenancy) {
-      const tenancy = await Tenancy.findById(user.tenancy)
-        .select('subscription.features')
-        .lean();
-      
-      if (tenancy && tenancy.subscription && tenancy.subscription.features) {
-        features = tenancy.subscription.features;
-      }
-    }
-
-    // Compare current JWT permissions/features with database
-    const hasChanged = 
-      user.role !== req.user.role ||
-      JSON.stringify(user.permissions) !== JSON.stringify(req.user.permissions) ||
-      JSON.stringify(features) !== JSON.stringify(req.user.features);
+    const result = await permissionSyncService.forceTokenRefresh(userId, reason);
 
     res.json({
       success: true,
-      data: {
-        hasChanged,
-        isActive: user.isActive,
-        currentRole: user.role,
-        lastUpdated: user.updatedAt
-      }
+      message: 'Token refresh forced',
+      result
     });
+
   } catch (error) {
-    console.error('Permission check error:', error);
+    console.error('❌ Error forcing token refresh:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to check permissions'
+      error: error.message
+    });
+  }
+});
+
+/**
+ * Revoke user session (security)
+ * POST /api/permission-sync/revoke-session
+ */
+router.post('/revoke-session', protectSuperAdmin, async (req, res) => {
+  try {
+    const { userId, reason } = req.body;
+    
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'userId is required'
+      });
+    }
+
+    const result = await permissionSyncService.revokeUserSession(userId, reason);
+
+    res.json({
+      success: true,
+      message: 'User session revoked',
+      result
+    });
+
+  } catch (error) {
+    console.error('❌ Error revoking user session:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * Bulk permission sync
+ * POST /api/permission-sync/bulk
+ */
+router.post('/bulk', protectSuperAdmin, async (req, res) => {
+  try {
+    const { userUpdates } = req.body;
+    
+    if (!Array.isArray(userUpdates)) {
+      return res.status(400).json({
+        success: false,
+        error: 'userUpdates must be an array'
+      });
+    }
+
+    const results = await permissionSyncService.notifyBulkPermissionUpdate(userUpdates);
+
+    res.json({
+      success: true,
+      message: 'Bulk permission sync completed',
+      results
+    });
+
+  } catch (error) {
+    console.error('❌ Error in bulk permission sync:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * Get permission sync statistics
+ * GET /api/permission-sync/stats
+ */
+router.get('/stats', protectSuperAdmin, async (req, res) => {
+  try {
+    const stats = await permissionSyncService.getStatistics();
+    
+    res.json({
+      success: true,
+      stats
+    });
+
+  } catch (error) {
+    console.error('❌ Error getting permission sync stats:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
     });
   }
 });

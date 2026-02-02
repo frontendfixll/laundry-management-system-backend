@@ -36,13 +36,13 @@ const authenticateSuperAdmin = async (req, res, next) => {
       })
     }
 
-    // Check if token is for center_admin or superadmin (both are valid for SuperAdmin routes)
-    const validRoles = ['center_admin', 'superadmin']
+    // Check if token is for center_admin, superadmin, or auditor (all are valid for SuperAdmin routes)
+    const validRoles = ['center_admin', 'superadmin', 'auditor']
     if (!validRoles.includes(decoded.role)) {
       console.log('🔐 SuperAdmin Auth - Role mismatch:', decoded.role, 'not in', validRoles)
       return res.status(403).json({
         success: false,
-        message: `Access denied. SuperAdmin role required. Your role: ${decoded.role}`
+        message: `Access denied. SuperAdmin or Auditor role required. Your role: ${decoded.role}`
       })
     }
 
@@ -70,6 +70,7 @@ const authenticateSuperAdmin = async (req, res, next) => {
 
     // Attach admin info to request
     req.admin = admin
+    req.user = admin  // Also set req.user for RBAC middleware compatibility
     req.sessionId = decoded.sessionId
 
     next()

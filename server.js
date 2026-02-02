@@ -1,8 +1,9 @@
 const app = require('./src/app');
 const connectDB = require('./src/config/database');
+const socketIOServer = require('./src/services/socketIOServer');
 
 // Force deployment update - timestamp: 2025-01-20
-console.log('🚀 Starting Laundry Management System Backend v2.0.1');
+console.log('🚀 Starting Laundry Management System Backend v2.0.1 with Socket.IO Notifications');
 
 // Check if running on Vercel
 const isVercel = process.env.VERCEL || process.env.VERCEL_ENV;
@@ -66,22 +67,39 @@ const setupCronJobs = () => {
 
 // For Vercel serverless functions, export the app immediately
 if (isVercel) {
-  // Connect to MongoDB asynchronously (don't wait)
-  connectDB().catch(err => {
+  // Connect to MongoDB asynchronously with better error handling
+  connectDB().then(async () => {
+    console.log('✅ Database connected in serverless mode');
+    
+    // Socket.IO Notification Engine will be initialized when needed
+    console.log('🔄 Socket.IO Notification Engine ready for serverless mode...');
+  }).catch(err => {
     console.warn('⚠️  MongoDB connection failed, running without database');
     console.warn('💡 Some features will be limited without database connection');
     console.warn('🔧 Error:', err.message);
+    console.warn('🔧 MongoDB URI exists:', !!process.env.MONGODB_URI);
   });
   
   // Add a simple test route to verify the app is working
   app.get('/test', (req, res) => {
+    const mongoose = require('mongoose');
     res.json({
       success: true,
       message: 'Test route working in Vercel',
       timestamp: new Date().toISOString(),
       environment: 'vercel-serverless',
       nodeVersion: process.version,
-      platform: process.platform
+      platform: process.platform,
+      mongooseState: mongoose.connection.readyState,
+      mongooseStates: {
+        0: 'disconnected',
+        1: 'connected',
+        2: 'connecting',
+        3: 'disconnecting'
+      },
+      currentState: mongoose.connection.readyState === 1 ? 'connected' : 
+                   mongoose.connection.readyState === 2 ? 'connecting' : 
+                   mongoose.connection.readyState === 3 ? 'disconnecting' : 'disconnected'
     });
   });
   
@@ -105,7 +123,7 @@ if (isVercel) {
     }
 
     // Start server after database connection attempt
-    const server = app.listen(PORT, () => {
+    const server = app.listen(PORT, async () => {
       const APP_VERSION = process.env.APP_VERSION || 'unknown';
       
       console.log('='.repeat(60));
@@ -119,10 +137,28 @@ if (isVercel) {
       console.log(`📚 API: http://localhost:${PORT}/api`);
       console.log('='.repeat(60));
       
-      // Initialize Socket.IO (only for traditional server)
-      if (socketService) {
-        socketService.initialize(server);
+      // Initialize Socket.IO Notification Engine (Primary)
+      console.log('🔄 Initializing Socket.IO Notification Engine...');
+      try {
+        const notificationEngine = await socketIOServer.initialize(server);
+        console.log('✅ Socket.IO Notification Engine initialized successfully');
+        console.log('🎉 Modern notification system ready for real-time delivery');
+        
+        // Make engine available globally for other services
+        global.notificationEngine = notificationEngine;
+        
+      } catch (socketIOError) {
+        console.error('❌ Socket.IO Notification Engine initialization failed:', socketIOError);
+        console.log('⚠️ Running without real-time notifications');
+        console.log('💡 Check Socket.IO configuration and try restarting the server');
       }
+      
+      // Initialize legacy Socket.IO (only as additional fallback)
+      // DISABLED: Using new Socket.IO Notification Engine instead
+      // if (socketService) {
+      //   socketService.initialize(server);
+      //   console.log('🔌 Legacy WebSocket service initialized as additional fallback');
+      // }
       
       // Setup cron jobs only after server is fully started
       if (dbConnected) {

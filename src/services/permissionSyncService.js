@@ -1,239 +1,264 @@
 /**
  * Permission Sync Service
- * Handles real-time permission updates via WebSocket (when available)
+ * Handles real-time permission updates via Socket.IO
  */
 
-// Check if running on Vercel (serverless)
-const isVercel = process.env.VERCEL || process.env.VERCEL_ENV;
-
-// Import socket service only if not on Vercel
-let socketService;
-if (!isVercel) {
-  socketService = require('./socketService');
-}
-
-const jwt = require('jsonwebtoken');
+const socketIOServer = require('./socketIOServer');
+const { NotificationAuditLogger } = require('./notifications/NotificationAuditLogger');
+const User = require('../models/User');
+const Tenancy = require('../models/Tenancy');
+const { USER_ROLES } = require('../config/constants');
 
 class PermissionSyncService {
-  /**
-   * Notify user that their permissions have been updated
-   * @param {String} userId - User ID whose permissions changed
-   * @param {Object} updates - What changed
-   */
-  static async notifyPermissionUpdate(userId, updates = {}) {
-    try {
-      console.log(`🔄 Notifying user ${userId} of permission changes`);
-      console.log(`📦 Updates:`, JSON.stringify(updates, null, 2));
+  constructor() {
+    this.auditLogger = new NotificationAuditLogger();
+  }
 
-      // Send WebSocket event if available (non-serverless)
-      if (socketService && !isVercel) {
-        const sent = socketService.sendEventToUser(userId.toString(), 'permissionsUpdated', {
-          message: 'Your permissions have been updated',
-          updates: {
-            role: updates.role,
-            permissions: updates.permissions,
-            features: updates.features,
-            timestamp: new Date()
-          }
-        });
-        
-        console.log(`📤 WebSocket event sent: ${sent ? 'YES' : 'NO (user not connected)'}`);
-      } else {
-        console.log(`📧 Serverless mode: Permission update notification will be available on next page load`);
+  /**
+   * Sync all admin users in a tenancy
+   */
+  async syncTenancyPermissions(tenancyId) {
+    try {
+      const tenancy = await Tenancy.findById(tenancyId);
+      if (!tenancy) throw new Error('Tenancy not found');
+
+      const users = await User.find({
+        tenancy: tenancyId,
+        role: { $in: [USER_ROLES.ADMIN, USER_ROLES.BRANCH_ADMIN] }
+      });
+
+      const updates = [];
+      for (const user of users) {
+        const result = await this.syncUserPermissions(user._id, { tenancy, user });
+        if (result.success) updates.push(user._id);
       }
 
-      // Always send a notification (works in both environments)
-      const NotificationService = require('./notificationService');
-      await NotificationService.notifyPermissionGranted(userId, {
-        module: updates.module || 'system',
-        action: updates.action || 'updated'
-      }, updates.tenancy);
-      
-      console.log(`✅ Permission notification sent to user ${userId}`);
-
-      return true;
+      return { success: true, updatedUsers: updates };
     } catch (error) {
-      console.error('Error notifying permission update:', error);
-      return false;
+      console.error('❌ Tenancy permission sync failed:', error);
+      return { success: false, error: error.message };
     }
   }
 
   /**
-   * Notify user of role change
+   * Sync a single user's permissions based on tenancy features
    */
-  static async notifyRoleChange(userId, oldRole, newRole, tenancy) {
+  async syncUserPermissions(userId, context = {}) {
     try {
-      console.log(`🔄 Notifying user ${userId} of role change: ${oldRole} → ${newRole}`);
+      let { user, tenancy } = context;
 
-      socketService.sendEventToUser(userId.toString(), 'roleChanged', {
-        message: `Your role has been changed from ${oldRole} to ${newRole}`,
-        oldRole,
-        newRole,
-        timestamp: new Date()
+      if (!user) user = await User.findById(userId);
+      if (!user) throw new Error('User not found');
+
+      if (!tenancy) tenancy = await Tenancy.findById(user.tenancy);
+      if (!tenancy) throw new Error('Tenancy not found');
+
+      // Only sync admins and branch admins
+      if (user.role !== USER_ROLES.ADMIN && user.role !== USER_ROLES.BRANCH_ADMIN) {
+        return { success: true, skipped: true, reason: 'Not an admin role' };
+      }
+
+      const permissionsMap = this.getMappedPermissions(tenancy, user.role);
+
+      // Update user document
+      user.permissions = permissionsMap;
+      await user.save({ validateBeforeSave: false });
+
+      // Notify user in real-time
+      await this.notifyPermissionUpdate(user._id, {
+        permissions: permissionsMap,
+        features: tenancy.subscription?.features || {},
+        role: user.role
       });
 
-      const NotificationService = require('./notificationService');
-      await NotificationService.notifyRoleUpdated(userId, oldRole, newRole, tenancy);
-
-      return true;
+      return { success: true };
     } catch (error) {
-      console.error('Error notifying role change:', error);
-      return false;
+      console.error(`❌ User permission sync failed for ${userId}:`, error);
+      return { success: false, error: error.message };
     }
   }
 
   /**
-   * Notify user of account suspension
+   * Map internal features to RBAC permissions
    */
-  static async notifyAccountSuspended(userId, reason, tenancy) {
-    try {
-      console.log(`🚫 Notifying user ${userId} of account suspension`);
+  getMappedPermissions(tenancy, role) {
+    // Start with default role permissions
+    const basePermissions = role === USER_ROLES.ADMIN
+      ? User.getDefaultAdminPermissions()
+      : User.getDefaultBranchAdminPermissions();
 
-      socketService.sendEventToUser(userId.toString(), 'accountSuspended', {
-        message: 'Your account has been suspended',
-        reason,
-        timestamp: new Date()
-      });
+    // Feature-to-Permission Mapping
+    const mapping = [
+      { feature: 'branch_management', module: 'branches' },
+      { feature: 'branch_admin_rbac', module: 'branchAdmins' },
+      { feature: 'staff_management', module: 'staff' },
+      { feature: 'inventory_management', module: 'inventory' },
+      { feature: 'service_management', module: 'services' },
+      { feature: 'logistics_management', module: 'logistics' },
+      { feature: 'payment_management', module: 'payments_earnings' },
+      { feature: 'payment_management', module: 'refund_requests' },
+      { feature: 'customer_management', module: 'customers' },
+      { feature: 'campaigns', module: 'campaigns' },
+      { feature: 'coupons', module: 'coupons' },
+      { feature: 'banners', module: 'banners' },
+      { feature: 'wallet', module: 'wallet' },
+      { feature: 'referral_program', module: 'referrals' },
+      { feature: 'loyalty_points', module: 'loyalty' },
+      { feature: 'advanced_analytics', module: 'analytics' }
+    ];
 
-      const NotificationService = require('./notificationService');
-      await NotificationService.createNotification({
-        recipientId: userId,
-        recipientType: 'admin',
-        tenancy,
-        type: 'system_alert',
-        title: '🚫 Account Suspended',
-        message: reason || 'Your account has been suspended. Please contact support.',
-        severity: 'error',
-        icon: 'alert-circle',
-        data: { link: '/support' }
-      });
+    const finalPermissions = { ...basePermissions };
 
-      return true;
-    } catch (error) {
-      console.error('Error notifying account suspension:', error);
-      return false;
-    }
+    // Enforce feature gating
+    mapping.forEach(({ feature, module }) => {
+      const isEnabled = tenancy.hasFeature(feature);
+
+      // If feature is disabled, strip all permissions for that module
+      if (!isEnabled && finalPermissions[module]) {
+        Object.keys(finalPermissions[module]).forEach(action => {
+          finalPermissions[module][action] = false;
+        });
+      }
+      // If feature is enabled, basePermissions already have the correct defaults for the role
+    });
+
+    return finalPermissions;
   }
 
   /**
-   * Notify user of account activation
+   * Notify user of permission changes in real-time
    */
-  static async notifyAccountActivated(userId, tenancy) {
+  async notifyPermissionUpdate(userId, updates) {
     try {
-      console.log(`✅ Notifying user ${userId} of account activation`);
+      console.log('🔄 Notifying permission update for user:', userId);
 
-      socketService.sendEventToUser(userId.toString(), 'accountActivated', {
-        message: 'Your account has been activated',
-        timestamp: new Date()
-      });
-
-      const NotificationService = require('./notificationService');
-      await NotificationService.createNotification({
-        recipientId: userId,
-        recipientType: 'admin',
-        tenancy,
-        type: 'system_alert',
-        title: '✅ Account Activated',
-        message: 'Your account has been activated. Welcome back!',
-        severity: 'success',
-        icon: 'check-circle',
-        data: { link: '/dashboard' }
-      });
-
-      return true;
-    } catch (error) {
-      console.error('Error notifying account activation:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Notify user of subscription/plan change
-   */
-  static async notifyPlanChange(userId, oldPlan, newPlan, tenancy) {
-    try {
-      console.log(`📦 Notifying user ${userId} of plan change: ${oldPlan} → ${newPlan}`);
-
-      socketService.sendEventToUser(userId.toString(), 'planChanged', {
-        message: `Your subscription plan has been updated to ${newPlan}`,
-        oldPlan,
-        newPlan,
-        timestamp: new Date()
-      });
-
-      const NotificationService = require('./notificationService');
-      await NotificationService.notifyPlanUpgraded(userId, oldPlan, newPlan, tenancy);
-
-      return true;
-    } catch (error) {
-      console.error('Error notifying plan change:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Generate new JWT token with updated permissions
-   * @param {Object} user - User object with updated permissions
-   */
-  static generateUpdatedToken(user) {
-    try {
-      const payload = {
-        id: user._id,
-        email: user.email,
-        role: user.role,
-        tenancy: user.tenancy,
-        permissions: user.permissions || [],
-        features: user.features || []
+      // Send real-time permission sync event
+      const syncPayload = {
+        type: 'permission_sync',
+        data: {
+          permissions: updates.permissions,
+          features: updates.features,
+          role: updates.role,
+          syncedAt: new Date(),
+          requiresRefresh: true
+        }
       };
 
-      const token = jwt.sign(payload, process.env.JWT_SECRET, {
-        expiresIn: '7d'
+      // Emit to specific user
+      const emitted = await socketIOServer.emitToUser(userId, 'permission_sync', syncPayload);
+
+      // Log the sync event
+      await this.auditLogger.log({
+        action: 'permission_sync_sent',
+        userId,
+        metadata: {
+          emitted,
+          updates,
+          timestamp: new Date()
+        }
       });
 
-      return token;
+      console.log('✅ Permission sync notification sent:', { userId, emitted });
+      return { success: true, emitted };
+
     } catch (error) {
-      console.error('Error generating updated token:', error);
-      return null;
+      console.error('❌ Failed to notify permission update:', error);
+
+      await this.auditLogger.log({
+        action: 'permission_sync_failed',
+        userId,
+        error: error.message,
+        metadata: { updates }
+      });
+
+      return { success: false, error: error.message };
     }
   }
 
   /**
-   * Broadcast permission update to all admins of a tenancy
+   * Notify multiple users of permission changes
    */
-  static async notifyTenancyAdmins(tenancyId, message) {
-    try {
-      socketService.sendToTenancyRecipients(tenancyId, 'admin', {
-        type: 'tenancyUpdate',
-        message,
-        timestamp: new Date()
-      });
+  async notifyBulkPermissionUpdate(userUpdates) {
+    const results = [];
 
-      return true;
-    } catch (error) {
-      console.error('Error notifying tenancy admins:', error);
-      return false;
+    for (const { userId, updates } of userUpdates) {
+      const result = await this.notifyPermissionUpdate(userId, updates);
+      results.push({ userId, ...result });
     }
+
+    return results;
   }
 
   /**
-   * Force logout user (for security reasons)
+   * Force token refresh for a user
    */
-  static async forceLogout(userId, reason) {
+  async forceTokenRefresh(userId, reason = 'permission_update') {
     try {
-      console.log(`🚪 Forcing logout for user ${userId}: ${reason}`);
-
-      socketService.sendEventToUser(userId.toString(), 'forceLogout', {
-        message: reason || 'You have been logged out',
+      const refreshPayload = {
+        type: 'force_token_refresh',
         reason,
         timestamp: new Date()
+      };
+
+      const emitted = await socketIOServer.emitToUser(userId, 'force_token_refresh', refreshPayload);
+
+      await this.auditLogger.log({
+        action: 'force_token_refresh',
+        userId,
+        metadata: { reason, emitted }
       });
 
-      return true;
+      return { success: true, emitted };
+
     } catch (error) {
-      console.error('Error forcing logout:', error);
-      return false;
+      console.error('❌ Failed to force token refresh:', error);
+      return { success: false, error: error.message };
     }
+  }
+
+  /**
+   * Revoke user session immediately (for security)
+   */
+  async revokeUserSession(userId, reason = 'permission_revoked') {
+    try {
+      const revokePayload = {
+        type: 'session_revoked',
+        reason,
+        message: 'Your session has been revoked. Please log in again.',
+        timestamp: new Date()
+      };
+
+      const emitted = await socketIOServer.emitToUser(userId, 'session_revoked', revokePayload);
+
+      await this.auditLogger.log({
+        action: 'session_revoked',
+        userId,
+        metadata: { reason, emitted }
+      });
+
+      console.log('🚨 User session revoked:', { userId, reason, emitted });
+      return { success: true, emitted };
+
+    } catch (error) {
+      console.error('❌ Failed to revoke user session:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Get permission sync statistics
+   */
+  async getStatistics() {
+    // This would query audit logs for permission sync metrics
+    return {
+      totalSyncs: 0, // Would be calculated from audit logs
+      successfulSyncs: 0,
+      failedSyncs: 0,
+      lastSyncAt: null
+    };
   }
 }
 
-module.exports = PermissionSyncService;
+// Export singleton instance
+const permissionSyncService = new PermissionSyncService();
+module.exports = permissionSyncService;

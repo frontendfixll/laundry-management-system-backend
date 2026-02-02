@@ -10,38 +10,51 @@ const SuperAdminRole = require('../models/SuperAdminRole');
 const requireSuperAdminPermission = (module, action) => {
   return async (req, res, next) => {
     try {
-      // Check if user is authenticated
-      if (!req.user || !req.user._id) {
+      // Check if user is authenticated - handle both req.user and req.admin
+      const user = req.user || req.admin;
+      if (!user || !user._id) {
         return res.status(401).json({
           success: false,
           message: 'Authentication required'
         });
       }
-      
+
       // Fetch SuperAdmin with roles populated
-      const superadmin = await SuperAdmin.findById(req.user._id)
-        .populate('roles');
-      
+      const superadmin = await SuperAdmin.findById(user._id).populate('roles');
+
       if (!superadmin || !superadmin.isActive) {
         return res.status(403).json({
           success: false,
           message: 'Access denied'
         });
       }
-      
-      // Check if has permission
+
+      // Use the granular hasPermission method (handles Super Admin bypass, role merging, and overrides)
       const hasPermission = await superadmin.hasPermission(module, action);
-      
-      if (!hasPermission) {
-        return res.status(403).json({
-          success: false,
-          message: `Permission denied: ${module}.${action}`,
-          required: { module, action }
-        });
+
+      if (hasPermission) {
+        console.log(`🔓 Granular RBAC: Access granted for ${superadmin.email} on [${module}.${action}]`);
+        // Permission granted, add to request for logging
+        req.grantedPermission = `${module}.${action}`;
+        req.userRoles = superadmin.roles?.map(r => r.slug) || ['legacy'];
+        req.user = superadmin;
+        return next();
       }
-      
-      // Permission granted, proceed
-      next();
+
+      // Legacy fallback (only if no roles assigned)
+      if ((!superadmin.roles || superadmin.roles.length === 0) &&
+        (superadmin.role === 'superadmin' || superadmin.role === 'center_admin')) {
+        console.log(`⚠️ Warning: Granting legacy bypass for [${module}.${action}] because ${superadmin.email} has no roles`);
+        return next();
+      }
+
+      console.log(`🔒 Granular RBAC: Access DENIED for ${superadmin.email} on [${module}.${action}]`);
+      return res.status(403).json({
+        success: false,
+        message: `Permission denied: ${module}.${action}`,
+        required: { module, action },
+        userRoles: superadmin.roles?.map(r => r.slug) || []
+      });
     } catch (error) {
       console.error('Permission check error:', error);
       return res.status(500).json({
@@ -67,18 +80,18 @@ const requireAnyPermission = (permissions) => {
           message: 'Authentication required'
         });
       }
-      
+
       // Fetch SuperAdmin with roles populated
       const superadmin = await SuperAdmin.findById(req.user._id)
         .populate('roles');
-      
+
       if (!superadmin || !superadmin.isActive) {
         return res.status(403).json({
           success: false,
           message: 'Access denied'
         });
       }
-      
+
       // Check if has any of the specified permissions
       for (const { module, action } of permissions) {
         const hasPermission = await superadmin.hasPermission(module, action);
@@ -87,7 +100,7 @@ const requireAnyPermission = (permissions) => {
           return next();
         }
       }
-      
+
       // No permissions matched
       return res.status(403).json({
         success: false,
@@ -119,18 +132,18 @@ const requireAllPermissions = (permissions) => {
           message: 'Authentication required'
         });
       }
-      
+
       // Fetch SuperAdmin with roles populated
       const superadmin = await SuperAdmin.findById(req.user._id)
         .populate('roles');
-      
+
       if (!superadmin || !superadmin.isActive) {
         return res.status(403).json({
           success: false,
           message: 'Access denied'
         });
       }
-      
+
       // Check if has all of the specified permissions
       for (const { module, action } of permissions) {
         const hasPermission = await superadmin.hasPermission(module, action);
@@ -143,7 +156,7 @@ const requireAllPermissions = (permissions) => {
           });
         }
       }
-      
+
       // Has all permissions, allow access
       next();
     } catch (error) {
@@ -166,7 +179,7 @@ const attachPermissions = async (req, res, next) => {
     if (req.user && req.user._id) {
       const superadmin = await SuperAdmin.findById(req.user._id)
         .populate('roles');
-      
+
       if (superadmin && superadmin.isActive) {
         req.userPermissions = await superadmin.getEffectivePermissions();
       }

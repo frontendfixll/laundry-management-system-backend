@@ -49,7 +49,9 @@ const authenticateSales = async (req, res, next) => {
     }
 
     // Find sales user
-    const salesUser = await SalesUser.findById(decoded.salesUserId).select('-password');
+    const salesUser = await SalesUser.findById(decoded.salesUserId)
+      .select('-password')
+      .populate('roles');
     
     if (!salesUser) {
       console.log('🔐 Sales Auth - Sales user not found:', decoded.salesUserId);
@@ -118,8 +120,8 @@ const authenticateSales = async (req, res, next) => {
 };
 
 /**
- * Check if sales user has specific permission
- * @param {string} module - Module name (e.g., 'leads', 'trials')
+ * Check if sales user has specific permission (RBAC-enabled)
+ * @param {string} module - Module name (e.g., 'leads', 'subscription_plans')
  * @param {string} action - Action name (e.g., 'view', 'create', 'update')
  */
 const requireSalesPermission = (module, action) => {
@@ -132,19 +134,23 @@ const requireSalesPermission = (module, action) => {
         });
       }
 
-      const hasPermission = req.salesUser.hasPermission(module, action);
+      // Use new RBAC permission check
+      const hasPermission = await req.salesUser.hasRBACPermission(module, action);
       
       if (!hasPermission) {
+        console.log(`🔒 Sales RBAC: Access DENIED for ${req.salesUser.email} on [${module}.${action}]`);
         return res.status(403).json({
           success: false,
           message: `Permission denied: ${module}.${action}`,
-          required: { module, action }
+          required: { module, action },
+          userRoles: req.salesUser.roleSlug || 'platform-sales'
         });
       }
 
+      console.log(`🔓 Sales RBAC: Access granted for ${req.salesUser.email} on [${module}.${action}]`);
       next();
     } catch (error) {
-      console.error('Permission check error:', error);
+      console.error('Sales permission check error:', error);
       return res.status(500).json({
         success: false,
         message: 'Permission check failed'

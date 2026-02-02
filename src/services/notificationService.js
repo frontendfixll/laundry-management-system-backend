@@ -1,20 +1,12 @@
 const Notification = require('../models/Notification');
 const { NOTIFICATION_TYPES, RECIPIENT_TYPES } = require('../config/constants');
 
-// Check if running on Vercel (serverless)
-const isVercel = process.env.VERCEL || process.env.VERCEL_ENV;
-
-// Import socket service only if not on Vercel
-let socketService;
-if (!isVercel) {
-  socketService = require('./socketService');
-} else {
-  console.log('🌐 Running on Vercel: WebSocket disabled, using fallback notifications');
-}
+// Use new Socket.IO notification system instead of legacy event bus
+const notificationServiceIntegration = require('./notificationServiceIntegration');
 
 class NotificationService {
   /**
-   * Create and send notification (with real-time push if available)
+   * Create and send notification (with real-time push via DeepNoti)
    */
   static async createNotification({
     recipientId,
@@ -26,39 +18,60 @@ class NotificationService {
     message,
     icon = 'bell',
     severity = 'info',
+    priority,
     data = {},
     channels = { inApp: true }
   }) {
     try {
+      // Normalize channels to match Mongoose Schema
+      const normalizedChannels = {};
+      if (channels) {
+        for (const [key, value] of Object.entries(channels)) {
+          if (typeof value === 'boolean') {
+            normalizedChannels[key] = { selected: value };
+          } else {
+            normalizedChannels[key] = value;
+          }
+        }
+      }
+
       const notification = await Notification.createNotification({
         recipient: recipientId,
         recipientModel,
         recipientType,
+        userId: recipientId, // For Socket.IO compatibility
+        tenantId: tenancy,   // For Socket.IO compatibility
         tenancy,
         type,
         title,
         message,
         icon,
         severity,
+        priority,
         data,
-        channels
+        channels: normalizedChannels
       });
 
-      // Send real-time notification via WebSocket (if available)
-      if (socketService && !isVercel) {
-        socketService.sendToUser(recipientId.toString(), {
-          _id: notification._id,
-          type: notification.type,
-          title: notification.title,
-          message: notification.message,
-          icon: notification.icon,
-          severity: notification.severity,
-          data: notification.data,
-          createdAt: notification.createdAt,
-          isRead: notification.isRead
+      // Send real-time notification via Socket.IO Notification Engine
+      try {
+        await notificationServiceIntegration.createNotification({
+          recipient: recipientId,
+          recipientModel,
+          recipientType,
+          tenancy,
+          type,
+          title,
+          message,
+          icon,
+          severity,
+          priority,
+          data,
+          channels
         });
-      } else {
-        console.log(`📧 Notification created (serverless): ${title} for user ${recipientId}`);
+        console.log(`📧 Notification sent via Socket.IO: ${title} for user ${recipientId}`);
+      } catch (socketIOError) {
+        console.error('❌ Failed to send via Socket.IO:', socketIOError);
+        console.log(`📧 Notification created (stored only): ${title} for user ${recipientId}`);
       }
 
       return notification;
@@ -69,7 +82,7 @@ class NotificationService {
   }
 
   // ==================== CUSTOMER NOTIFICATIONS ====================
-  
+
   static async notifyOrderPlaced(customerId, order, tenancy) {
     return this.createNotification({
       recipientId: customerId,
@@ -240,6 +253,39 @@ class NotificationService {
     });
   }
 
+  /**
+   * Notify all admins in a tenancy about an order status update (persistent)
+   */
+  static async notifyAdminOrderStatusUpdate(order, tenancyId) {
+    const User = require('../models/User');
+    const admins = await User.find({
+      tenancy: tenancyId,
+      role: { $in: ['admin', 'branch_admin'] },
+      isActive: true
+    }).select('_id');
+
+    if (!admins || admins.length === 0) return [];
+
+    return Promise.all(
+      admins.map(admin => this.createNotification({
+        recipientId: admin._id,
+        recipientType: RECIPIENT_TYPES.ADMIN,
+        tenancy: tenancyId,
+        type: order.status,
+        title: `Order Status: ${order.orderNumber}`,
+        message: `Order #${order.orderNumber} status changed to ${order.status}`,
+        icon: 'package',
+        severity: 'info',
+        data: {
+          orderId: order._id,
+          orderNumber: order.orderNumber,
+          status: order.status,
+          link: `/admin/orders`
+        }
+      }))
+    );
+  }
+
   // ==================== BRANCH ADMIN NOTIFICATIONS ====================
 
   static async notifyBranchAdminNewOrder(branchAdminId, order, tenancy) {
@@ -319,7 +365,7 @@ class NotificationService {
   static async notifyAllSuperAdmins(notificationData) {
     const SuperAdmin = require('../models/SuperAdmin');
     const superAdmins = await SuperAdmin.find({ isActive: true }).select('_id');
-    
+
     const notifications = await Promise.all(
       superAdmins.map(sa => this.createNotification({
         ...notificationData,
@@ -328,8 +374,31 @@ class NotificationService {
         recipientType: RECIPIENT_TYPES.SUPERADMIN
       }))
     );
-    
+
     return notifications;
+  }
+
+  /**
+   * Notify all admins in a tenancy with custom data
+   */
+  static async notifyTenancyAdmins(tenancyId, notificationData) {
+    const User = require('../models/User');
+    const admins = await User.find({
+      tenancy: tenancyId,
+      role: { $in: ['admin', 'branch_admin'] },
+      isActive: true
+    }).select('_id');
+
+    if (!admins || admins.length === 0) return [];
+
+    return Promise.all(
+      admins.map(admin => this.createNotification({
+        ...notificationData,
+        recipientId: admin._id,
+        recipientType: RECIPIENT_TYPES.ADMIN,
+        tenancy: tenancyId
+      }))
+    );
   }
 
   // ==================== UTILITY METHODS ====================
@@ -344,6 +413,10 @@ class NotificationService {
 
   static async markAllAsRead(userId) {
     return Notification.markManyAsRead(userId);
+  }
+
+  static async clearAllNotifications(userId) {
+    return Notification.deleteManyForUser(userId);
   }
 
   static async getUnreadCount(userId) {
@@ -362,8 +435,8 @@ class NotificationService {
       message: `Your permissions have been updated by an administrator`,
       icon: 'shield-check',
       severity: 'info',
-      data: { 
-        permission, 
+      data: {
+        permission,
         type: 'permission_update',
         action: 'granted',
         // No link - permission updates should refresh current page
@@ -381,11 +454,107 @@ class NotificationService {
       message: `Your permissions have been updated by an administrator`,
       icon: 'shield-x',
       severity: 'info',
-      data: { 
-        permission, 
+      data: {
+        permission,
         type: 'permission_update',
         action: 'revoked',
         // No link - permission updates should refresh current page
+      }
+    });
+  }
+
+  /**
+   * Enhanced permission update notification with detailed changes
+   */
+  static async notifyDetailedPermissionUpdate(adminId, permissionChanges, tenancy, updatedBy = 'SuperAdmin') {
+    // Parse permission changes to create detailed message
+    const changedModules = Object.keys(permissionChanges);
+    const totalChanges = changedModules.reduce((count, module) => {
+      return count + Object.keys(permissionChanges[module]).length;
+    }, 0);
+
+    // Create dynamic title
+    let title = 'Permissions Updated';
+    if (changedModules.length === 1) {
+      const module = changedModules[0];
+      title = `${module.charAt(0).toUpperCase() + module.slice(1)} Permission Updated`;
+    }
+
+    // Create summary message
+    let summaryMessage = `${updatedBy} updated your permissions`;
+
+    if (changedModules.length > 0) {
+      const moduleNames = changedModules.map(m => m.charAt(0).toUpperCase() + m.slice(1));
+
+      if (moduleNames.length === 1) {
+        const module = changedModules[0];
+        const actions = Object.keys(permissionChanges[module]);
+        summaryMessage += `: ${moduleNames[0]} (${actions.join(', ')})`;
+      } else if (moduleNames.length <= 5) {
+        summaryMessage += `: ${moduleNames.join(', ')}`;
+      } else {
+        summaryMessage += `: ${moduleNames.slice(0, 3).join(', ')} and ${moduleNames.length - 3} other modules`;
+      }
+    } else {
+      summaryMessage += '.';
+    }
+
+    return this.createNotification({
+      recipientId: adminId,
+      recipientType: RECIPIENT_TYPES.ADMIN,
+      tenancy,
+      type: 'tenancy_permissions_updated',
+      title,
+      message: summaryMessage,
+      priority: 'P1', // Explicitly High Priority
+      icon: 'shield-check',
+      severity: 'warning',
+      data: {
+        permissions: permissionChanges,
+        updatedBy,
+        totalChanges,
+        changedModules,
+        timestamp: new Date().toISOString(),
+        type: 'detailed_permission_update'
+      }
+    });
+  }
+
+  /**
+   * Enhanced feature update notification with detailed changes
+   */
+  static async notifyDetailedFeatureUpdate(adminId, featureChanges, tenancy, updatedBy = 'SuperAdmin') {
+    // Parse feature changes to create detailed message
+    const changedFeatures = Object.keys(featureChanges);
+    const enabledFeatures = changedFeatures.filter(f => featureChanges[f] === true);
+    const disabledFeatures = changedFeatures.filter(f => featureChanges[f] === false);
+
+    let summaryMessage = `${updatedBy} updated your features: `;
+    if (enabledFeatures.length > 0 && disabledFeatures.length === 0) {
+      summaryMessage += `Enabled ${enabledFeatures.length} feature${enabledFeatures.length > 1 ? 's' : ''}`;
+    } else if (disabledFeatures.length > 0 && enabledFeatures.length === 0) {
+      summaryMessage += `Disabled ${disabledFeatures.length} feature${disabledFeatures.length > 1 ? 's' : ''}`;
+    } else {
+      summaryMessage += `${changedFeatures.length} feature changes`;
+    }
+
+    return this.createNotification({
+      recipientId: adminId,
+      recipientType: RECIPIENT_TYPES.ADMIN,
+      tenancy,
+      type: 'tenancy_features_updated',
+      title: 'Features Updated by SuperAdmin',
+      message: summaryMessage,
+      icon: 'star',
+      severity: 'success',
+      data: {
+        features: featureChanges,
+        updatedBy,
+        enabledFeatures,
+        disabledFeatures,
+        totalChanges: changedFeatures.length,
+        timestamp: new Date().toISOString(),
+        type: 'detailed_feature_update'
       }
     });
   }
@@ -444,11 +613,11 @@ class NotificationService {
       message: `${tenancy.businessName} requested ${request.itemName}`,
       icon: 'package-plus',
       severity: 'info',
-      data: { 
-        requestId: request._id, 
+      data: {
+        requestId: request._id,
         tenancyId: tenancy._id,
         urgency: request.urgency,
-        link: '/inventory-requests' 
+        link: '/inventory-requests'
       }
     });
   }
@@ -463,11 +632,11 @@ class NotificationService {
       message: `Your request for ${request.itemName} has been approved`,
       icon: 'check-circle',
       severity: 'success',
-      data: { 
+      data: {
         requestId: request._id,
         estimatedCost: request.estimatedCost,
         supplier: request.supplier,
-        link: '/admin/inventory/requests' 
+        link: '/admin/inventory/requests'
       }
     });
   }
@@ -482,10 +651,10 @@ class NotificationService {
       message: `Your request for ${request.itemName} has been rejected`,
       icon: 'x-circle',
       severity: 'error',
-      data: { 
+      data: {
         requestId: request._id,
         rejectionReason: request.rejectionReason,
-        link: '/admin/inventory/requests' 
+        link: '/admin/inventory/requests'
       }
     });
   }
@@ -500,9 +669,9 @@ class NotificationService {
       message: `Your request for ${request.itemName} has been fulfilled`,
       icon: 'package-check',
       severity: 'success',
-      data: { 
+      data: {
         requestId: request._id,
-        link: '/admin/inventory/requests' 
+        link: '/admin/inventory/requests'
       }
     });
   }
@@ -520,11 +689,11 @@ class NotificationService {
       message: `Your ${tenancy.subscription?.plan || 'current'} plan expires soon. Renew to avoid service interruption.`,
       icon: 'alert-triangle',
       severity: urgency,
-      data: { 
+      data: {
         daysLeft,
         plan: tenancy.subscription?.plan,
         expiryDate: tenancy.subscription?.expiryDate,
-        link: '/admin/billing' 
+        link: '/admin/billing'
       }
     });
   }
@@ -539,9 +708,9 @@ class NotificationService {
       message: `Your subscription has expired. Please renew to continue using all features.`,
       icon: 'alert-circle',
       severity: 'error',
-      data: { 
+      data: {
         plan: tenancy.subscription?.plan,
-        link: '/admin/billing' 
+        link: '/admin/billing'
       }
     });
   }
@@ -556,10 +725,10 @@ class NotificationService {
       message: `Payment of ₹${amount} failed. ${reason}`,
       icon: 'credit-card',
       severity: 'error',
-      data: { 
+      data: {
         amount,
         reason,
-        link: '/admin/billing' 
+        link: '/admin/billing'
       }
     });
   }
@@ -574,10 +743,10 @@ class NotificationService {
       message: `Your plan has been upgraded from ${oldPlan} to ${newPlan}`,
       icon: 'trending-up',
       severity: 'success',
-      data: { 
+      data: {
         oldPlan,
         newPlan,
-        link: '/admin/billing' 
+        link: '/admin/billing'
       }
     });
   }
@@ -592,11 +761,11 @@ class NotificationService {
       message: `You've reached your ${limitType} limit (${currentUsage}/${limit}). Consider upgrading your plan.`,
       icon: 'bar-chart',
       severity: 'warning',
-      data: { 
+      data: {
         limitType,
         currentUsage,
         limit,
-        link: '/admin/billing' 
+        link: '/admin/billing'
       }
     });
   }
@@ -613,11 +782,11 @@ class NotificationService {
       message: `${alertType}: ${details}`,
       icon: 'shield-alert',
       severity: 'error',
-      data: { 
+      data: {
         alertType,
         details,
         timestamp: new Date(),
-        link: '/admin/security' 
+        link: '/admin/security'
       }
     });
   }
@@ -632,9 +801,9 @@ class NotificationService {
       message: 'Your password has been successfully changed',
       icon: 'key',
       severity: 'success',
-      data: { 
+      data: {
         timestamp: new Date(),
-        link: '/admin/profile' 
+        link: '/admin/profile'
       }
     });
   }
@@ -649,10 +818,10 @@ class NotificationService {
       message: `${attemptCount} failed login attempts detected on your account`,
       icon: 'shield-alert',
       severity: 'warning',
-      data: { 
+      data: {
         attemptCount,
         timestamp: new Date(),
-        link: '/admin/security' 
+        link: '/admin/security'
       }
     });
   }
@@ -667,10 +836,10 @@ class NotificationService {
       message: 'There was an issue syncing your permissions. Please contact support if problems persist.',
       icon: 'alert-triangle',
       severity: 'warning',
-      data: { 
+      data: {
         error: error.message,
         timestamp: new Date(),
-        link: '/admin/support' 
+        link: '/admin/support'
       }
     });
   }

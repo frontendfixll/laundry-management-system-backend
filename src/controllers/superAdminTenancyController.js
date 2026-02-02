@@ -10,9 +10,9 @@ const tenancyController = {
   getAllTenancies: async (req, res) => {
     try {
       const { page = 1, limit = 20, status, search, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
-      
+
       const query = { isDeleted: false };
-      
+
       if (status) query.status = status;
       if (search) {
         query.$or = [
@@ -21,9 +21,9 @@ const tenancyController = {
           { subdomain: { $regex: search, $options: 'i' } }
         ];
       }
-      
+
       const sort = { [sortBy]: sortOrder === 'desc' ? -1 : 1 };
-      
+
       const [tenancies, total] = await Promise.all([
         Tenancy.find(query)
           .populate('owner', 'name email phone')
@@ -33,7 +33,7 @@ const tenancyController = {
           .lean(),
         Tenancy.countDocuments(query)
       ]);
-      
+
       res.json({
         success: true,
         data: {
@@ -58,11 +58,11 @@ const tenancyController = {
       const tenancy = await Tenancy.findById(req.params.id)
         .populate('owner', 'name email phone')
         .lean();
-      
+
       if (!tenancy) {
         return res.status(404).json({ success: false, message: 'Tenancy not found' });
       }
-      
+
       res.json({ success: true, data: { tenancy } });
     } catch (error) {
       console.error('Get tenancy error:', error);
@@ -74,7 +74,7 @@ const tenancyController = {
   createTenancy: async (req, res) => {
     try {
       console.log('📝 Create tenancy request body:', JSON.stringify(req.body, null, 2));
-      
+
       // Check validation errors
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
@@ -98,7 +98,7 @@ const tenancyController = {
         tagline,
         features
       } = req.body;
-      
+
       // Validate required fields
       if (!name || !ownerData?.email || !ownerData?.name) {
         return res.status(400).json({
@@ -109,13 +109,13 @@ const tenancyController = {
 
       // Use TenancyCreationService for proper isolation
       const TenancyCreationService = require('../services/tenancyCreationService');
-      
+
       // Validate input data
       const validationErrors = TenancyCreationService.validateTenancyData(
         { name, slug, description, businessName, tagline },
         ownerData
       );
-      
+
       if (validationErrors.length > 0) {
         return res.status(400).json({
           success: false,
@@ -136,14 +136,16 @@ const tenancyController = {
         businessName: businessName || name,
         tagline: tagline || '',
         address: contact?.address || {},
-        plan: subscription?.plan || 'trial',
-        features: features || {
-          orders: true,
-          customers: true,
-          inventory: true,
-          basic_analytics: true,
-          email_notifications: true
-        }
+        subscription: {
+          plan: subscription?.plan || 'trial',
+          features: features || {
+            orders: true,
+            customers: true,
+            inventory: true,
+            basic_analytics: true,
+            email_notifications: true
+          }
+        },
       };
 
       // Prepare admin data
@@ -177,14 +179,14 @@ const tenancyController = {
 
     } catch (error) {
       console.error('❌ Create tenancy error:', error);
-      
+
       if (error.message.includes('already exists')) {
         return res.status(409).json({
           success: false,
           message: error.message
         });
       }
-      
+
       res.status(500).json({
         success: false,
         message: 'Failed to create tenancy. Please try again.',
@@ -193,111 +195,111 @@ const tenancyController = {
     }
   },
 
-  // Get all tenancies with pagination and filtering
-  getAllTenancies: async (req, res) => {
-    try {
-      const { page = 1, limit = 10, search = '', status = 'all', sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
-
-      // Build search query
-      let query = {};
-      if (search) {
-        query = {
-          $or: [
-            { businessName: { $regex: search, $options: 'i' } },
-            { subdomain: { $regex: search, $options: 'i' } },
-            { contactEmail: { $regex: search, $options: 'i' } }
-          ]
-        };
-      }
-
-      if (status !== 'all') {
-        query.isActive = status === 'active';
-      }
-
-      // Get total count for pagination
-      const total = await Tenancy.countDocuments(query);
-
-      // Get tenancies with pagination
-      const tenancies = await Tenancy.find(query)
-        .sort({ [sortBy]: sortOrder === 'desc' ? -1 : 1 })
-        .limit(limit * 1)
-        .skip((page - 1) * limit)
-        .populate('owner', 'name email phone')
-        .lean();
-
-      res.json({
-        success: true,
-        data: {
-          tenancies,
-          pagination: {
-            current: parseInt(page),
-            pages: Math.ceil(total / limit),
-            total,
-            limit: parseInt(limit)
-          }
-        }
-      });
-    } catch (error) {
-      console.error('Error fetching tenancies:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to fetch tenancies'
-      });
-    }
-  },
-
-  // Get single tenancy by ID
-  getTenancyById: async (req, res) => {
-    try {
-      const { id } = req.params;
-      
-      const tenancy = await Tenancy.findById(id)
-        .populate('owner', 'name email phone')
-        .lean();
-      
-      if (!tenancy) {
-        return res.status(404).json({
-          success: false,
-          message: 'Tenancy not found'
-        });
-      }
-      
-      res.json({
-        success: true,
-        data: { tenancy }
-      });
-    } catch (error) {
-      console.error('Error fetching tenancy:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to fetch tenancy'
-      });
-    }
-  },
 
   // Update tenancy
   updateTenancy: async (req, res) => {
     try {
       const { id } = req.params;
       const updates = req.body;
-      
-      const tenancy = await Tenancy.findByIdAndUpdate(
-        id,
-        { $set: updates },
-        { new: true, runValidators: true }
-      ).populate('owner', 'name email phone');
-      
+
+      const tenancy = await Tenancy.findById(id);
       if (!tenancy) {
         return res.status(404).json({
           success: false,
           message: 'Tenancy not found'
         });
       }
-      
+
+      // Check if features are being updated
+      const isUpdatingFeatures = updates.subscription && updates.subscription.features;
+      let featureChanges = {};
+
+      if (isUpdatingFeatures) {
+        const oldFeatures = tenancy.subscription.features || {};
+        const newFeatures = updates.subscription.features;
+        featureChanges = detectFeatureChanges(oldFeatures, newFeatures);
+
+        // Merge features
+        tenancy.subscription.features = {
+          ...oldFeatures,
+          ...newFeatures
+        };
+
+        // CRITICAL: Mark field as modified for Mongoose Mixed types
+        tenancy.markModified('subscription.features');
+
+        // Remove features from updates to prevent overwrite
+        delete updates.subscription.features;
+      }
+
+      // Apply other updates
+      Object.keys(updates).forEach(key => {
+        if (key === 'subscription' && updates.subscription) {
+          // Merge subscription updates (excluding features which we handled above)
+          Object.keys(updates.subscription).forEach(subKey => {
+            tenancy.subscription[subKey] = updates.subscription[subKey];
+          });
+          tenancy.markModified('subscription');
+        } else {
+          tenancy[key] = updates[key];
+        }
+      });
+
+      await tenancy.save();
+
+      // If features were updated, send notifications and sync
+      if (isUpdatingFeatures && Object.keys(featureChanges).length > 0) {
+        try {
+          const permissionSyncService = require('../services/permissionSyncService');
+          const NotificationService = require('../services/notificationService');
+          const User = require('../models/User');
+
+          // Find ALL active admins in this tenancy
+          const tenancyAdmins = await User.find({
+            tenancy: id,
+            role: { $in: ['admin', 'branch_admin'] },
+            isActive: true
+          }).select('_id email name');
+
+          console.log(`🎯 Found ${tenancyAdmins.length} admins in tenancy ${tenancy.name} for feature update`);
+
+          for (const admin of tenancyAdmins) {
+            try {
+              // 1. Send visual notification (Green flash/Inbox)
+              await NotificationService.notifyDetailedFeatureUpdate(
+                admin._id,
+                featureChanges,
+                tenancy._id,
+                req.admin?.email || 'SuperAdmin'
+              );
+
+              // 2. Send real-time state sync (Auth Store update)
+              await permissionSyncService.notifyPermissionUpdate(
+                admin._id.toString(),
+                {
+                  features: tenancy.subscription.features,
+                  tenancyId: tenancy._id.toString(),
+                  updatedBy: req.admin?.email || 'SuperAdmin',
+                  reason: 'Tenancy features updated'
+                }
+              );
+              console.log(`📡 Feature update and notification dispatched for admin ${admin.email}`);
+            } catch (eventError) {
+              console.error('❌ Feature update dispatch failed for admin:', eventError);
+            }
+          }
+        } catch (syncError) {
+          console.error('Error in feature sync/notification process:', syncError);
+        }
+      }
+
+      // Populate and return updated tenancy
+      const updatedTenancy = await Tenancy.findById(id).populate('owner', 'name email phone');
+
       res.json({
         success: true,
         message: 'Tenancy updated successfully',
-        data: { tenancy }
+        data: { tenancy: updatedTenancy }
       });
     } catch (error) {
       console.error('Error updating tenancy:', error);
@@ -313,20 +315,20 @@ const tenancyController = {
     try {
       const { id } = req.params;
       const { status } = req.body;
-      
+
       const tenancy = await Tenancy.findByIdAndUpdate(
         id,
         { status },
         { new: true }
       ).populate('owner', 'name email phone');
-      
+
       if (!tenancy) {
         return res.status(404).json({
           success: false,
           message: 'Tenancy not found'
         });
       }
-      
+
       res.json({
         success: true,
         message: `Tenancy ${status}`,
@@ -346,20 +348,20 @@ const tenancyController = {
     try {
       const { id } = req.params;
       const { branding } = req.body;
-      
+
       const tenancy = await Tenancy.findByIdAndUpdate(
         id,
         { $set: { branding } },
         { new: true }
       ).populate('owner', 'name email phone');
-      
+
       if (!tenancy) {
         return res.status(404).json({
           success: false,
           message: 'Tenancy not found'
         });
       }
-      
+
       res.json({
         success: true,
         message: 'Branding updated successfully',
@@ -379,20 +381,20 @@ const tenancyController = {
     try {
       const { id } = req.params;
       const { subscription } = req.body;
-      
+
       const tenancy = await Tenancy.findByIdAndUpdate(
         id,
         { $set: { subscription } },
         { new: true }
       ).populate('owner', 'name email phone');
-      
+
       if (!tenancy) {
         return res.status(404).json({
           success: false,
           message: 'Tenancy not found'
         });
       }
-      
+
       res.json({
         success: true,
         message: 'Subscription updated successfully',
@@ -412,7 +414,7 @@ const tenancyController = {
     try {
       const { id } = req.params;
       const { features } = req.body;
-      
+
       const tenancy = await Tenancy.findById(id);
       if (!tenancy) {
         return res.status(404).json({
@@ -420,89 +422,69 @@ const tenancyController = {
           message: 'Tenancy not found'
         });
       }
-      
+
+      // Detect feature changes for notification
+      const oldFeatures = tenancy.subscription.features || {};
+      const featureChanges = detectFeatureChanges(oldFeatures, features);
+
       // Update features in subscription
       tenancy.subscription.features = {
-        ...tenancy.subscription.features,
+        ...oldFeatures,
         ...features
       };
-      
+
+      // CRITICAL: Mark field as modified for Mongoose Mixed types
+      tenancy.markModified('subscription.features');
       await tenancy.save();
-      
-      // Emit real-time update for tenancy features
+
+      // Emit real-time updates and notifications
       try {
-        const socketService = require('../services/socketService');
+        const permissionSyncService = require('../services/permissionSyncService');
+        const NotificationService = require('../services/notificationService');
         const User = require('../models/User');
-        
-        // Notify all SuperAdmin users about tenancy update
-        socketService.sendToRecipientType('superadmin', {
-          type: 'tenancyFeaturesUpdated',
-          tenancyId: id,
-          tenancyName: tenancy.name,
-          features: tenancy.subscription.features,
-          message: `Features updated for ${tenancy.name}`,
-          timestamp: new Date()
-        });
-        
-        // Find ALL admins in this tenancy (not just owner)
-        const tenancyAdmins = await User.find({ 
-          tenancy: id, 
-          role: 'admin',
-          isActive: true 
+
+        // Find ALL active admins in this tenancy
+        const tenancyAdmins = await User.find({
+          tenancy: id,
+          role: { $in: ['admin', 'branch_admin'] },
+          isActive: true
         }).select('_id email name');
-        
-        console.log(`🎯 Found ${tenancyAdmins.length} admins in tenancy ${tenancy.name}:`);
-        tenancyAdmins.forEach(admin => {
-          console.log(`  - ${admin.email} (${admin._id})`);
-        });
-        
-        // Notify ALL tenancy admins
+
+        console.log(`🎯 Found ${tenancyAdmins.length} admins in tenancy ${tenancy.name} for feature update`);
+
         for (const admin of tenancyAdmins) {
-          console.log(`🎯 Attempting to notify tenancy admin: ${admin.email} (${admin._id})`);
-          
-          // Send as regular notification for notification center
-          const notificationSent = socketService.sendToUser(admin._id.toString(), {
-            _id: `tenancy-features-${Date.now()}-${admin._id}`,
-            type: 'tenancy_features_updated',
-            title: 'Tenancy Features Updated',
-            message: `Your tenancy features have been updated by SuperAdmin`,
-            severity: 'info',
-            data: {
-              tenancyId: id,
-              tenancyName: tenancy.name,
-              features: tenancy.subscription.features
-            },
-            isRead: false,
-            createdAt: new Date().toISOString()
-          });
-          
-          // Also send as custom event for slide notifications
-          const eventSent = socketService.sendEventToUser(admin._id.toString(), 'tenancyFeaturesUpdated', {
-            type: 'tenancyFeaturesUpdated',
-            tenancyId: id,
-            tenancyName: tenancy.name,
-            features: tenancy.subscription.features,
-            message: `Your tenancy features have been updated by SuperAdmin`,
-            timestamp: new Date()
-          });
-          
-          console.log(`📢 Notification sent to admin ${admin.email}: ${notificationSent}`);
-          console.log(`📢 Event sent to admin ${admin.email}: ${eventSent}`);
-          
-          if (!notificationSent && !eventSent) {
-            console.log(`⚠️ Admin ${admin.email} not connected to WebSocket`);
+          try {
+            // 1. Send visual notification (Green flash/Inbox)
+            await NotificationService.notifyDetailedFeatureUpdate(
+              admin._id,
+              featureChanges,
+              tenancy._id,
+              req.admin?.email || 'SuperAdmin'
+            );
+
+            // 2. Send real-time state sync (Auth Store update)
+            await permissionSyncService.notifyPermissionUpdate(
+              admin._id.toString(),
+              {
+                features: tenancy.subscription.features,
+                tenancyId: tenancy._id.toString(),
+                updatedBy: req.admin?.email || 'SuperAdmin',
+                reason: 'Tenancy features updated'
+              }
+            );
+            console.log(`📡 Feature update and notification dispatched for admin ${admin.email}`);
+          } catch (eventError) {
+            console.error('❌ Feature update dispatch failed for admin:', eventError);
           }
         }
-        
-        console.log(`📢 Emitted tenancyFeaturesUpdated event for tenancy: ${tenancy.name} to ${tenancyAdmins.length} admins`);
-      } catch (socketError) {
-        console.log('⚠️ WebSocket notification failed:', socketError.message);
+      } catch (syncError) {
+        console.error('Error in feature sync/notification process:', syncError);
       }
-      
+
       res.json({
         success: true,
         message: 'Features updated successfully',
-        data: { 
+        data: {
           tenancy: await Tenancy.findById(id).populate('owner', 'name email phone')
         }
       });
@@ -519,27 +501,27 @@ const tenancyController = {
   deleteTenancy: async (req, res) => {
     try {
       const { id } = req.params;
-      
+
       const tenancy = await Tenancy.findByIdAndUpdate(
         id,
-        { 
-          isDeleted: true, 
-          deletedAt: new Date(), 
+        {
+          isDeleted: true,
+          deletedAt: new Date(),
           status: 'inactive'
         },
         { new: true }
       );
-      
+
       if (!tenancy) {
         return res.status(404).json({
           success: false,
           message: 'Tenancy not found'
         });
       }
-      
+
       // Deactivate owner
       await User.findByIdAndUpdate(tenancy.owner, { isActive: false });
-      
+
       res.json({
         success: true,
         message: 'Tenancy deleted successfully'
@@ -558,9 +540,12 @@ const tenancyController = {
     try {
       const { id } = req.params;
       const { permissions } = req.body;
-      
+
       console.log(`🔧 SuperAdmin updating owner permissions for tenancy: ${id}`);
-      
+      console.log(`📋 Request body permissions:`, JSON.stringify(permissions, null, 2));
+      console.log(`👤 SuperAdmin user:`, req.admin?.email || 'Unknown');
+      console.log(`🕐 Timestamp:`, new Date().toISOString());
+
       // Validate permissions object
       if (!permissions || typeof permissions !== 'object') {
         return res.status(400).json({
@@ -568,7 +553,7 @@ const tenancyController = {
           message: 'Valid permissions object is required'
         });
       }
-      
+
       // Find tenancy
       const tenancy = await Tenancy.findById(id).populate('owner');
       if (!tenancy) {
@@ -577,93 +562,109 @@ const tenancyController = {
           message: 'Tenancy not found'
         });
       }
-      
+
       if (!tenancy.owner) {
         return res.status(404).json({
           success: false,
           message: 'Tenancy owner not found'
         });
       }
-      
-      // Update owner permissions
+
+      // Get current permissions for comparison
       const owner = await User.findById(tenancy.owner._id);
+      const oldPermissions = owner.permissions || {};
+
+      // Detect permission changes
+      const permissionChanges = detectPermissionChanges(oldPermissions, permissions);
+
+      // Update owner permissions
       owner.permissions = permissions;
       await owner.save();
-      
+
       console.log(`✅ Updated permissions for owner: ${owner.email}`);
-      
-      // Notify owner about permission update via WebSocket
+      console.log(`📊 Permission changes detected:`, JSON.stringify(permissionChanges, null, 2));
+
+      // Send enhanced notification with detailed changes
       try {
-        const socketService = require('../services/socketService');
-        
-        // Send tenancyPermissionsUpdated event directly to the owner
-        const notificationSent = socketService.sendEventToUser(owner._id.toString(), 'tenancyPermissionsUpdated', {
-          type: 'tenancyPermissionsUpdated',
-          tenancyId: tenancy._id,
-          tenancyName: tenancy.name,
-          ownerName: owner.name,
-          permissions: owner.permissions,
-          message: `Your access permissions have been updated by SuperAdmin`,
-          timestamp: new Date()
-        });
-        
-        console.log(`📢 Sent tenancyPermissionsUpdated to owner ${owner._id}: ${notificationSent}`);
-        
-        // Also send regular notification for notification center
-        const regularNotificationSent = socketService.sendToUser(owner._id.toString(), {
-          _id: `tenancy-permissions-${Date.now()}`,
-          type: 'tenancy_permissions_updated',
-          title: 'Your Permissions Updated',
-          message: `Your access permissions have been updated by SuperAdmin`,
-          severity: 'info',
-          data: {
-            tenancyId: tenancy._id,
-            tenancyName: tenancy.name,
-            permissions: owner.permissions
-          },
-          isRead: false,
-          createdAt: new Date().toISOString()
-        });
-        
-        console.log(`📢 Sent regular notification to owner ${owner._id}: ${regularNotificationSent}`);
-        
+        const NotificationService = require('../services/notificationService');
+
+        // Create detailed notification for owner
+        await NotificationService.notifyDetailedPermissionUpdate(
+          owner._id,
+          permissionChanges,
+          tenancy._id,
+          req.admin?.email || 'SuperAdmin'
+        );
+
+        console.log(`📧 Enhanced notification sent to owner: ${owner.email}`);
+
         // Also notify ALL tenancy admins (in case there are multiple admins)
         const User = require('../models/User');
-        const tenancyAdmins = await User.find({ 
-          tenancy: tenancy._id, 
+        const tenancyAdmins = await User.find({
+          tenancy: tenancy._id,
           role: 'admin',
           isActive: true,
           _id: { $ne: owner._id } // Exclude the owner we already notified
-        }).select('_id email name');
-        
+        }).select('_id email name permissions');
+
+        // Send notifications to all tenancy admins
         for (const admin of tenancyAdmins) {
-          const adminNotificationSent = socketService.sendEventToUser(admin._id.toString(), 'tenancyPermissionsUpdated', {
-            type: 'tenancyPermissionsUpdated',
-            tenancyId: tenancy._id,
-            tenancyName: tenancy.name,
-            ownerName: owner.name,
-            permissions: admin.permissions, // Use their own permissions
-            message: `Tenancy permissions have been updated by SuperAdmin`,
-            timestamp: new Date()
-          });
-          console.log(`📢 Sent tenancyPermissionsUpdated to admin ${admin.email}: ${adminNotificationSent}`);
+          const notifResult = await NotificationService.notifyDetailedPermissionUpdate(
+            admin._id,
+            permissionChanges,
+            tenancy._id,
+            req.admin?.email || 'SuperAdmin'
+          );
+          console.log(`📧 Enhanced notification sent to admin: ${admin.email}, Result:`, notifResult ? 'OK' : 'Failed');
         }
-        
-        // Also notify SuperAdmin users about tenancy permission update
-        socketService.sendToRecipientType('superadmin', {
-          type: 'tenancyPermissionsUpdated',
-          tenancyId: tenancy._id,
-          tenancyName: tenancy.name,
-          ownerName: owner.name,
-          permissions: owner.permissions,
-          message: `Permissions updated for ${tenancy.name} owner`,
-          timestamp: new Date()
-        });
-        console.log('📢 Emitted tenancyPermissionsUpdated event for SuperAdmin users');
+
+        // IMPORTANT: Now publish permission update events for real-time UI updates
+        // This is separate from notifications and triggers frontend permission refresh
+        const permissionSyncService = require('../services/permissionSyncService');
+
+        console.log('📡 Publishing permission update events for real-time UI updates...');
+
+        // Publish permission update event for owner (triggers frontend refresh)
+        try {
+          await permissionSyncService.notifyPermissionUpdate(
+            owner._id.toString(),
+            {
+              permissions: permissions, // Use the request body permissions which are already POJO
+              tenancyId: tenancy._id.toString(),
+              updatedBy: req.admin?.email || 'SuperAdmin',
+              reason: 'Tenancy permissions updated'
+            }
+          );
+          console.log(`📡 Permission update event published for owner ${owner.email}`);
+
+        } catch (eventError) {
+          console.error('❌ Permission update event failed for owner:', eventError);
+        }
+
+        // Publish permission update events for all tenancy admins (triggers frontend refresh)
+        for (const admin of tenancyAdmins) {
+          try {
+            await permissionSyncService.notifyPermissionUpdate(
+              admin._id.toString(),
+              {
+                permissions: permissions, // Use the request body permissions
+                tenancyId: tenancy._id.toString(),
+                updatedBy: req.admin?.email || 'SuperAdmin',
+                reason: 'Tenancy permissions updated'
+              }
+            );
+            console.log(`📡 Permission update event published for admin ${admin.email}`);
+          } catch (eventError) {
+            console.error('❌ Permission update event failed for admin:', eventError);
+          }
+        }
+
+        console.log('✅ Both notifications and permission update events sent successfully');
+
       } catch (notifyError) {
-        console.log('⚠️ WebSocket notification failed:', notifyError.message);
+        console.log('⚠️ Notification failed:', notifyError.message);
       }
-      
+
       res.json({
         success: true,
         message: 'Owner permissions updated successfully',
@@ -677,7 +678,8 @@ const tenancyController = {
               email: owner.email,
               permissions: owner.permissions
             }
-          }
+          },
+          changes: permissionChanges
         }
       });
     } catch (error) {
@@ -693,7 +695,7 @@ const tenancyController = {
   getOwnerPermissions: async (req, res) => {
     try {
       const { id } = req.params;
-      
+
       const tenancy = await Tenancy.findById(id).populate('owner', 'name email permissions');
       if (!tenancy) {
         return res.status(404).json({
@@ -701,19 +703,19 @@ const tenancyController = {
           message: 'Tenancy not found'
         });
       }
-      
+
       if (!tenancy.owner) {
         return res.status(404).json({
           success: false,
           message: 'Tenancy owner not found'
         });
       }
-      
+
       // Count permissions
       const permissions = tenancy.owner.permissions || {};
       let modules = 0;
       let totalPermissions = 0;
-      
+
       for (const [moduleName, modulePerms] of Object.entries(permissions)) {
         if (typeof modulePerms === 'object' && modulePerms !== null) {
           let moduleHasPermission = false;
@@ -726,7 +728,7 @@ const tenancyController = {
           if (moduleHasPermission) modules++;
         }
       }
-      
+
       res.json({
         success: true,
         data: {
@@ -762,7 +764,7 @@ const tenancyController = {
         Tenancy.countDocuments({ 'subscription.status': 'trial', isDeleted: false }),
         Tenancy.countDocuments({ status: 'suspended', isDeleted: false })
       ]);
-      
+
       res.json({
         success: true,
         data: {
@@ -783,5 +785,107 @@ const tenancyController = {
     }
   }
 };
+
+/**
+ * Utility function to detect permission changes between old and new permissions
+ */
+function detectPermissionChanges(oldPermissions, newPermissions) {
+  const changes = {};
+
+  // Get all unique modules from both old and new permissions, filtering out internal Mongoose properties
+  const allModules = new Set([
+    ...Object.keys(oldPermissions || {}).filter(k => !k.startsWith('$') && !k.startsWith('_')),
+    ...Object.keys(newPermissions || {}).filter(k => !k.startsWith('$') && !k.startsWith('_'))
+  ]);
+
+  for (const module of allModules) {
+    const oldModulePerms = oldPermissions[module] || {};
+    const newModulePerms = newPermissions[module] || {};
+
+    // Get all unique actions for this module, filtering out internal Mongoose properties
+    const allActions = new Set([
+      ...Object.keys(oldModulePerms).filter(k => !k.startsWith('$') && !k.startsWith('_')),
+      ...Object.keys(newModulePerms).filter(k => !k.startsWith('$') && !k.startsWith('_'))
+    ]);
+
+    const moduleChanges = {};
+    let hasChanges = false;
+
+    for (const action of allActions) {
+      const oldValue = oldModulePerms[action] || false;
+      const newValue = newModulePerms[action] || false;
+
+      if (oldValue !== newValue) {
+        moduleChanges[action] = newValue;
+        hasChanges = true;
+      }
+    }
+
+    if (hasChanges) {
+      changes[module] = moduleChanges;
+    }
+  }
+
+  return changes;
+}
+
+/**
+ * Utility function to create a human-readable permission summary message
+ */
+function createPermissionSummaryMessage(permissionChanges, updatedBy = 'SuperAdmin') {
+  const changedModules = Object.keys(permissionChanges);
+
+  if (changedModules.length === 0) {
+    return `${updatedBy} updated your permissions`;
+  }
+
+  const totalChanges = changedModules.reduce((count, module) => {
+    return count + Object.keys(permissionChanges[module]).length;
+  }, 0);
+
+  if (changedModules.length === 1) {
+    const module = changedModules[0];
+    const actions = Object.keys(permissionChanges[module]);
+    const moduleName = module.charAt(0).toUpperCase() + module.slice(1);
+
+    if (actions.length === 1) {
+      const action = actions[0];
+      const enabled = permissionChanges[module][action];
+      return `${updatedBy} ${enabled ? 'granted' : 'revoked'} ${moduleName} ${action} permission`;
+    } else {
+      return `${updatedBy} updated ${moduleName} permissions (${actions.join(', ')})`;
+    }
+  } else if (changedModules.length <= 3) {
+    const moduleNames = changedModules.map(m => m.charAt(0).toUpperCase() + m.slice(1));
+    return `${updatedBy} updated permissions for ${moduleNames.join(', ')}`;
+  } else {
+    return `${updatedBy} updated ${changedModules.length} modules with ${totalChanges} permission changes`;
+  }
+}
+
+/**
+ * Utility function to detect feature changes between old and new features
+ */
+function detectFeatureChanges(oldFeatures, newFeatures) {
+  const changes = {};
+
+  // Get all unique features from both old and new, filtering out internal Mongoose properties
+  const allFeatures = new Set([
+    ...Object.keys(oldFeatures || {}).filter(k => !k.startsWith('$') && !k.startsWith('_')),
+    ...Object.keys(newFeatures || {}).filter(k => !k.startsWith('$') && !k.startsWith('_'))
+  ]);
+
+  for (const feature of allFeatures) {
+    const oldValue = oldFeatures[feature];
+    const newValue = newFeatures[feature];
+
+    // Only record if the value actually changed
+    if (oldValue !== newValue) {
+      changes[feature] = newValue;
+    }
+  }
+
+  return changes;
+}
 
 module.exports = tenancyController;

@@ -1,24 +1,25 @@
 const { BillingPlan, TenancyInvoice, TenancyPayment } = require('../../models/TenancyBilling');
 const Tenancy = require('../../models/Tenancy');
 const FeatureDefinition = require('../../models/FeatureDefinition');
+const permissionSyncService = require('../../services/permissionSyncService');
 
 const billingController = {
   // ============ BILLING PLANS ============
-  
+
   // Get all billing plans
   getPlans: async (req, res) => {
     try {
       const { includeInactive } = req.query;
       const query = includeInactive === 'true' ? {} : { isActive: true };
       const plans = await BillingPlan.find(query).sort({ sortOrder: 1, 'price.monthly': 1 });
-      
+
       // Get feature definitions for reference
       const featureDefinitions = await FeatureDefinition.find({ isActive: true })
         .sort({ category: 1, sortOrder: 1 });
-      
+
       res.json({
         success: true,
-        data: { 
+        data: {
           plans,
           featureDefinitions
         }
@@ -32,22 +33,22 @@ const billingController = {
   // Create new custom billing plan
   createPlan: async (req, res) => {
     try {
-      const { 
-        name, 
-        displayName, 
-        description, 
-        price, 
-        features, 
+      const {
+        name,
+        displayName,
+        description,
+        price,
+        features,
         showOnMarketing,
         isPopular,
         badge,
         trialDays,
         sortOrder
       } = req.body;
-      
+
       // Generate slug from name
       const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
-      
+
       // Check if plan with this name already exists
       const existing = await BillingPlan.findOne({ name: slug });
       if (existing) {
@@ -56,13 +57,13 @@ const billingController = {
           message: 'A plan with this name already exists'
         });
       }
-      
+
       // Convert features object to Map if needed
       let featuresMap = features;
       if (features && !(features instanceof Map)) {
         featuresMap = new Map(Object.entries(features));
       }
-      
+
       const plan = await BillingPlan.create({
         name: slug,
         displayName: displayName || name,
@@ -79,7 +80,7 @@ const billingController = {
         isActive: true,
         createdBy: req.admin?._id || req.admin?.id
       });
-      
+
       res.status(201).json({
         success: true,
         message: 'Custom plan created successfully',
@@ -94,32 +95,32 @@ const billingController = {
   // Create/Update billing plan
   upsertPlan: async (req, res) => {
     try {
-      const { 
-        name, 
-        displayName, 
-        price, 
-        features, 
-        isActive, 
+      const {
+        name,
+        displayName,
+        price,
+        features,
+        isActive,
         showOnMarketing,
         isPopular,
         badge,
         trialDays,
         sortOrder
       } = req.body;
-      
+
       // Convert features object to Map if needed
       let featuresMap = features;
       if (features && !(features instanceof Map)) {
         featuresMap = new Map(Object.entries(features));
       }
-      
-      const updateData = { 
-        name, 
-        displayName, 
-        price, 
+
+      const updateData = {
+        name,
+        displayName,
+        price,
         features: featuresMap
       };
-      
+
       // Only update optional fields if explicitly provided
       if (typeof isActive === 'boolean') updateData.isActive = isActive;
       if (typeof showOnMarketing === 'boolean') updateData.showOnMarketing = showOnMarketing;
@@ -127,13 +128,13 @@ const billingController = {
       if (badge !== undefined) updateData.badge = badge;
       if (trialDays !== undefined) updateData.trialDays = trialDays;
       if (sortOrder !== undefined) updateData.sortOrder = sortOrder;
-      
+
       const plan = await BillingPlan.findOneAndUpdate(
         { name },
         updateData,
         { upsert: true, new: true }
       );
-      
+
       res.json({
         success: true,
         message: 'Plan saved successfully',
@@ -149,16 +150,16 @@ const billingController = {
   deletePlan: async (req, res) => {
     try {
       const { name } = req.params;
-      
+
       const plan = await BillingPlan.findOne({ name });
-      
+
       if (!plan) {
         return res.status(404).json({
           success: false,
           message: 'Plan not found'
         });
       }
-      
+
       // Don't allow deleting default plans
       if (plan.isDefault || ['free', 'basic', 'pro', 'enterprise'].includes(plan.name)) {
         return res.status(400).json({
@@ -166,7 +167,7 @@ const billingController = {
           message: 'Cannot delete default plans'
         });
       }
-      
+
       // Check if any tenancy is using this plan
       const tenancyCount = await Tenancy.countDocuments({ 'subscription.plan': name });
       if (tenancyCount > 0) {
@@ -175,9 +176,9 @@ const billingController = {
           message: `Cannot delete plan. ${tenancyCount} tenancies are using this plan.`
         });
       }
-      
+
       await BillingPlan.deleteOne({ name });
-      
+
       res.json({
         success: true,
         message: 'Plan deleted successfully'
@@ -189,18 +190,18 @@ const billingController = {
   },
 
   // ============ INVOICES ============
-  
+
   // Get all invoices (with filters)
   getInvoices: async (req, res) => {
     try {
       const { tenancyId, status, page = 1, limit = 20 } = req.query;
-      
+
       const query = {};
       if (tenancyId) query.tenancy = tenancyId;
       if (status) query.status = status;
-      
+
       const skip = (page - 1) * limit;
-      
+
       const [invoices, total] = await Promise.all([
         TenancyInvoice.find(query)
           .populate('tenancy', 'name subdomain')
@@ -209,7 +210,7 @@ const billingController = {
           .limit(parseInt(limit)),
         TenancyInvoice.countDocuments(query)
       ]);
-      
+
       res.json({
         success: true,
         data: {
@@ -232,20 +233,20 @@ const billingController = {
   generateInvoice: async (req, res) => {
     try {
       const { tenancyId, billingCycle = 'monthly' } = req.body;
-      
+
       const tenancy = await Tenancy.findById(tenancyId);
       if (!tenancy) {
         return res.status(404).json({ success: false, message: 'Tenancy not found' });
       }
-      
+
       const plan = await BillingPlan.findOne({ name: tenancy.subscription.plan });
       if (!plan) {
         return res.status(400).json({ success: false, message: 'Invalid plan' });
       }
-      
+
       const price = billingCycle === 'yearly' ? plan.price.yearly : plan.price.monthly;
       const tax = price * 0.18; // 18% GST
-      
+
       const now = new Date();
       const periodEnd = new Date(now);
       if (billingCycle === 'yearly') {
@@ -253,10 +254,10 @@ const billingController = {
       } else {
         periodEnd.setMonth(periodEnd.getMonth() + 1);
       }
-      
+
       const dueDate = new Date(now);
       dueDate.setDate(dueDate.getDate() + 7); // Due in 7 days
-      
+
       const invoice = await TenancyInvoice.create({
         tenancy: tenancyId,
         billingPeriod: {
@@ -274,9 +275,9 @@ const billingController = {
         dueDate,
         status: 'pending'
       });
-      
+
       await invoice.populate('tenancy', 'name subdomain');
-      
+
       res.status(201).json({
         success: true,
         message: 'Invoice generated successfully',
@@ -293,19 +294,19 @@ const billingController = {
     try {
       const { invoiceId } = req.params;
       const { paymentMethod, transactionId, notes } = req.body;
-      
+
       const invoice = await TenancyInvoice.findById(invoiceId);
       if (!invoice) {
         return res.status(404).json({ success: false, message: 'Invoice not found' });
       }
-      
+
       invoice.status = 'paid';
       invoice.paidAt = new Date();
       invoice.paymentMethod = paymentMethod || 'manual';
       invoice.paymentDetails = { transactionId };
       invoice.notes = notes;
       await invoice.save();
-      
+
       // Create payment record
       await TenancyPayment.create({
         tenancy: invoice.tenancy,
@@ -316,7 +317,7 @@ const billingController = {
         transactionId,
         notes
       });
-      
+
       // Update tenancy subscription
       const tenancy = await Tenancy.findById(invoice.tenancy);
       if (tenancy) {
@@ -324,8 +325,11 @@ const billingController = {
         tenancy.subscription.startDate = invoice.billingPeriod.start;
         tenancy.subscription.endDate = invoice.billingPeriod.end;
         await tenancy.save();
+
+        // Sync permissions
+        await permissionSyncService.syncTenancyPermissions(tenancy._id);
       }
-      
+
       res.json({
         success: true,
         message: 'Invoice marked as paid',
@@ -338,18 +342,18 @@ const billingController = {
   },
 
   // ============ PAYMENTS ============
-  
+
   // Get all payments
   getPayments: async (req, res) => {
     try {
       const { tenancyId, status, page = 1, limit = 20 } = req.query;
-      
+
       const query = {};
       if (tenancyId) query.tenancy = tenancyId;
       if (status) query.status = status;
-      
+
       const skip = (page - 1) * limit;
-      
+
       const [payments, total] = await Promise.all([
         TenancyPayment.find(query)
           .populate('tenancy', 'name subdomain')
@@ -359,7 +363,7 @@ const billingController = {
           .limit(parseInt(limit)),
         TenancyPayment.countDocuments(query)
       ]);
-      
+
       res.json({
         success: true,
         data: {
@@ -379,14 +383,14 @@ const billingController = {
   },
 
   // ============ BILLING STATS ============
-  
+
   // Get billing overview stats
   getBillingStats: async (req, res) => {
     try {
       const now = new Date();
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
       const startOfYear = new Date(now.getFullYear(), 0, 1);
-      
+
       const [
         totalRevenue,
         monthlyRevenue,
@@ -413,7 +417,7 @@ const billingController = {
           { $group: { _id: '$subscription.plan', count: { $sum: 1 } } }
         ])
       ]);
-      
+
       res.json({
         success: true,
         data: {
@@ -441,17 +445,17 @@ const billingController = {
     try {
       const { tenancyId } = req.params;
       const { plan, billingCycle } = req.body;
-      
+
       const tenancy = await Tenancy.findById(tenancyId);
       if (!tenancy) {
         return res.status(404).json({ success: false, message: 'Tenancy not found' });
       }
-      
+
       const billingPlan = await BillingPlan.findOne({ name: plan });
       if (!billingPlan) {
         return res.status(400).json({ success: false, message: 'Invalid plan' });
       }
-      
+
       // Convert features Map to plain object for tenancy
       let features = {};
       if (billingPlan.features instanceof Map) {
@@ -459,10 +463,10 @@ const billingController = {
       } else if (billingPlan.features) {
         features = billingPlan.features;
       }
-      
+
       tenancy.subscription.plan = plan;
       tenancy.subscription.features = features;
-      
+
       // Update subscription dates if upgrading
       if (billingCycle) {
         const now = new Date();
@@ -472,9 +476,12 @@ const billingController = {
           : new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
         tenancy.subscription.status = 'active';
       }
-      
+
       await tenancy.save();
-      
+
+      // Sync permissions
+      await permissionSyncService.syncTenancyPermissions(tenancy._id);
+
       res.json({
         success: true,
         message: 'Subscription updated successfully',

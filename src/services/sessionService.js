@@ -116,22 +116,26 @@ class SessionService {
 
       // Log successful login
       await AuditLog.logAction({
-        userId: admin._id,
-        userType: 'center_admin',
-        userEmail: admin.email,
-        action: 'login',
-        category: 'auth',
-        description: 'Successful login',
+        who: admin.email,
+        whoId: admin._id,
+        role: AuditLog.mapUserTypeToRole(admin.role) || 'Tenant Admin',
+        action: 'LOGIN',
+        entity: 'User',
+        entityId: admin._id.toString(),
+        tenantId: admin.tenancyId || null,
+        tenantName: admin.tenancyId ? 'Tenant' : 'Platform',
         ipAddress,
         userAgent,
+        outcome: 'success',
+        severity: isSuspicious ? 'medium' : 'low',
+        details: {
+          sessionId,
+          location,
+          isSuspicious,
+          userType: 'center_admin'
+        },
         sessionId,
-        status: 'success',
-        riskLevel: isSuspicious ? 'medium' : 'low',
-        location,
-        metadata: {
-          sessionCount: admin.sessions.length,
-          isSuspicious
-        }
+        complianceFlags: ['GDPR']
       })
 
       return {
@@ -169,20 +173,26 @@ class SessionService {
       if (session.ipAddress !== currentIP) {
         // Log IP change
         await AuditLog.logAction({
-          userId: admin._id,
-          userType: 'center_admin',
-          userEmail: admin.email,
-          action: 'ip_change',
-          category: 'auth',
-          description: `IP address changed during session`,
+          who: admin.email,
+          whoId: admin._id,
+          role: AuditLog.mapUserTypeToRole(admin.role) || 'Tenant Admin',
+          action: 'SUSPICIOUS_ACTIVITY',
+          entity: 'User',
+          entityId: admin._id.toString(),
+          tenantId: admin.tenancyId || null,
+          tenantName: admin.tenancyId ? 'Tenant' : 'Platform',
           ipAddress: currentIP,
-          sessionId,
-          status: 'warning',
-          riskLevel: 'medium',
-          metadata: {
+          userAgent: req.get('User-Agent') || 'Unknown',
+          outcome: 'warning',
+          severity: 'medium',
+          details: {
+            description: 'IP address changed during session',
             originalIP: session.ipAddress,
-            newIP: currentIP
-          }
+            newIP: currentIP,
+            sessionId
+          },
+          sessionId,
+          complianceFlags: ['GDPR']
         })
       }
 
@@ -203,17 +213,25 @@ class SessionService {
         
         // Log session termination
         await AuditLog.logAction({
-          userId: admin._id,
-          userType: 'center_admin',
-          userEmail: admin.email,
-          action: 'logout',
-          category: 'auth',
-          description: `Session terminated: ${reason}`,
+          who: admin.email,
+          whoId: admin._id,
+          role: AuditLog.mapUserTypeToRole(admin.role) || 'Tenant Admin',
+          action: 'LOGOUT',
+          entity: 'User',
+          entityId: admin._id.toString(),
+          tenantId: admin.tenancyId || null,
+          tenantName: admin.tenancyId ? 'Tenant' : 'Platform',
           ipAddress: session.ipAddress,
+          userAgent: 'Unknown',
+          outcome: 'success',
+          severity: 'low',
+          details: {
+            description: `Session terminated: ${reason}`,
+            reason,
+            sessionId
+          },
           sessionId,
-          status: 'success',
-          riskLevel: 'low',
-          metadata: { reason }
+          complianceFlags: ['GDPR']
         })
       }
 

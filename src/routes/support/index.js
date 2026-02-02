@@ -3,6 +3,7 @@ const { protect, requireSupport } = require('../../middlewares/auth');
 const { injectTenancyFromUser } = require('../../middlewares/tenancyMiddleware');
 const ticketRoutes = require('./ticketRoutes');
 const knowledgeBaseRoutes = require('./knowledgeBaseRoutes');
+const platformSupportRoutes = require('./supportRoutes');
 
 const router = express.Router();
 
@@ -11,11 +12,21 @@ router.use(protect);
 router.use(requireSupport);
 router.use(injectTenancyFromUser);
 
-// Mount ticket routes
-router.use('/tickets', ticketRoutes);
+// Mount ticket routes - Branch based on role if needed
+// For now, allow tenancy tickets to take precedence for 'support' role
+router.use('/tickets', (req, res, next) => {
+  if (req.user && req.user.role === 'support') {
+    return ticketRoutes(req, res, next);
+  }
+  next();
+});
 
 // Mount knowledge base routes
 router.use('/knowledge-base', knowledgeBaseRoutes);
+router.use('/knowledge', knowledgeBaseRoutes); // Alias for frontend
+
+// Mount platform support routes (global stats, etc.)
+router.use('/', platformSupportRoutes);
 
 // Support settings routes
 router.get('/settings', async (req, res) => {
@@ -42,7 +53,7 @@ router.get('/settings', async (req, res) => {
         ticketsPerPage: user.preferences?.ticketsPerPage ?? 10
       }
     };
-    
+
     res.json({ success: true, data: settings });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to fetch settings' });
@@ -54,13 +65,13 @@ router.put('/settings', async (req, res) => {
     const User = require('../../models/User');
     const userId = req.user._id;
     const { profile, notifications, preferences } = req.body;
-    
+
     const updateData = {};
     if (profile) {
       if (profile.name) updateData.name = profile.name;
       if (profile.phone) updateData.phone = profile.phone;
     }
-    
+
     if (notifications || preferences) {
       updateData.preferences = {
         ...req.user.preferences,
@@ -68,7 +79,7 @@ router.put('/settings', async (req, res) => {
         ...preferences
       };
     }
-    
+
     await User.findByIdAndUpdate(userId, updateData);
     res.json({ success: true, message: 'Settings updated successfully' });
   } catch (error) {
@@ -82,9 +93,9 @@ router.get('/messages', async (req, res) => {
     const Ticket = require('../../models/Ticket');
     const supportUserId = req.user._id;
     const tenancyId = req.tenancyId;
-    
+
     console.log('🔍 Fetching messages for support user:', supportUserId, 'in tenancy:', tenancyId);
-    
+
     // Get tickets with messages for this support user's tenancy
     const tickets = await Ticket.find({
       tenancy: tenancyId,
@@ -93,14 +104,14 @@ router.get('/messages', async (req, res) => {
         { assignedTo: null, status: 'open' }
       ]
     })
-    .populate('raisedBy', 'name email role')
-    .populate('messages.sender', 'name email role')
-    .select('ticketNumber title messages raisedBy priority status createdAt')
-    .sort({ updatedAt: -1 })
-    .limit(50);
-    
+      .populate('raisedBy', 'name email role')
+      .populate('messages.sender', 'name email role')
+      .select('ticketNumber title messages raisedBy priority status createdAt')
+      .sort({ updatedAt: -1 })
+      .limit(50);
+
     console.log('📧 Found tickets with messages:', tickets.length);
-    
+
     // Transform tickets into message format
     const messages = [];
     tickets.forEach(ticket => {
@@ -128,7 +139,7 @@ router.get('/messages', async (req, res) => {
         });
       }
     });
-    
+
     console.log('📤 Sending messages:', messages.length);
     res.json({ success: true, data: messages });
   } catch (error) {
@@ -142,23 +153,23 @@ router.post('/messages/:messageId/read', async (req, res) => {
     // Extract ticket ID from message ID
     const messageId = req.params.messageId;
     const ticketId = messageId.split('-')[0];
-    
+
     const Ticket = require('../../models/Ticket');
     const supportUserId = req.user._id;
     const tenancyId = req.tenancyId;
-    
+
     // Find and assign ticket if unassigned
     const ticket = await Ticket.findOne({
       _id: ticketId,
       tenancy: tenancyId
     });
-    
+
     if (ticket && !ticket.assignedTo) {
       ticket.assignedTo = supportUserId;
       ticket.status = 'in_progress';
       await ticket.save();
     }
-    
+
     res.json({ success: true, message: 'Message marked as read' });
   } catch (error) {
     console.error('Error marking message as read:', error);
@@ -171,30 +182,30 @@ router.post('/messages/:messageId/reply', async (req, res) => {
     const messageId = req.params.messageId;
     const ticketId = messageId.split('-')[0];
     const { content } = req.body;
-    
+
     const Ticket = require('../../models/Ticket');
     const supportUserId = req.user._id;
     const tenancyId = req.tenancyId;
-    
+
     const ticket = await Ticket.findOne({
       _id: ticketId,
       tenancy: tenancyId
     });
-    
+
     if (!ticket) {
       return res.status(404).json({ success: false, message: 'Ticket not found' });
     }
-    
+
     // Add reply message
     await ticket.addMessage(supportUserId, content, false);
-    
+
     // Update ticket status if needed
     if (ticket.status === 'open') {
       ticket.status = 'in_progress';
       ticket.assignedTo = supportUserId;
       await ticket.save();
     }
-    
+
     res.json({ success: true, message: 'Reply sent successfully' });
   } catch (error) {
     console.error('Error sending reply:', error);
@@ -209,42 +220,42 @@ router.get('/performance', async (req, res) => {
     const supportUserId = req.user._id;
     const tenancyId = req.tenancyId;
     const { timeRange = '7d' } = req.query;
-    
+
     // Calculate date range
     const days = timeRange === '30d' ? 30 : timeRange === '90d' ? 90 : 7;
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
-    
+
     // Get tickets resolved by this support user in the time range
     const resolvedTickets = await Ticket.find({
       tenancy: tenancyId,
       resolvedBy: supportUserId,
       resolvedAt: { $gte: startDate }
     });
-    
+
     // Get all tickets assigned to this support user
     const allAssignedTickets = await Ticket.find({
       tenancy: tenancyId,
       assignedTo: supportUserId
     });
-    
+
     // Calculate metrics
     const ticketsResolved = resolvedTickets.length;
     const totalTickets = allAssignedTickets.length;
     const activeTickets = allAssignedTickets.filter(t => ['open', 'in_progress'].includes(t.status)).length;
     const resolutionRate = totalTickets > 0 ? (ticketsResolved / totalTickets) * 100 : 0;
-    
+
     // Calculate average response time (mock data for now)
-    const averageResponseTime = resolvedTickets.length > 0 ? 
+    const averageResponseTime = resolvedTickets.length > 0 ?
       resolvedTickets.reduce((sum, ticket) => {
-        const responseTime = ticket.firstResponseAt ? 
+        const responseTime = ticket.firstResponseAt ?
           (new Date(ticket.firstResponseAt) - new Date(ticket.createdAt)) / (1000 * 60 * 60) : 24;
         return sum + responseTime;
       }, 0) / resolvedTickets.length : 12;
-    
+
     // Mock customer satisfaction (would come from surveys)
     const customerSatisfaction = 87.5;
-    
+
     const metrics = {
       ticketsResolved,
       averageResponseTime: Math.round(averageResponseTime * 10) / 10,
@@ -255,7 +266,7 @@ router.get('/performance', async (req, res) => {
       responseTimeTarget: 24,
       satisfactionTarget: 90
     };
-    
+
     res.json({ success: true, data: metrics });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to fetch performance metrics' });

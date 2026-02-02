@@ -1,9 +1,9 @@
-const Role = require('../models/Role')
-const User = require('../models/User')
+const SuperAdminRole = require('../models/SuperAdminRole')
+const SuperAdmin = require('../models/SuperAdmin')
 const AuditLog = require('../models/AuditLog')
 const { validationResult } = require('express-validator')
 
-class CenterAdminRoleController {
+class SuperAdminRoleController {
   // Get all roles with filters
   async getRoles(req, res) {
     try {
@@ -36,25 +36,24 @@ class CenterAdminRoleController {
       }
 
       // Execute query with pagination
-      const roles = await Role.find(query)
+      const roles = await SuperAdminRole.find(query)
         .populate('createdBy', 'name email')
         .populate('lastModifiedBy', 'name email')
-        .populate('parentRole', 'name displayName')
-        .sort({ level: 1, createdAt: -1 })
+        .sort({ createdAt: -1 })
         .limit(limit * 1)
         .skip((page - 1) * limit)
         .lean()
 
-      const total = await Role.countDocuments(query)
+      const total = await SuperAdminRole.countDocuments(query)
 
       // Get user count for each role
       const rolesWithStats = await Promise.all(
         roles.map(async (role) => {
-          const userCount = await User.countDocuments({ role: role.name })
+          const userCount = await SuperAdmin.countDocuments({ roles: role._id })
           return {
             ...role,
             userCount,
-            permissionCount: role.permissions?.length || 0
+            permissionCount: role.permissions ? Object.keys(role.permissions).length : 0
           }
         })
       )
@@ -85,11 +84,9 @@ class CenterAdminRoleController {
     try {
       const { roleId } = req.params
 
-      const role = await Role.findById(roleId)
+      const role = await SuperAdminRole.findById(roleId)
         .populate('createdBy', 'name email')
         .populate('lastModifiedBy', 'name email')
-        .populate('parentRole', 'name displayName level')
-        .populate('childRoles', 'name displayName level')
 
       if (!role) {
         return res.status(404).json({
@@ -99,9 +96,8 @@ class CenterAdminRoleController {
       }
 
       // Get users with this role
-      const users = await User.find({ role: role.name })
-        .select('name email branchId isActive')
-        .populate('branchId', 'name code')
+      const users = await SuperAdmin.find({ roles: role._id })
+        .select('name email isActive')
         .lean()
 
       return res.json({
@@ -135,11 +131,14 @@ class CenterAdminRoleController {
 
       const roleData = {
         ...req.body,
-        createdBy: req.admin._id
+        createdBy: req.superAdmin._id
       }
 
+      // Generate slug from name
+      roleData.slug = roleData.name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
+
       // Check if role name is unique
-      const existingRole = await Role.findOne({ name: roleData.name })
+      const existingRole = await SuperAdminRole.findOne({ slug: roleData.slug })
       if (existingRole) {
         return res.status(400).json({
           success: false,
@@ -147,37 +146,28 @@ class CenterAdminRoleController {
         })
       }
 
-      const role = new Role(roleData)
+      const role = new SuperAdminRole(roleData)
       await role.save()
-
-      // Update parent role's child roles if specified
-      if (roleData.parentRole) {
-        await Role.findByIdAndUpdate(
-          roleData.parentRole,
-          { $push: { childRoles: role._id } }
-        )
-      }
 
       // Log the creation
       await AuditLog.logAction({
-        userId: req.admin._id,
-        userType: 'center_admin',
-        userEmail: req.admin.email,
-        action: 'create_role',
-        category: 'users',
-        description: `Created new role: ${role.displayName} (${role.name})`,
+        userId: req.superAdmin._id,
+        userType: 'superadmin',
+        userEmail: req.superAdmin.email,
+        action: 'create_platform_role',
+        category: 'rbac',
+        description: `Created new platform role: ${role.name}`,
         ipAddress: req.ip,
         userAgent: req.get('User-Agent'),
         sessionId: req.sessionId,
-        resourceType: 'role',
+        resourceType: 'superadmin_role',
         resourceId: role._id.toString(),
         status: 'success',
         riskLevel: 'medium',
         metadata: {
           roleName: role.name,
-          roleLevel: role.level,
-          category: role.category,
-          permissionCount: role.permissions.length
+          roleSlug: role.slug,
+          permissionCount: role.permissions ? Object.keys(role.permissions).length : 0
         }
       })
 
@@ -210,7 +200,7 @@ class CenterAdminRoleController {
       const { roleId } = req.params
       const updateData = req.body
 
-      const role = await Role.findById(roleId)
+      const role = await SuperAdminRole.findById(roleId)
       if (!role) {
         return res.status(404).json({
           success: false,
@@ -219,10 +209,10 @@ class CenterAdminRoleController {
       }
 
       // Check if it's a system role and prevent critical changes
-      if (role.isSystemRole && (updateData.name || updateData.level)) {
+      if (role.isDefault && (updateData.name || updateData.slug)) {
         return res.status(400).json({
           success: false,
-          message: 'Cannot modify name or level of system roles'
+          message: 'Cannot modify name or slug of default roles'
         })
       }
 
@@ -231,21 +221,21 @@ class CenterAdminRoleController {
 
       // Update role
       Object.assign(role, updateData)
-      role.lastModifiedBy = req.admin._id
+      role.lastModifiedBy = req.superAdmin._id
       await role.save()
 
       // Log the update
       await AuditLog.logAction({
-        userId: req.admin._id,
-        userType: 'center_admin',
-        userEmail: req.admin.email,
-        action: 'update_role',
-        category: 'users',
-        description: `Updated role: ${role.displayName} (${role.name})`,
+        userId: req.superAdmin._id,
+        userType: 'superadmin',
+        userEmail: req.superAdmin.email,
+        action: 'update_platform_role',
+        category: 'rbac',
+        description: `Updated platform role: ${role.name}`,
         ipAddress: req.ip,
         userAgent: req.get('User-Agent'),
         sessionId: req.sessionId,
-        resourceType: 'role',
+        resourceType: 'superadmin_role',
         resourceId: role._id.toString(),
         status: 'success',
         riskLevel: 'high',
@@ -274,7 +264,7 @@ class CenterAdminRoleController {
     try {
       const { roleId } = req.params
 
-      const role = await Role.findById(roleId)
+      const role = await SuperAdminRole.findById(roleId)
       if (!role) {
         return res.status(404).json({
           success: false,
@@ -282,16 +272,16 @@ class CenterAdminRoleController {
         })
       }
 
-      // Check if it's a system role
-      if (role.isSystemRole) {
+      // Check if it's a default role
+      if (role.isDefault) {
         return res.status(400).json({
           success: false,
-          message: 'Cannot delete system roles'
+          message: 'Cannot delete default roles'
         })
       }
 
       // Check if role is in use
-      const userCount = await User.countDocuments({ role: role.name })
+      const userCount = await SuperAdmin.countDocuments({ roles: role._id })
       if (userCount > 0) {
         return res.status(400).json({
           success: false,
@@ -299,40 +289,26 @@ class CenterAdminRoleController {
         })
       }
 
-      // Remove from parent role's child roles
-      if (role.parentRole) {
-        await Role.findByIdAndUpdate(
-          role.parentRole,
-          { $pull: { childRoles: role._id } }
-        )
-      }
-
-      // Update child roles to remove parent reference
-      await Role.updateMany(
-        { parentRole: role._id },
-        { $unset: { parentRole: 1 } }
-      )
-
-      await Role.findByIdAndDelete(roleId)
+      await SuperAdminRole.findByIdAndDelete(roleId)
 
       // Log the deletion
       await AuditLog.logAction({
-        userId: req.admin._id,
-        userType: 'center_admin',
-        userEmail: req.admin.email,
-        action: 'delete_role',
-        category: 'users',
-        description: `Deleted role: ${role.displayName} (${role.name})`,
+        userId: req.superAdmin._id,
+        userType: 'superadmin',
+        userEmail: req.superAdmin.email,
+        action: 'delete_platform_role',
+        category: 'rbac',
+        description: `Deleted platform role: ${role.name}`,
         ipAddress: req.ip,
         userAgent: req.get('User-Agent'),
         sessionId: req.sessionId,
-        resourceType: 'role',
+        resourceType: 'superadmin_role',
         resourceId: role._id.toString(),
         status: 'success',
         riskLevel: 'high',
         metadata: {
           roleName: role.name,
-          roleLevel: role.level,
+          roleSlug: role.slug,
           userCount
         }
       })
@@ -356,7 +332,7 @@ class CenterAdminRoleController {
       const { roleId } = req.params
       const { module, actions, restrictions } = req.body
 
-      const role = await Role.findById(roleId)
+      const role = await SuperAdminRole.findById(roleId)
       if (!role) {
         return res.status(404).json({
           success: false,
@@ -364,20 +340,27 @@ class CenterAdminRoleController {
         })
       }
 
-      await role.addPermission(module, actions, restrictions)
+      // Add permission to role
+      if (!role.permissions[module]) {
+        role.permissions[module] = {}
+      }
+      
+      Object.assign(role.permissions[module], actions)
+      role.markModified('permissions')
+      await role.save()
 
       // Log the permission addition
       await AuditLog.logAction({
-        userId: req.admin._id,
-        userType: 'center_admin',
-        userEmail: req.admin.email,
-        action: 'add_role_permission',
-        category: 'users',
-        description: `Added ${module} permissions to role: ${role.displayName}`,
+        userId: req.superAdmin._id,
+        userType: 'superadmin',
+        userEmail: req.superAdmin.email,
+        action: 'add_platform_role_permission',
+        category: 'rbac',
+        description: `Added ${module} permissions to platform role: ${role.name}`,
         ipAddress: req.ip,
         userAgent: req.get('User-Agent'),
         sessionId: req.sessionId,
-        resourceType: 'role',
+        resourceType: 'superadmin_role',
         resourceId: role._id.toString(),
         status: 'success',
         riskLevel: 'medium',
@@ -409,7 +392,7 @@ class CenterAdminRoleController {
       const { roleId } = req.params
       const { module, action } = req.body
 
-      const role = await Role.findById(roleId)
+      const role = await SuperAdminRole.findById(roleId)
       if (!role) {
         return res.status(404).json({
           success: false,
@@ -417,20 +400,25 @@ class CenterAdminRoleController {
         })
       }
 
-      await role.removePermission(module, action)
+      // Remove permission from role
+      if (role.permissions[module] && role.permissions[module][action]) {
+        role.permissions[module][action] = false
+        role.markModified('permissions')
+        await role.save()
+      }
 
       // Log the permission removal
       await AuditLog.logAction({
-        userId: req.admin._id,
-        userType: 'center_admin',
-        userEmail: req.admin.email,
-        action: 'remove_role_permission',
-        category: 'users',
-        description: `Removed ${module} permissions from role: ${role.displayName}`,
+        userId: req.superAdmin._id,
+        userType: 'superadmin',
+        userEmail: req.superAdmin.email,
+        action: 'remove_platform_role_permission',
+        category: 'rbac',
+        description: `Removed ${module} permissions from platform role: ${role.name}`,
         ipAddress: req.ip,
         userAgent: req.get('User-Agent'),
         sessionId: req.sessionId,
-        resourceType: 'role',
+        resourceType: 'superadmin_role',
         resourceId: role._id.toString(),
         status: 'success',
         riskLevel: 'medium',
@@ -460,15 +448,15 @@ class CenterAdminRoleController {
     try {
       const { userId, roleId } = req.body
 
-      const user = await User.findById(userId)
+      const user = await SuperAdmin.findById(userId)
       if (!user) {
         return res.status(404).json({
           success: false,
-          message: 'User not found'
+          message: 'SuperAdmin user not found'
         })
       }
 
-      const role = await Role.findById(roleId)
+      const role = await SuperAdminRole.findById(roleId)
       if (!role) {
         return res.status(404).json({
           success: false,
@@ -476,44 +464,34 @@ class CenterAdminRoleController {
         })
       }
 
-      const previousRole = user.role
+      const previousRoles = user.roles || []
 
-      // Update user role
-      user.role = role.name
-      await user.save()
-
-      // Update role stats
-      if (previousRole) {
-        await Role.findOneAndUpdate(
-          { name: previousRole },
-          { $inc: { 'stats.userCount': -1 } }
-        )
+      // Add role to user's roles array if not already present
+      if (!user.roles.includes(role._id)) {
+        user.roles.push(role._id)
+        await user.save()
       }
-      
-      role.stats.userCount += 1
-      role.stats.lastUsed = new Date()
-      await role.save()
 
       // Log the role assignment
       await AuditLog.logAction({
-        userId: req.admin._id,
-        userType: 'center_admin',
-        userEmail: req.admin.email,
-        action: 'assign_role',
-        category: 'users',
-        description: `Assigned role ${role.displayName} to user ${user.name}`,
+        userId: req.superAdmin._id,
+        userType: 'superadmin',
+        userEmail: req.superAdmin.email,
+        action: 'assign_platform_role',
+        category: 'rbac',
+        description: `Assigned platform role ${role.name} to SuperAdmin ${user.name}`,
         ipAddress: req.ip,
         userAgent: req.get('User-Agent'),
         sessionId: req.sessionId,
-        resourceType: 'user',
+        resourceType: 'superadmin',
         resourceId: user._id.toString(),
         status: 'success',
         riskLevel: 'medium',
         metadata: {
           userName: user.name,
           userEmail: user.email,
-          newRole: role.name,
-          previousRole
+          newRole: role.slug,
+          previousRoles
         }
       })
 
@@ -534,16 +512,16 @@ class CenterAdminRoleController {
   // Initialize default roles
   async initializeDefaultRoles(req, res) {
     try {
-      const createdRoles = await Role.createDefaultRoles(req.admin._id)
+      const createdRoles = await SuperAdminRole.createDefaultRoles()
 
       // Log the initialization
       await AuditLog.logAction({
-        userId: req.admin._id,
-        userType: 'center_admin',
-        userEmail: req.admin.email,
-        action: 'initialize_default_roles',
+        userId: req.superAdmin._id,
+        userType: 'superadmin',
+        userEmail: req.superAdmin.email,
+        action: 'initialize_default_platform_roles',
         category: 'system',
-        description: `Initialized ${createdRoles.length} default roles`,
+        description: `Initialized ${createdRoles.length} default platform roles`,
         ipAddress: req.ip,
         userAgent: req.get('User-Agent'),
         sessionId: req.sessionId,
@@ -571,38 +549,15 @@ class CenterAdminRoleController {
   // Get role hierarchy
   async getRoleHierarchy(req, res) {
     try {
-      const roles = await Role.find({ isActive: true })
-        .select('name displayName level parentRole childRoles category')
-        .populate('parentRole', 'name displayName level')
-        .populate('childRoles', 'name displayName level')
-        .sort({ level: 1 })
+      const roles = await SuperAdminRole.find({ isActive: true })
+        .select('name slug description isDefault color')
+        .sort({ createdAt: -1 })
         .lean()
-
-      // Build hierarchy tree
-      const roleMap = new Map()
-      const rootRoles = []
-
-      // Create role map
-      roles.forEach(role => {
-        roleMap.set(role._id.toString(), { ...role, children: [] })
-      })
-
-      // Build tree structure
-      roles.forEach(role => {
-        if (role.parentRole) {
-          const parent = roleMap.get(role.parentRole._id.toString())
-          if (parent) {
-            parent.children.push(roleMap.get(role._id.toString()))
-          }
-        } else {
-          rootRoles.push(roleMap.get(role._id.toString()))
-        }
-      })
 
       return res.json({
         success: true,
         data: {
-          hierarchy: rootRoles,
+          hierarchy: roles, // For platform roles, we don't have hierarchy
           totalRoles: roles.length
         }
       })
@@ -616,4 +571,4 @@ class CenterAdminRoleController {
   }
 }
 
-module.exports = new CenterAdminRoleController()
+module.exports = new SuperAdminRoleController()

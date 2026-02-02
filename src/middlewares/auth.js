@@ -468,12 +468,31 @@ const requireBranchAdmin = (req, res, next) => {
   next();
 };
 
-// Require support role
+// Require support role or SuperAdmin with Platform Support RBAC role
 const requireSupport = (req, res, next) => {
   if (req.isSuperAdmin) {
-    return next();
+    // For SuperAdmin users, check if they have Platform Support RBAC role
+    if (req.user.roles && req.user.roles.length > 0) {
+      const hasPlatformSupport = req.user.roles.some(role => 
+        role.slug === 'platform-support' || role.name === 'Platform Support'
+      );
+      if (hasPlatformSupport) {
+        return next();
+      }
+    }
+    
+    // Also allow legacy SuperAdmin access for backward compatibility
+    if (req.user.role === 'superadmin') {
+      return next();
+    }
+    
+    return res.status(403).json({
+      success: false,
+      message: 'Access denied. Platform Support role required.'
+    });
   }
   
+  // For regular users, check support role
   if (req.user.role !== 'support') {
     return res.status(403).json({
       success: false,

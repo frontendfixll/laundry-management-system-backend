@@ -1,0 +1,41 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Add-on Cancelled</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: #607D8B; color: white; padding: 20px; text-align: center; }
+        .content { padding: 20px; background: #f9f9f9; }
+        .footer { padding: 20px; text-align: center; color: #666; }
+        .button { display: inline-block; padding: 10px 20px; background: #607D8B; color: white; text-decoration: none; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Add-on Cancelled</h1>
+        </div>
+        <div class="content">
+            <p>Dear {{tenantName}},</p>
+            <p>Your add-on <strong>{{addOnName}}</strong> has been cancelled successfully.</p>
+            {{#if effectiveDate}}
+            <p><strong>Effective Date:</strong> {{effectiveDate}}</p>
+            {{/if}}
+            {{#if refundAmount}}
+            <p><strong>Refund Amount:</strong> {{refundAmount}}</p>
+            {{/if}}
+            <p>You can re-purchase this add-on anytime from our marketplace.</p>
+            {{#if marketplaceUrl}}
+            <p><a href="{{marketplaceUrl}}" class="button">Browse Add-ons</a></p>
+            {{/if}}
+            <p>Thank you for using LaundryPro!</p>
+        </div>
+        <div class="footer">
+            <p>LaundryPro Team</p>
+        </div>
+    </div>
+</body>
+</html>
