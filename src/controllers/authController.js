@@ -364,8 +364,8 @@ const login = async (req, res) => {
         });
       }
 
-      // Update last login with timeout
-      await addTimeout(user.updateLastLogin(), 2000);
+      // Update last login with timeout (temporarily disabled for debugging)
+      // await addTimeout(user.updateLastLogin(), 2000);
 
       // Generate access token (include assignedBranch and tenancy for admin)
       const accessToken = generateAccessToken(
