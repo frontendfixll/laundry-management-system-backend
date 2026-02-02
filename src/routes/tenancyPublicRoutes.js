@@ -10,6 +10,26 @@ router.get('/branding/:identifier', async (req, res) => {
     const { identifier } = req.params;
     console.log('🔍 Fetching branding for identifier:', identifier);
     
+    // Check if MongoDB is connected and attempt to connect if not
+    const mongoose = require('mongoose');
+    if (mongoose.connection.readyState !== 1) {
+      console.log('🔄 MongoDB not connected, attempting to connect...');
+      try {
+        const connectDB = require('../config/database');
+        await connectDB();
+      } catch (dbError) {
+        console.error('❌ Failed to connect to database:', dbError.message);
+        return res.status(500).json({
+          success: false,
+          message: 'Database connection unavailable. Please try again later.'
+        });
+      }
+    }
+
+    // Use timeout for serverless environment
+    const isVercel = process.env.VERCEL || process.env.VERCEL_ENV || process.env.NODE_ENV === 'production';
+    const queryTimeout = isVercel ? 3000 : 10000;
+    
     // Find tenancy by slug, subdomain, or custom domain
     const tenancy = await Tenancy.findOne({
       $or: [
@@ -20,7 +40,9 @@ router.get('/branding/:identifier', async (req, res) => {
       // Temporarily remove status filter for debugging
       // status: 'active',
       // isDeleted: false
-    }).select('name slug subdomain customDomain branding landingPageTemplate contact businessHours settings.currency settings.language status isDeleted');
+    })
+    .select('name slug subdomain customDomain branding landingPageTemplate contact businessHours settings.currency settings.language status isDeleted')
+    .maxTimeMS(queryTimeout);
     
     console.log('🔍 Tenancy found:', tenancy ? tenancy.name : 'null');
     console.log('🔍 Tenancy status:', tenancy?.status);
@@ -38,7 +60,10 @@ router.get('/branding/:identifier', async (req, res) => {
     const branches = await Branch.find({
       tenancy: tenancy._id,
       isActive: true
-    }).select('_id name code address contact phone').lean();
+    })
+    .select('_id name code address contact phone')
+    .maxTimeMS(queryTimeout)
+    .lean();
     
     res.json({
       success: true,
@@ -63,6 +88,33 @@ router.get('/branding/:identifier', async (req, res) => {
     });
   } catch (error) {
     console.error('Get tenancy branding error:', error);
+    
+    // Return fallback response for better UX
+    if (error.name === 'MongooseError' || error.message.includes('buffering timed out')) {
+      console.log('🔄 Returning fallback branding due to connection timeout');
+      return res.json({
+        success: true,
+        data: {
+          name: 'LaundryLobby',
+          slug: req.params.identifier,
+          subdomain: req.params.identifier,
+          branding: {
+            landingPageTemplate: 'original',
+            theme: {
+              primaryColor: '#3B82F6',
+              secondaryColor: '#1E40AF'
+            }
+          },
+          landingPageTemplate: 'original',
+          contact: {},
+          businessHours: {},
+          branches: [],
+          tenancyId: null,
+          fallback: true
+        }
+      });
+    }
+    
     res.status(500).json({ success: false, message: 'Failed to fetch branding' });
   }
 });

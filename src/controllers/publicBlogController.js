@@ -7,6 +7,14 @@ const BlogAnalytics = require('../models/BlogAnalytics');
 // Get published blog posts with filtering
 exports.getPublishedPosts = async (req, res) => {
   try {
+    // Check MongoDB connection first for serverless
+    const mongoose = require('mongoose');
+    if (mongoose.connection.readyState !== 1) {
+      console.log('🔄 MongoDB not connected, attempting to connect...');
+      const connectDB = require('../config/database');
+      await connectDB();
+    }
+    
     const { 
       page = 1, 
       limit = 12, 
@@ -59,6 +67,10 @@ exports.getPublishedPosts = async (req, res) => {
       ];
     }
     
+    // Use timeout for serverless environment
+    const isVercel = process.env.VERCEL || process.env.VERCEL_ENV || process.env.NODE_ENV === 'production';
+    const queryTimeout = isVercel ? 3000 : 10000;
+    
     const posts = await BlogPost.find(query)
       .populate('category', 'name slug color icon')
       .populate('author', 'name')
@@ -66,9 +78,10 @@ exports.getPublishedPosts = async (req, res) => {
       .select('-content') // Don't send full content in list view
       .sort({ publishedAt: -1 })
       .limit(limit * 1)
-      .skip((page - 1) * limit);
+      .skip((page - 1) * limit)
+      .maxTimeMS(queryTimeout); // Add query timeout
     
-    const total = await BlogPost.countDocuments(query);
+    const total = await BlogPost.countDocuments(query).maxTimeMS(queryTimeout);
     
     res.json({
       success: true,
@@ -82,6 +95,25 @@ exports.getPublishedPosts = async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('❌ Blog posts query error:', error);
+    
+    // Return empty result instead of error for better UX
+    if (error.name === 'MongooseError' || error.message.includes('buffering timed out')) {
+      console.log('🔄 Returning empty result due to connection timeout');
+      return res.json({
+        success: true,
+        data: [],
+        pagination: {
+          current: 1,
+          pages: 0,
+          total: 0,
+          hasNext: false,
+          hasPrev: false
+        },
+        message: 'Blog posts temporarily unavailable'
+      });
+    }
+    
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -170,6 +202,14 @@ exports.getPostBySlug = async (req, res) => {
 // Get blog categories for public use
 exports.getPublicCategories = async (req, res) => {
   try {
+    // Check MongoDB connection first for serverless
+    const mongoose = require('mongoose');
+    if (mongoose.connection.readyState !== 1) {
+      console.log('🔄 MongoDB not connected, attempting to connect...');
+      const connectDB = require('../config/database');
+      await connectDB();
+    }
+    
     const { visibility = 'both', tenantId } = req.query;
     
     const query = { isActive: true };
@@ -185,8 +225,13 @@ exports.getPublicCategories = async (req, res) => {
       query.visibility = { $in: [visibility, 'both'] };
     }
     
+    // Use timeout for serverless environment
+    const isVercel = process.env.VERCEL || process.env.VERCEL_ENV || process.env.NODE_ENV === 'production';
+    const queryTimeout = isVercel ? 3000 : 10000;
+    
     const categories = await BlogCategory.find(query)
-      .sort({ sortOrder: 1, name: 1 });
+      .sort({ sortOrder: 1, name: 1 })
+      .maxTimeMS(queryTimeout);
     
     // Get post count for each category
     const categoriesWithCount = await Promise.all(
@@ -204,7 +249,7 @@ exports.getPublicCategories = async (req, res) => {
           postQuery.tenantId = null;
         }
         
-        const postCount = await BlogPost.countDocuments(postQuery);
+        const postCount = await BlogPost.countDocuments(postQuery).maxTimeMS(queryTimeout);
         
         return {
           ...category.toObject(),
@@ -215,6 +260,18 @@ exports.getPublicCategories = async (req, res) => {
     
     res.json({ success: true, data: categoriesWithCount });
   } catch (error) {
+    console.error('❌ Blog categories query error:', error);
+    
+    // Return empty result instead of error for better UX
+    if (error.name === 'MongooseError' || error.message.includes('buffering timed out')) {
+      console.log('🔄 Returning empty categories due to connection timeout');
+      return res.json({
+        success: true,
+        data: [],
+        message: 'Blog categories temporarily unavailable'
+      });
+    }
+    
     res.status(500).json({ success: false, message: error.message });
   }
 };

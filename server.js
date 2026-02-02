@@ -67,22 +67,26 @@ const setupCronJobs = () => {
 
 // For Vercel serverless functions, export the app immediately
 if (isVercel) {
-  // Connect to MongoDB asynchronously with better error handling
-  connectDB().then(async () => {
-    console.log('✅ Database connected in serverless mode');
-    
-    // Socket.IO Notification Engine will be initialized when needed
-    console.log('🔄 Socket.IO Notification Engine ready for serverless mode...');
-  }).catch(err => {
-    console.warn('⚠️  MongoDB connection failed, running without database');
-    console.warn('💡 Some features will be limited without database connection');
-    console.warn('🔧 Error:', err.message);
-    console.warn('🔧 MongoDB URI exists:', !!process.env.MONGODB_URI);
-  });
+  // Don't wait for connection in serverless - connect on demand
+  console.log('🌐 Vercel serverless mode: Setting up on-demand connection');
   
   // Add a simple test route to verify the app is working
-  app.get('/test', (req, res) => {
+  app.get('/test', async (req, res) => {
     const mongoose = require('mongoose');
+    let connectionStatus = 'unknown';
+    
+    try {
+      // Try to connect if not connected
+      if (mongoose.connection.readyState !== 1) {
+        console.log('🔄 Test route: Attempting MongoDB connection...');
+        await connectDB();
+      }
+      connectionStatus = 'connected';
+    } catch (error) {
+      console.error('❌ Test route: Connection failed:', error.message);
+      connectionStatus = 'failed';
+    }
+    
     res.json({
       success: true,
       message: 'Test route working in Vercel',
@@ -91,6 +95,7 @@ if (isVercel) {
       nodeVersion: process.version,
       platform: process.platform,
       mongooseState: mongoose.connection.readyState,
+      connectionStatus,
       mongooseStates: {
         0: 'disconnected',
         1: 'connected',

@@ -259,18 +259,31 @@ const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Check if MongoDB is connected
+    // Check if MongoDB is connected and attempt to connect if not
     const mongoose = require('mongoose');
     if (mongoose.connection.readyState !== 1) {
-      console.error('❌ MongoDB not connected, readyState:', mongoose.connection.readyState);
-      return res.status(500).json({
-        success: false,
-        message: 'Database connection unavailable. Please try again later.'
-      });
+      console.log('🔄 MongoDB not connected, attempting to connect...');
+      try {
+        const connectDB = require('../config/database');
+        await connectDB();
+      } catch (dbError) {
+        console.error('❌ Failed to connect to database:', dbError.message);
+        return res.status(500).json({
+          success: false,
+          message: 'Database connection unavailable. Please try again later.'
+        });
+      }
     }
 
+    // Use timeout for serverless environment
+    const isVercel = process.env.VERCEL || process.env.VERCEL_ENV || process.env.NODE_ENV === 'production';
+    const queryTimeout = isVercel ? 3000 : 10000;
+
     // Find user and include password
-    const user = await User.findOne({ email }).select('+password').populate('tenancy', 'name slug subdomain branding status subscription');
+    const user = await User.findOne({ email })
+      .select('+password')
+      .populate('tenancy', 'name slug subdomain branding status subscription')
+      .maxTimeMS(queryTimeout);
     
     if (!user) {
       // Track failed attempt for unknown email

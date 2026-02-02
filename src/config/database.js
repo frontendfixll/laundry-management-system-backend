@@ -10,24 +10,32 @@ const connectDB = async () => {
     // For Vercel serverless, use more aggressive timeouts
     const isVercel = process.env.VERCEL || process.env.VERCEL_ENV || process.env.NODE_ENV === 'production';
     
+    // Check if already connected
+    if (mongoose.connection.readyState === 1) {
+      console.log('✅ MongoDB already connected');
+      return mongoose.connection;
+    }
+    
     // Don't disable buffering initially - let connection establish first
     console.log('🔄 Connecting to MongoDB...');
     console.log('🌍 Environment:', process.env.NODE_ENV);
     console.log('🚀 Platform:', isVercel ? 'Vercel Serverless' : 'Traditional Server');
     console.log('🔗 MongoDB URI exists:', !!process.env.MONGODB_URI);
     
-    // Optimized connection options for serverless
+    // Optimized connection options for serverless with shorter timeouts
     const options = {
-      serverSelectionTimeoutMS: isVercel ? 5000 : 30000,
-      socketTimeoutMS: isVercel ? 8000 : 60000,
-      connectTimeoutMS: isVercel ? 5000 : 30000,
-      maxPoolSize: isVercel ? 5 : 10,
+      serverSelectionTimeoutMS: isVercel ? 3000 : 30000, // Reduced from 5000 to 3000
+      socketTimeoutMS: isVercel ? 5000 : 60000, // Reduced from 8000 to 5000
+      connectTimeoutMS: isVercel ? 3000 : 30000, // Reduced from 5000 to 3000
+      maxPoolSize: isVercel ? 3 : 10, // Reduced from 5 to 3
       minPoolSize: 0, // Allow 0 connections in serverless
-      maxIdleTimeMS: isVercel ? 10000 : 30000,
+      maxIdleTimeMS: isVercel ? 5000 : 30000, // Reduced from 10000 to 5000
       family: 4, // Use IPv4, skip trying IPv6
       retryWrites: true,
-      w: 'majority'
-      // Removed deprecated bufferCommands and bufferMaxEntries from connection options
+      w: 'majority',
+      // Add these for better serverless performance
+      bufferCommands: false, // Disable mongoose buffering
+      bufferMaxEntries: 0 // Disable mongoose buffering
     };
     
     const conn = await mongoose.connect(process.env.MONGODB_URI, options);
@@ -36,10 +44,14 @@ const connectDB = async () => {
     console.log(`📊 Database: ${conn.connection.name}`);
     console.log(`🔗 Connection State: ${conn.connection.readyState}`);
     
-    // Only disable buffering AFTER successful connection
-    mongoose.set('bufferCommands', false);
-    // Note: bufferMaxEntries is deprecated in newer mongoose versions
-    console.log('🔧 Disabled mongoose buffering after successful connection');
+    // For serverless, buffering is already disabled in connection options
+    if (isVercel) {
+      console.log('🔧 Serverless mode: Buffering disabled in connection options');
+    } else {
+      // Only disable buffering AFTER successful connection for traditional servers
+      mongoose.set('bufferCommands', false);
+      console.log('🔧 Traditional server: Disabled mongoose buffering after successful connection');
+    }
     
     // Handle connection events (only for non-serverless)
     if (!isVercel) {
