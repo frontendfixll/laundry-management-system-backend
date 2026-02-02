@@ -13,11 +13,11 @@ const { protect } = require('../middlewares/auth');
 router.get('/stream', protect, (req, res) => {
   const userId = req.user._id.toString();
   const userRole = req.user.role;
-  
+
   // Map role to recipient type
-  const recipientType = userRole === 'admin' ? 'admin' 
+  const recipientType = userRole === 'admin' ? 'admin'
     : userRole === 'branch_admin' ? 'branch_admin'
-    : 'customer';
+      : 'customer';
 
   // Set SSE headers
   res.setHeader('Content-Type', 'text/event-stream');
@@ -43,7 +43,7 @@ router.get('/stream', protect, (req, res) => {
 router.get('/', protect, async (req, res) => {
   try {
     const { page = 1, limit = 20, unreadOnly = false } = req.query;
-    
+
     const result = await NotificationService.getUserNotifications(req.user._id, {
       page: parseInt(page),
       limit: parseInt(limit),
@@ -84,23 +84,23 @@ router.get('/poll', protect, async (req, res) => {
   try {
     const { since } = req.query;
     const userId = req.user._id;
-    
+
     // Get notifications since timestamp
     const query = { recipient: userId };
     if (since) {
       query.createdAt = { $gt: new Date(since) };
     }
-    
+
     const notifications = await Notification.find(query)
       .sort({ createdAt: -1 })
       .limit(20)
       .lean();
-    
+
     const unreadCount = await Notification.countDocuments({
       recipient: userId,
       isRead: false
     });
-    
+
     res.json({
       success: true,
       data: {
@@ -124,9 +124,9 @@ router.get('/poll', protect, async (req, res) => {
 router.put('/mark-read', protect, async (req, res) => {
   try {
     const { notificationIds } = req.body;
-    
+
     await NotificationService.markAsRead(req.user._id, notificationIds);
-    
+
     res.json({ success: true, message: 'Notifications marked as read' });
   } catch (error) {
     console.error('Mark as read error:', error);
@@ -150,6 +150,21 @@ router.put('/read-all', protect, async (req, res) => {
 });
 
 /**
+ * @route DELETE /api/notifications/all
+ * @desc Delete all notifications for user
+ * @access Private
+ */
+router.delete('/all', protect, async (req, res) => {
+  try {
+    await NotificationService.clearAllNotifications(req.user._id);
+    res.json({ success: true, message: 'All notifications cleared' });
+  } catch (error) {
+    console.error('Clear all notifications error:', error);
+    res.status(500).json({ success: false, message: 'Failed to clear all notifications' });
+  }
+});
+
+/**
  * @route DELETE /api/notifications/:id
  * @desc Delete a notification
  * @access Private
@@ -160,7 +175,7 @@ router.delete('/:id', protect, async (req, res) => {
       _id: req.params.id,
       recipient: req.user._id
     });
-    
+
     res.json({ success: true, message: 'Notification deleted' });
   } catch (error) {
     console.error('Delete notification error:', error);
