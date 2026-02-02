@@ -24,12 +24,12 @@ const connectDB = async () => {
 
     // Optimized connection options for serverless with shorter timeouts
     const options = {
-      serverSelectionTimeoutMS: isVercel ? 10000 : 30000, // Increased from 3000 to 10000
-      socketTimeoutMS: isVercel ? 10000 : 60000, // Increased from 5000 to 10000
-      connectTimeoutMS: isVercel ? 10000 : 30000, // Increased from 3000 to 10000
-      maxPoolSize: isVercel ? 3 : 10, // Reduced from 5 to 3
+      serverSelectionTimeoutMS: isVercel ? 5000 : 30000, // Adjusted to 5s
+      socketTimeoutMS: isVercel ? 45000 : 60000, // Keep socket open longer for operations
+      connectTimeoutMS: isVercel ? 5000 : 30000, // Adjusted to 5s
+      maxPoolSize: isVercel ? 1 : 10, // Min connections for serverless
       minPoolSize: 0, // Allow 0 connections in serverless
-      maxIdleTimeMS: isVercel ? 5000 : 30000, // Reduced from 10000 to 5000
+      maxIdleTimeMS: isVercel ? 5000 : 30000,
       family: 4, // Use IPv4, skip trying IPv6
       retryWrites: true,
       w: 'majority'

@@ -16,8 +16,8 @@ const ensureConnection = async () => {
       mongoose.connection.once('connected', () => resolve(mongoose.connection));
       mongoose.connection.once('error', reject);
 
-      // Timeout after 10 seconds for serverless
-      setTimeout(() => reject(new Error('Connection timeout')), 10000);
+      // Timeout after 5 seconds for serverless
+      setTimeout(() => reject(new Error('Connection timeout')), 5000);
     });
   }
 
