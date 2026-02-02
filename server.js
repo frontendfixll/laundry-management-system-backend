@@ -34,7 +34,7 @@ const setupCronJobs = () => {
       console.log(`⚠️ Skipping ${jobName} - MongoDB not connected (state: ${mongoose.connection.readyState})`);
       return;
     }
-    
+
     try {
       console.log(`🔄 Running ${jobName} job...`);
       await jobFunction();
@@ -48,17 +48,17 @@ const setupCronJobs = () => {
   cron.schedule('*/5 * * * *', async () => {
     await runJobWithConnectionCheck('auto-activate banners', bannerLifecycleJob.autoActivateBanners);
   });
-  
+
   // Auto-complete expired banners (every hour)
   cron.schedule('0 * * * *', async () => {
     await runJobWithConnectionCheck('auto-complete banners', bannerLifecycleJob.autoCompleteBanners);
   });
-  
+
   // Sync banners with campaigns (every 15 minutes)
   cron.schedule('*/15 * * * *', async () => {
     await runJobWithConnectionCheck('sync banners with campaigns', bannerLifecycleJob.syncWithCampaigns);
   });
-  
+
   console.log('⏰ Banner lifecycle cron jobs scheduled:');
   console.log('   - Auto-activate: Every 5 minutes');
   console.log('   - Auto-complete: Every hour');
@@ -69,12 +69,12 @@ const setupCronJobs = () => {
 if (isVercel) {
   // Don't wait for connection in serverless - connect on demand
   console.log('🌐 Vercel serverless mode: Setting up on-demand connection');
-  
+
   // Add a simple test route to verify the app is working
   app.get('/test', async (req, res) => {
     const mongoose = require('mongoose');
     let connectionStatus = 'unknown';
-    
+
     try {
       // Try to connect if not connected
       if (mongoose.connection.readyState !== 1) {
@@ -86,7 +86,7 @@ if (isVercel) {
       console.error('❌ Test route: Connection failed:', error.message);
       connectionStatus = 'failed';
     }
-    
+
     res.json({
       success: true,
       message: 'Test route working in Vercel',
@@ -102,20 +102,36 @@ if (isVercel) {
         2: 'connecting',
         3: 'disconnecting'
       },
-      currentState: mongoose.connection.readyState === 1 ? 'connected' : 
-                   mongoose.connection.readyState === 2 ? 'connecting' : 
-                   mongoose.connection.readyState === 3 ? 'disconnecting' : 'disconnected'
+      currentState: mongoose.connection.readyState === 1 ? 'connected' :
+        mongoose.connection.readyState === 2 ? 'connecting' :
+          mongoose.connection.readyState === 3 ? 'disconnecting' : 'disconnected'
     });
   });
-  
-  console.log('🌐 Vercel serverless mode: App ready for export');
-  module.exports = app;
+
+  console.log('🌐 Vercel serverless mode: App ready for export with DB connection wrapper');
+
+  // Export a wrapper function that ensures DB connection before handling request
+  module.exports = async (req, res) => {
+    try {
+      // Ensure DB is connected before handling the request
+      // This uses the existing connectDB logic which handles connection reuse
+      await connectDB();
+      return app(req, res);
+    } catch (error) {
+      console.error('❌ Vercel Wrapper: DB Connection failed:', error);
+      // If DB fails, we should still try to serve the request (Express might handle it or show 500)
+      // or explicitly fail here. Let's try to let app handle it if possible, 
+      // but usually if DB down, we want to fail fast or let error handler catch it.
+      // However, app might have non-DB routes.
+      return app(req, res);
+    }
+  };
 } else {
   // Traditional server setup for local development
   // Connect to MongoDB and WAIT for connection
   const startServer = async () => {
     let dbConnected = false;
-    
+
     try {
       await connectDB();
       console.log('✅ Database connected successfully');
@@ -130,7 +146,7 @@ if (isVercel) {
     // Start server after database connection attempt
     const server = app.listen(PORT, async () => {
       const APP_VERSION = process.env.APP_VERSION || 'unknown';
-      
+
       console.log('='.repeat(60));
       console.log(`🚀 Laundry Management System v${APP_VERSION}`);
       console.log('='.repeat(60));
@@ -141,30 +157,30 @@ if (isVercel) {
       console.log(`📊 Version: http://localhost:${PORT}/version`);
       console.log(`📚 API: http://localhost:${PORT}/api`);
       console.log('='.repeat(60));
-      
+
       // Initialize Socket.IO Notification Engine (Primary)
       console.log('🔄 Initializing Socket.IO Notification Engine...');
       try {
         const notificationEngine = await socketIOServer.initialize(server);
         console.log('✅ Socket.IO Notification Engine initialized successfully');
         console.log('🎉 Modern notification system ready for real-time delivery');
-        
+
         // Make engine available globally for other services
         global.notificationEngine = notificationEngine;
-        
+
       } catch (socketIOError) {
         console.error('❌ Socket.IO Notification Engine initialization failed:', socketIOError);
         console.log('⚠️ Running without real-time notifications');
         console.log('💡 Check Socket.IO configuration and try restarting the server');
       }
-      
+
       // Initialize legacy Socket.IO (only as additional fallback)
       // DISABLED: Using new Socket.IO Notification Engine instead
       // if (socketService) {
       //   socketService.initialize(server);
       //   console.log('🔌 Legacy WebSocket service initialized as additional fallback');
       // }
-      
+
       // Setup cron jobs only after server is fully started
       if (dbConnected) {
         console.log('✅ Database connected - setting up cron jobs');

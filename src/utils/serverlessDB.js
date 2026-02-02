@@ -9,18 +9,18 @@ const ensureConnection = async () => {
   if (mongoose.connection.readyState === 1) {
     return mongoose.connection;
   }
-  
+
   // If connecting, wait for connection
   if (mongoose.connection.readyState === 2) {
     return new Promise((resolve, reject) => {
       mongoose.connection.once('connected', () => resolve(mongoose.connection));
       mongoose.connection.once('error', reject);
-      
-      // Timeout after 3 seconds for serverless
-      setTimeout(() => reject(new Error('Connection timeout')), 3000);
+
+      // Timeout after 10 seconds for serverless
+      setTimeout(() => reject(new Error('Connection timeout')), 10000);
     });
   }
-  
+
   // If disconnected, attempt to connect
   console.log('🔄 Establishing MongoDB connection for serverless function...');
   const connectDB = require('../config/database');
@@ -39,7 +39,7 @@ const withConnection = async (operation, fallbackResult = null) => {
   } catch (error) {
     console.error('❌ Database operation failed:', error.message);
     console.error('❌ Error type:', error.name);
-    
+
     // Log more details for debugging
     if (error.name === 'MongoServerSelectionError') {
       console.error('💡 Server selection failed - MongoDB cluster might be unreachable');
@@ -48,26 +48,26 @@ const withConnection = async (operation, fallbackResult = null) => {
     } else if (error.name === 'MongoTimeoutError') {
       console.error('💡 Query timeout - operation took too long');
     }
-    
+
     // Return fallback result for better UX
     if (fallbackResult !== null) {
       console.log('🔄 Returning fallback result due to database error');
       return fallbackResult;
     }
-    
+
     // Re-throw with more specific error for better handling
     if (error.name === 'MongoTimeoutError' || error.message.includes('timeout')) {
       const timeoutError = new Error('Database connection timeout. Please try again later.');
       timeoutError.name = 'MongoTimeoutError';
       throw timeoutError;
     }
-    
+
     if (error.name === 'MongoServerSelectionError' || error.name === 'MongoNetworkError') {
       const networkError = new Error('Database connection unavailable. Please try again later.');
       networkError.name = 'MongoNetworkError';
       throw networkError;
     }
-    
+
     throw error;
   }
 };
@@ -91,21 +91,21 @@ const addTimeout = (query, timeout = 3000) => {
 const testConnection = async () => {
   try {
     console.log('🧪 Testing database connection...');
-    
+
     const startTime = Date.now();
     await ensureConnection();
     const connectionTime = Date.now() - startTime;
-    
+
     console.log(`✅ Connection established in ${connectionTime}ms`);
-    
+
     // Test a simple query
     const testStart = Date.now();
     const collections = await mongoose.connection.db.listCollections().toArray();
     const queryTime = Date.now() - testStart;
-    
+
     console.log(`✅ Query test successful in ${queryTime}ms`);
     console.log(`📊 Found ${collections.length} collections`);
-    
+
     return {
       success: true,
       connectionTime,

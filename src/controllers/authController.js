@@ -263,12 +263,12 @@ const login = async (req, res) => {
     const { withConnection, addTimeout } = require('../utils/serverlessDB');
     
     const loginOperation = async () => {
+      console.log(`🔐 Login attempt for: ${email}`);
+      
       // Find user and include password
       const userQuery = User.findOne({ email })
         .select('+password')
-        .populate('tenancy', 'name slug subdomain branding status subscription');
-      
-      // Add timeout for serverless environment
+        .populate('tenancy', 'name slug subdomain br
       const user = await addTimeout(userQuery, 3000);
       
       if (!user) {
