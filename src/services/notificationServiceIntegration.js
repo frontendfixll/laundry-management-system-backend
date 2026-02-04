@@ -4,7 +4,7 @@
  */
 
 const socketIOServer = require('./socketIOServer');
-const { Notification } = require('../models/Notification');
+const Notification = require('../models/Notification');
 
 class NotificationServiceIntegration {
   constructor() {
@@ -70,6 +70,9 @@ class NotificationServiceIntegration {
       title: title,
       message: message || title,
       category: data.category || this.getCategoryFromType(eventType),
+      priority: data.priority,
+      severity: data.severity,
+      icon: data.icon,
       metadata: {
         ...data.data,
         ...data, // Include everything as metadata

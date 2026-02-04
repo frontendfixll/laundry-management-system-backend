@@ -68,7 +68,7 @@ const ITEM_TYPES = {
   COAT: 'coat',
   OVERCOAT: 'overcoat',
   JACKET_HALF: 'jacket_half',
-  
+
   // Women's
   BLOUSE: 'blouse',
   TOP: 'top',
@@ -83,7 +83,7 @@ const ITEM_TYPES = {
   DRESS: 'dress',
   SKIRT: 'skirt',
   DUPATTA: 'dupatta',
-  
+
   // Kids
   KIDS_SHIRT: 'kids_shirt',
   KIDS_T_SHIRT: 'kids_t_shirt',
@@ -93,7 +93,7 @@ const ITEM_TYPES = {
   SCHOOL_UNIFORM: 'school_uniform',
   KIDS_DRESS: 'kids_dress',
   KIDS_PANT: 'kids_pant',
-  
+
   // Household
   BEDSHEET_SINGLE: 'bedsheet_single',
   BEDSHEET_DOUBLE: 'bedsheet_double',
@@ -110,14 +110,14 @@ const ITEM_TYPES = {
   COMFORTER: 'comforter',
   BEDSHEET: 'bedsheet',
   CURTAINS: 'curtains',
-  
+
   // Institutional
   HOTEL_BEDSHEET: 'hotel_bedsheet',
   HOTEL_TOWEL: 'hotel_towel',
   RESTAURANT_NAPKIN: 'restaurant_napkin',
   UNIFORM: 'uniform',
   APRON: 'apron',
-  
+
   // Others
   TIE: 'tie',
   SCARF: 'scarf',
@@ -129,7 +129,7 @@ const ITEM_TYPES = {
   SHOES: 'shoes',
   LEATHER_JACKET: 'leather_jacket',
   WOOLEN_SWEATER: 'woolen_sweater',
-  
+
   // Premium items from frontend
   SILK_SHIRT: 'silk_shirt',
   SILK_SAREE: 'silk_saree',
@@ -141,7 +141,7 @@ const ITEM_TYPES = {
   DESIGNER_SAREE: 'designer_saree',
   LUXURY_COAT: 'luxury_coat',
   EVENING_GOWN: 'evening_gown',
-  
+
   // Steam press items
   SHIRT_PRESS: 'shirt_press',
   TROUSERS_PRESS: 'trousers_press',
@@ -154,14 +154,14 @@ const ITEM_TYPES = {
   LEHENGA_PRESS: 'lehenga_press',
   SHERWANI_PRESS: 'sherwani_press',
   WEDDING_DRESS_PRESS: 'wedding_dress_press',
-  
+
   // Starching items
   COTTON_SHIRT_STARCH: 'cotton_shirt_starch',
   COTTON_SAREE_STARCH: 'cotton_saree_starch',
   DHOTI_STARCH: 'dhoti_starch',
   KURTA_STARCH: 'kurta_starch',
   BEDSHEET_STARCH: 'bedsheet_starch',
-  
+
   // Legacy (backward compatibility)
   MENS_SHIRT: 'mens_shirt',
   MENS_PANT: 'mens_pant',
@@ -276,66 +276,67 @@ const NOTIFICATION_TYPES = {
   ORDER_OUT_FOR_DELIVERY: 'order_out_for_delivery',
   ORDER_DELIVERED: 'order_delivered',
   ORDER_CANCELLED: 'order_cancelled',
-  
+
   // Inventory (Admin + Branch Admin)
   LOW_INVENTORY: 'low_inventory',
   INVENTORY_RESTOCKED: 'inventory_restocked',
-  
+
   // Support (Admin + Branch Admin)
   NEW_COMPLAINT: 'new_complaint',
   TICKET_ASSIGNED: 'ticket_assigned',
   TICKET_RESOLVED: 'ticket_resolved',
-  
+
   // Payment (Admin + SuperAdmin)
   REFUND_REQUEST: 'refund_request',
   PAYMENT_RECEIVED: 'payment_received',
   PAYMENT_FAILED: 'payment_failed',
-  
+
   // Rewards (Customer)
   REWARD_POINTS: 'reward_points',
   MILESTONE_ACHIEVED: 'milestone_achieved',
   VIP_UPGRADE: 'vip_upgrade',
-  
+
   // Leads (SuperAdmin)
   NEW_LEAD: 'new_lead',
   LEAD_CONVERTED: 'lead_converted',
-  
+
   // Tenancy (SuperAdmin)
   NEW_TENANCY_SIGNUP: 'new_tenancy_signup',
   TENANCY_SUBSCRIPTION_EXPIRING: 'tenancy_subscription_expiring',
   TENANCY_SUBSCRIPTION_EXPIRED: 'tenancy_subscription_expired',
   TENANCY_PAYMENT_RECEIVED: 'tenancy_payment_received',
-  
+  TENANCY_SUBSCRIPTION_UPDATED: 'tenancy_subscription_updated',
+
   // Staff (Admin + Branch Admin)
   NEW_STAFF_ADDED: 'new_staff_added',
   STAFF_REMOVED: 'staff_removed',
-  
+
   // Branch (Admin)
   NEW_BRANCH_CREATED: 'new_branch_created',
   BRANCH_ADMIN_ASSIGNED: 'branch_admin_assigned',
-  
+
   // System (All)
   SYSTEM_ALERT: 'system_alert',
   ANNOUNCEMENT: 'announcement',
-  
+
   // Campaign/Promo (Customer)
   NEW_CAMPAIGN: 'new_campaign',
   COUPON_EXPIRING: 'coupon_expiring',
   WALLET_CREDITED: 'wallet_credited',
-  
+
   // Permission & Role Management (Admin)
   PERMISSION_GRANTED: 'permission_granted',
   PERMISSION_REVOKED: 'permission_revoked',
   ROLE_UPDATED: 'role_updated',
   ADMIN_CREATED: 'admin_created',
   TENANCY_SETTINGS_UPDATED: 'tenancy_settings_updated',
-  
+
   // Inventory Management (Admin + SuperAdmin)
   INVENTORY_REQUEST_SUBMITTED: 'inventory_request_submitted',
   INVENTORY_REQUEST_APPROVED: 'inventory_request_approved',
   INVENTORY_REQUEST_REJECTED: 'inventory_request_rejected',
   INVENTORY_REQUEST_COMPLETED: 'inventory_request_completed',
-  
+
   // Billing & Subscription (Admin)
   SUBSCRIPTION_EXPIRING: 'subscription_expiring',
   SUBSCRIPTION_EXPIRED: 'subscription_expired',
@@ -344,7 +345,7 @@ const NOTIFICATION_TYPES = {
   PLAN_DOWNGRADED: 'plan_downgraded',
   USAGE_LIMIT_REACHED: 'usage_limit_reached',
   INVOICE_GENERATED: 'invoice_generated',
-  
+
   // System & Security (All Users)
   SECURITY_ALERT: 'security_alert',
   PASSWORD_CHANGED: 'password_changed',

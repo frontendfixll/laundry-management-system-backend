@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Notification = require('../models/Notification');
 const sseService = require('../services/sseService');
+const socketIOServer = require('../services/socketIOServer');
 const { authenticateSuperAdmin } = require('../middlewares/superAdminAuth');
 
 /**
@@ -90,6 +91,43 @@ router.put('/read-all', authenticateSuperAdmin, async (req, res) => {
     res.json({ success: true, message: 'All notifications marked as read' });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to mark all as read' });
+  }
+});
+
+/**
+ * @route POST /api/superadmin/notifications/test-alert
+ * @desc Send a test platform alert to all SuperAdmins (for verifying live notifications)
+ * @access SuperAdmin
+ */
+router.post('/test-alert', authenticateSuperAdmin, async (req, res) => {
+  try {
+    if (!socketIOServer.isInitialized) {
+      return res.status(503).json({
+        success: false,
+        message: 'Socket.IO notification server not available'
+      });
+    }
+    const { title = 'Test platform alert', message = 'This is a test. Live notifications are working.', priority = 'P2' } = req.body;
+    const payload = {
+      userId: req.admin._id,
+      tenantId: null,
+      eventType: 'platform_test_alert',
+      title,
+      message,
+      priority: ['P0', 'P1', 'P2'].includes(priority) ? priority : 'P2',
+      category: 'test',
+      metadata: {
+        recipientType: 'superadmin',
+        isTest: true,
+        requestedBy: req.admin?.email,
+        timestamp: new Date()
+      }
+    };
+    await socketIOServer.processNotification(payload, { requestingUserRole: 'superadmin' });
+    res.json({ success: true, message: 'Test alert sent to all SuperAdmins' });
+  } catch (error) {
+    console.error('Test alert error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to send test alert' });
   }
 });
 

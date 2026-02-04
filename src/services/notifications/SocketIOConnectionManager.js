@@ -97,9 +97,10 @@ class SocketIOConnectionManager {
         // Verify JWT token
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-        // Validate token structure - make tenantId optional for backward compatibility
-        if (!decoded.userId) {
-          throw new Error('Invalid token structure: missing userId');
+        // Validate token structure - handle both regular users and SuperAdmin
+        const userId = decoded.userId || decoded.adminId;
+        if (!userId) {
+          throw new Error('Invalid token structure: missing userId or adminId');
         }
 
         // Use tenancyId if tenantId is not present (backward compatibility)
@@ -107,9 +108,9 @@ class SocketIOConnectionManager {
 
         // Security validation
         const securityCheck = await this.securityGuard.validateNotificationSecurity(
-          { userId: decoded.userId, tenantId: tenantId },
+          { userId: userId, tenantId: tenantId },
           {
-            requestingUserId: decoded.userId,
+            requestingUserId: userId,
             requestingTenantId: tenantId,
             requestingUserRole: decoded.role,
             ipAddress: socket.handshake.address
@@ -121,9 +122,10 @@ class SocketIOConnectionManager {
         }
 
         // Attach user info to socket (Normalize to strings)
-        socket.userId = String(decoded.userId);
+        socket.userId = String(userId);
         socket.tenantId = decoded.tenantId || decoded.tenancyId ? String(decoded.tenantId || decoded.tenancyId) : null;
-        socket.userRole = decoded.role;
+        // SuperAdmin: always join role:superadmin so they receive platform notifications
+        socket.userRole = decoded.adminId ? 'superadmin' : (decoded.role || null);
         socket.userEmail = decoded.email;
         socket.authenticatedAt = new Date();
 
@@ -139,6 +141,7 @@ class SocketIOConnectionManager {
           }
         });
 
+        console.log(`📡 Socket Auth OK: ${socket.userId} (${decoded.role})`);
         next();
 
       } catch (error) {
@@ -233,6 +236,8 @@ class SocketIOConnectionManager {
       if (sTenantId) {
         await socket.join(`tenant:${sTenantId}:role:${socket.userRole}`);
       }
+
+      console.log(`🏠 Socket joined rooms: user:${sUserId}, role:${socket.userRole}${sTenantId ? `, tenant:${sTenantId}` : ''}`);
     }
 
     console.log(`🔌 New connection: ${socket.userEmail} (${socket.id})`);
@@ -548,8 +553,13 @@ class SocketIOConnectionManager {
    * Utility methods
    */
   extractToken(socket) {
-    // Try to get token from query parameters
-    if (socket.handshake.query.token) {
+    // Try to get token from modern auth object first
+    if (socket.handshake.auth && socket.handshake.auth.token) {
+      return socket.handshake.auth.token;
+    }
+
+    // Try to get token from query parameters (legacy fallback)
+    if (socket.handshake.query && socket.handshake.query.token) {
       return socket.handshake.query.token;
     }
 

@@ -6,11 +6,11 @@ const Branch = require('../../models/Branch');
 const Coupon = require('../../models/Coupon');
 const NotificationService = require('../../services/notificationService');
 const { sendEmail, sendEmailAsync, emailTemplates } = require('../../config/email');
-const { 
-  sendSuccess, 
-  sendError, 
-  asyncHandler, 
-  calculateItemPrice, 
+const {
+  sendSuccess,
+  sendError,
+  asyncHandler,
+  calculateItemPrice,
   calculateOrderTotal,
   calculateDeliveryDate,
   getPagination,
@@ -39,14 +39,14 @@ const createOrder = asyncHandler(async (req, res) => {
   } = req.body;
 
   const customer = await User.findById(req.user._id);
-  
+
   // Determine which addresses are needed based on service type
   const needsPickupAddress = serviceType === 'full_service' || serviceType === 'home_pickup_self_pickup' || !serviceType;
   const needsDeliveryAddress = serviceType === 'full_service' || serviceType === 'self_drop_home_delivery' || !serviceType;
-  
+
   let pickupAddress = null;
   let deliveryAddress = null;
-  
+
   // Get pickup address if needed
   if (needsPickupAddress) {
     if (!pickupAddressId) {
@@ -57,7 +57,7 @@ const createOrder = asyncHandler(async (req, res) => {
       return sendError(res, 'ADDRESS_NOT_FOUND', 'Pickup address not found', 404);
     }
   }
-  
+
   // Get delivery address if needed
   if (needsDeliveryAddress) {
     if (!deliveryAddressId) {
@@ -147,7 +147,7 @@ const createOrder = asyncHandler(async (req, res) => {
   // Calculate order total
   // Use delivery charge from distance calculation if available, otherwise use branch service area charge
   let deliveryCharge = 0; // default - no delivery charge for self service
-  
+
   // Only charge delivery if home delivery is involved
   if (needsDeliveryAddress || needsPickupAddress) {
     deliveryCharge = 30; // default delivery charge
@@ -160,7 +160,7 @@ const createOrder = asyncHandler(async (req, res) => {
       }
     }
   }
-  
+
   // Apply service type discount
   let serviceTypeDiscount = 0;
   if (serviceType === 'self_drop_self_pickup') {
@@ -170,30 +170,30 @@ const createOrder = asyncHandler(async (req, res) => {
     serviceTypeDiscount = Math.min(25, deliveryCharge * 0.5); // Save up to ₹25
     deliveryCharge = Math.max(0, deliveryCharge - serviceTypeDiscount);
   }
-  
+
   // Apply automatic discounts first
   const Discount = require('../../models/Discount');
   let automaticDiscount = 0;
   let appliedDiscounts = [];
   const orderTenancy = tenancyId || req.tenancyId || req.user?.tenancy || branch.tenancy;
-  
+
   console.log('========================================');
   console.log('CHECKING AUTOMATIC DISCOUNTS');
   console.log('Order Tenancy:', orderTenancy);
   console.log('Order Total Amount:', totalAmount);
   console.log('========================================');
-  
+
   if (orderTenancy) {
     // Get all active discounts for tenancy
     const discounts = await Discount.find({
       tenancy: orderTenancy,
       isActive: true
     }).sort({ priority: -1 });
-    
+
     console.log(`Found ${discounts.length} active discounts for tenancy`);
-    
+
     console.log(`Found ${discounts.length} active discounts for tenancy`);
-    
+
     if (discounts.length > 0) {
       discounts.forEach((d, i) => {
         console.log(`  Discount ${i + 1}: ${d.name}`);
@@ -204,28 +204,28 @@ const createOrder = asyncHandler(async (req, res) => {
         console.log(`    - Is Valid: ${d.isValid()}`);
       });
     }
-    
+
     // Create temporary order object for discount evaluation
     const tempOrder = {
       totalAmount,
       items: orderItems,
       customer: req.user._id
     };
-    
+
     for (const discount of discounts) {
       console.log(`\nEvaluating discount: ${discount.name}`);
       console.log(`  - Can apply to order: ${discount.canApplyToOrder(tempOrder, req.user)}`);
-      
+
       if (discount.canApplyToOrder(tempOrder, req.user)) {
         for (const rule of discount.rules) {
           console.log(`  - Checking rule: ${rule.type}`);
           const ruleCheck = discount.checkRule(rule, tempOrder, req.user);
           console.log(`  - Rule check result: ${ruleCheck}`);
-          
+
           if (ruleCheck) {
             const discountAmount = discount.calculateDiscount(tempOrder, rule);
             console.log(`  - Calculated discount amount: ₹${discountAmount}`);
-            
+
             appliedDiscounts.push({
               discountId: discount._id,
               name: discount.name,
@@ -233,11 +233,11 @@ const createOrder = asyncHandler(async (req, res) => {
               amount: discountAmount,
               description: discount.description
             });
-            
+
             automaticDiscount += discountAmount;
-            
+
             console.log(`✅ Applied automatic discount: ${discount.name} - ₹${discountAmount}`);
-            
+
             // If discount doesn't stack with others, break
             if (!discount.canStackWithOtherDiscounts) {
               console.log(`  - Discount doesn't stack, stopping here`);
@@ -245,7 +245,7 @@ const createOrder = asyncHandler(async (req, res) => {
             }
           }
         }
-        
+
         // If we found a non-stacking discount, stop checking others
         if (appliedDiscounts.length > 0 && !appliedDiscounts[appliedDiscounts.length - 1].canStackWithOtherDiscounts) {
           break;
@@ -253,41 +253,41 @@ const createOrder = asyncHandler(async (req, res) => {
       }
     }
   }
-  
+
   console.log(`\nTotal automatic discount: ₹${automaticDiscount}`);
   console.log(`Applied discounts count: ${appliedDiscounts.length}`);
   console.log('========================================\n');
-  
+
   // Apply campaign benefits
   let campaignDiscount = 0;
   let appliedCampaign = null;
-  
+
   console.log('========================================');
   console.log('CHECKING CAMPAIGNS');
   console.log('Order Tenancy:', orderTenancy);
   console.log('========================================');
-  
+
   if (orderTenancy) {
     try {
       const Campaign = require('../../models/Campaign');
-      
+
       // Find active campaigns for this tenancy
       const activeCampaigns = await Campaign.findActiveCampaigns(orderTenancy, 'ORDER_CHECKOUT');
-      
+
       console.log(`Found ${activeCampaigns.length} active campaigns`);
-      
+
       if (activeCampaigns.length > 0) {
         // Get user data for eligibility
         const userWithStats = await User.findById(req.user._id).select('orderCount totalSpent createdAt');
-        
+
         // Find first eligible campaign
         for (const campaign of activeCampaigns) {
           console.log(`\nEvaluating campaign: ${campaign.name}`);
-          
+
           // Check if user is eligible
           const isEligible = campaign.isUserEligible(userWithStats, { total: totalAmount });
           console.log(`  - Is eligible: ${isEligible}`);
-          
+
           if (isEligible) {
             // Check if campaign can stack with automatic discounts
             let canApplyCampaign = true;
@@ -296,11 +296,11 @@ const createOrder = asyncHandler(async (req, res) => {
               console.log('  - Cannot stack with discounts');
               continue;
             }
-            
+
             if (canApplyCampaign) {
               // Calculate campaign benefit
               const benefit = campaign.calculateBenefit({ total: totalAmount });
-              
+
               if (benefit > 0) {
                 appliedCampaign = {
                   campaignId: campaign._id,
@@ -313,7 +313,7 @@ const createOrder = asyncHandler(async (req, res) => {
                     promotionId: p.promotionId
                   }))
                 };
-                
+
                 campaignDiscount = benefit;
                 console.log(`✅ Applied campaign: ${campaign.name} - ₹${campaignDiscount}`);
                 break; // Use first eligible campaign
@@ -327,14 +327,14 @@ const createOrder = asyncHandler(async (req, res) => {
       // Don't fail order if campaign evaluation fails
     }
   }
-  
+
   console.log(`\nTotal campaign discount: ₹${campaignDiscount}`);
   console.log('========================================\n');
-  
+
   // Apply coupon discount if provided
   let couponDiscount = 0;
   let appliedCoupon = null;
-  
+
   if (couponCode && orderTenancy) {
     const coupon = await Coupon.findValidCoupon(orderTenancy, couponCode);
     if (coupon) {
@@ -350,7 +350,7 @@ const createOrder = asyncHandler(async (req, res) => {
           });
           if (existingOrders > 0) isEligible = false;
         }
-        
+
         // Check if coupon can stack with automatic discounts
         let canApplyCoupon = true;
         if (appliedDiscounts.length > 0) {
@@ -364,13 +364,13 @@ const createOrder = asyncHandler(async (req, res) => {
             console.log('⚠️ Coupon cannot be applied - automatic discount does not allow stacking');
           }
         }
-        
+
         // Check if coupon can stack with campaign
         if (appliedCampaign && !appliedCampaign.stacking?.allowStackingWithCoupons) {
           canApplyCoupon = false;
           console.log('⚠️ Coupon cannot be applied - campaign does not allow stacking');
         }
-        
+
         if (isEligible && canApplyCoupon) {
           couponDiscount = coupon.calculateDiscount(totalAmount);
           appliedCoupon = coupon;
@@ -379,21 +379,21 @@ const createOrder = asyncHandler(async (req, res) => {
       }
     }
   }
-  
+
   const pricing = calculateOrderTotal(items, deliveryCharge, serviceTypeDiscount + automaticDiscount + campaignDiscount + couponDiscount, 0.18); // 18% tax
-  
+
   // Add discount info to pricing
   if (automaticDiscount > 0) {
     pricing.automaticDiscount = Math.round(automaticDiscount);
     pricing.appliedDiscounts = appliedDiscounts;
   }
-  
+
   // Add campaign info to pricing
   if (appliedCampaign) {
     pricing.campaignDiscount = Math.round(campaignDiscount);
     pricing.appliedCampaign = appliedCampaign;
   }
-  
+
   // Add coupon info to pricing
   if (appliedCoupon) {
     pricing.couponCode = appliedCoupon.code;
@@ -406,20 +406,20 @@ const createOrder = asyncHandler(async (req, res) => {
   const month = (today.getMonth() + 1).toString().padStart(2, '0');
   const day = today.getDate().toString().padStart(2, '0');
   const dateStr = year + month + day;
-  
+
   // Get today's order count for this tenancy
   const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const todayEnd = new Date(todayStart);
   todayEnd.setDate(todayEnd.getDate() + 1);
-  
+
   const todayCount = await Order.countDocuments({
     tenancy: orderTenancy,
-    createdAt: { 
-      $gte: todayStart, 
-      $lt: todayEnd 
+    createdAt: {
+      $gte: todayStart,
+      $lt: todayEnd
     }
   });
-  
+
   const orderNumber = `ORD${dateStr}${String(todayCount + 1).padStart(3, '0')}`;
 
   // Create order
@@ -488,7 +488,7 @@ const createOrder = asyncHandler(async (req, res) => {
   if (appliedCoupon) {
     await appliedCoupon.recordUsage(req.user._id, order._id, couponDiscount);
   }
-  
+
   // Record automatic discount usage if applied
   if (appliedDiscounts.length > 0) {
     const Discount = require('../../models/Discount');
@@ -504,7 +504,7 @@ const createOrder = asyncHandler(async (req, res) => {
       }
     }
   }
-  
+
   // Record campaign usage if applied
   if (appliedCampaign) {
     try {
@@ -520,7 +520,7 @@ const createOrder = asyncHandler(async (req, res) => {
         campaign.analytics.uniqueUsers = await Order.distinct('customer', {
           'pricing.appliedCampaign.campaignId': campaign._id
         }).then(users => users.length);
-        
+
         await campaign.save();
         console.log(`✅ Recorded campaign usage: ${campaign.name} - ₹${campaignDiscount}`);
       }
@@ -544,27 +544,35 @@ const createOrder = asyncHandler(async (req, res) => {
 
   // Create notification for customer
   try {
-    await NotificationService.notifyOrderPlaced(req.user._id, order);
+    await NotificationService.notifyOrderPlaced(req.user._id, order, orderTenancy);
+
+    // Trigger Automation Rules
+    const automationTriggers = require('../../services/automationTriggers');
+    const context = automationTriggers.createContext(req);
+    // Don't await this to avoid delaying response
+    automationTriggers.triggerOrderPlaced(populatedOrder, context).catch(err =>
+      console.error('Failed to trigger automation:', err)
+    );
   } catch (error) {
-    console.log('Failed to create notification:', error.message);
+    console.log('Failed to create notification/automation:', error.message);
   }
 
   // Notify all admins in this tenancy about new order
   try {
     const User = require('../../models/User');
     const socketService = require('../../services/socketService');
-    
-    const admins = await User.find({ 
-      tenancy: orderTenancy, 
+
+    const admins = await User.find({
+      tenancy: orderTenancy,
       role: 'admin',
-      isActive: true 
+      isActive: true
     }).select('_id');
-    
+
     for (const admin of admins) {
       await NotificationService.notifyAdminNewOrder(admin._id, populatedOrder, orderTenancy);
     }
     console.log(`📢 Notified ${admins.length} admin(s) about new order`);
-    
+
     // Send real-time WebSocket notification to all admins
     socketService.sendToTenancyRecipients(orderTenancy, 'admin', {
       type: 'newOrder',
@@ -592,7 +600,7 @@ const createOrder = asyncHandler(async (req, res) => {
         assignedBranch: order.branch,
         isActive: true
       }).select('_id');
-      
+
       for (const branchAdmin of branchAdmins) {
         await NotificationService.notifyBranchAdminNewOrder(branchAdmin._id, populatedOrder, tenancyId);
       }
@@ -626,7 +634,7 @@ const getOrders = asyncHandler(async (req, res) => {
   if (status) {
     query.status = status;
   }
-  
+
   // Filter by tenancy if provided (for tenant-specific dashboard)
   if (tenancyId) {
     query.tenancy = tenancyId;
@@ -683,7 +691,7 @@ const getOrderTracking = asyncHandler(async (req, res) => {
     return sendError(res, 'ORDER_NOT_FOUND', 'Order not found', 404);
   }
 
-  sendSuccess(res, { 
+  sendSuccess(res, {
     orderNumber: order.orderNumber,
     currentStatus: order.status,
     statusHistory: order.statusHistory,
@@ -714,12 +722,12 @@ const cancelOrder = asyncHandler(async (req, res) => {
 
   // Update order status
   await order.updateStatus(ORDER_STATUS.CANCELLED, req.user._id, reason || 'Cancelled by customer');
-  
+
   order.isCancelled = true;
   order.cancellationReason = reason || 'Cancelled by customer';
   order.cancelledBy = req.user._id;
   order.cancelledAt = new Date();
-  
+
   await order.save();
 
   sendSuccess(res, { order }, 'Order cancelled successfully');

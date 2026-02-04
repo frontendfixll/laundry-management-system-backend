@@ -14,7 +14,7 @@ const stripe = stripeSecretKey ? require('stripe')(stripeSecretKey) : null;
  * Handles self-service signup flow with Stripe payment
  */
 const signupController = {
-  
+
   /**
    * Initiate signup - creates pending signup and Stripe checkout session
    * POST /api/public/signup/initiate
@@ -31,7 +31,7 @@ const signupController = {
         planId,
         billingCycle = 'monthly'
       } = req.body;
-      
+
       // Validate required fields
       if (!businessName || !ownerName || !email || !phone || !password || !planId) {
         return res.status(400).json({
@@ -39,7 +39,7 @@ const signupController = {
           message: 'All fields are required: businessName, ownerName, email, phone, password, planId'
         });
       }
-      
+
       // Check if email already exists in Users
       const existingUser = await User.findOne({ email: email.toLowerCase() });
       if (existingUser) {
@@ -48,7 +48,7 @@ const signupController = {
           message: 'An account with this email already exists'
         });
       }
-      
+
       // Check if phone already exists in Users
       const existingPhone = await User.findOne({ phone: phone });
       if (existingPhone) {
@@ -57,9 +57,9 @@ const signupController = {
           message: 'An account with this phone number already exists'
         });
       }
-      
+
       // Check if there's already a pending signup with this email
-      const existingPending = await PendingSignup.findOne({ 
+      const existingPending = await PendingSignup.findOne({
         email: email.toLowerCase(),
         status: 'pending'
       });
@@ -67,7 +67,7 @@ const signupController = {
         // Delete old pending signup
         await PendingSignup.deleteOne({ _id: existingPending._id });
       }
-      
+
       // Get the billing plan
       const plan = await BillingPlan.findById(planId);
       if (!plan || !plan.isActive) {
@@ -76,17 +76,17 @@ const signupController = {
           message: 'Invalid or inactive plan selected'
         });
       }
-      
+
       // Calculate amount
       const price = billingCycle === 'yearly' ? plan.price.yearly : plan.price.monthly;
-      
+
       // For free plans, skip Stripe and create directly
       if (price === 0) {
         return await signupController.createFreeTenancy(req, res, {
           businessName, ownerName, email, phone, password, address, plan, billingCycle
         });
       }
-      
+
       // Check Stripe configuration
       if (!stripe) {
         return res.status(500).json({
@@ -94,13 +94,13 @@ const signupController = {
           message: 'Payment gateway not configured. Please contact support.'
         });
       }
-      
+
       const tax = Math.round(price * 0.18); // 18% GST
       const total = price + tax;
-      
+
       // Hash password
       const passwordHash = await bcrypt.hash(password, 12);
-      
+
       // Create pending signup
       const pendingSignup = await PendingSignup.create({
         businessName,
@@ -121,10 +121,10 @@ const signupController = {
         ipAddress: req.ip,
         userAgent: req.get('User-Agent')
       });
-      
+
       // Create Stripe checkout session
       const marketingUrl = process.env.MARKETING_URL || 'http://localhost:3004';
-      
+
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
         mode: 'payment',
@@ -152,12 +152,12 @@ const signupController = {
         success_url: `${marketingUrl}/signup/success?token=${pendingSignup.token}&session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${marketingUrl}/signup/${planId}?cancelled=true`,
       });
-      
+
       // Store Stripe session ID
       pendingSignup.stripeSessionId = session.id;
       pendingSignup.status = 'payment_processing';
       await pendingSignup.save();
-      
+
       res.json({
         success: true,
         message: 'Checkout session created',
@@ -167,7 +167,7 @@ const signupController = {
           checkoutUrl: session.url
         }
       });
-      
+
     } catch (error) {
       console.error('Initiate signup error:', error);
       res.status(500).json({
@@ -176,14 +176,14 @@ const signupController = {
       });
     }
   },
-  
+
   /**
    * Create tenancy for free plan (no payment required)
    */
   createFreeTenancy: async (req, res, data) => {
     try {
       const { businessName, ownerName, email, phone, password, address, plan, billingCycle } = data;
-      
+
       // Check if user already exists
       let user = await User.findOne({ $or: [{ email: email.toLowerCase() }, { phone: phone }] });
       if (user) {
@@ -192,13 +192,13 @@ const signupController = {
           message: 'An account with this email or phone already exists'
         });
       }
-      
+
       // Generate slug
       const slug = businessName
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-|-$/g, '');
-      
+
       // Check if slug exists
       let finalSlug = slug;
       let counter = 1;
@@ -206,12 +206,12 @@ const signupController = {
         finalSlug = `${slug}-${counter}`;
         counter++;
       }
-      
+
       // Get plan features
-      const features = plan.features instanceof Map 
+      const features = plan.features instanceof Map
         ? Object.fromEntries(plan.features)
         : plan.features || {};
-      
+
       // Create user first (password will be hashed by User model pre-save hook)
       user = await User.create({
         name: ownerName,
@@ -222,12 +222,12 @@ const signupController = {
         isVerified: true,
         permissions: User.getDefaultAdminPermissions()
       });
-      
+
       // Calculate trial end date
       const trialDays = plan.trialDays || 14;
       const trialEndsAt = new Date();
       trialEndsAt.setDate(trialEndsAt.getDate() + trialDays);
-      
+
       // Create tenancy
       const tenancy = await Tenancy.create({
         name: businessName,
@@ -248,13 +248,28 @@ const signupController = {
         },
         status: 'active'
       });
-      
+
       // Update user with tenancy
       user.tenancy = tenancy._id;
       await user.save();
-      
+
+      // Notify all superadmins about new free signup
+      try {
+        const NotificationService = require('../services/notificationService');
+        await NotificationService.notifyAllSuperAdmins({
+          type: 'new_tenancy_signup',
+          title: 'New Free Signup! 🎉',
+          message: `${tenancy.name} just signed up for ${plan.displayName} (Free Trial)`,
+          icon: 'building',
+          severity: 'success',
+          data: { tenancyId: tenancy._id, link: `/tenancies/${tenancy._id}` }
+        });
+      } catch (notifyError) {
+        console.error('Failed to notify superadmins about free signup:', notifyError);
+      }
+
       // TODO: Send welcome email
-      
+
       res.status(201).json({
         success: true,
         message: 'Account created successfully',
@@ -273,7 +288,7 @@ const signupController = {
           loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/login`
         }
       });
-      
+
     } catch (error) {
       console.error('Create free tenancy error:', error);
       res.status(500).json({
@@ -282,7 +297,7 @@ const signupController = {
       });
     }
   },
-  
+
   /**
    * Verify signup after Stripe payment
    * POST /api/public/signup/verify
@@ -290,23 +305,23 @@ const signupController = {
   verifySignup: async (req, res) => {
     try {
       const { token, sessionId } = req.body;
-      
+
       if (!token || !sessionId) {
         return res.status(400).json({
           success: false,
           message: 'Token and sessionId are required'
         });
       }
-      
+
       const pendingSignup = await PendingSignup.findByToken(token);
-      
+
       if (!pendingSignup) {
         return res.status(404).json({
           success: false,
           message: 'Signup not found'
         });
       }
-      
+
       // If already completed, return success
       if (pendingSignup.status === 'completed') {
         return res.json({
@@ -318,7 +333,7 @@ const signupController = {
           }
         });
       }
-      
+
       // Verify with Stripe
       if (!stripe) {
         return res.status(500).json({
@@ -326,25 +341,25 @@ const signupController = {
           message: 'Payment gateway not configured'
         });
       }
-      
+
       const session = await stripe.checkout.sessions.retrieve(sessionId);
-      
+
       if (session.payment_status !== 'paid') {
         return res.status(400).json({
           success: false,
           message: 'Payment not completed'
         });
       }
-      
+
       // Create tenancy and user
       const result = await signupController.completePendingSignup(pendingSignup, session);
-      
+
       res.json({
         success: true,
         message: 'Account created successfully',
         data: result
       });
-      
+
     } catch (error) {
       console.error('Verify signup error:', error);
       res.status(500).json({
@@ -353,7 +368,7 @@ const signupController = {
       });
     }
   },
-  
+
   /**
    * Complete pending signup - creates tenancy and user
    */
@@ -378,7 +393,7 @@ const signupController = {
         };
       }
     }
-    
+
     // Check if user already exists (in case of retry)
     let user = await User.findOne({ email: pendingSignup.email });
     if (user) {
@@ -405,19 +420,19 @@ const signupController = {
         }
       }
     }
-    
+
     // Get the plan
     const plan = await BillingPlan.findById(pendingSignup.plan);
     if (!plan) {
       throw new Error('Plan not found');
     }
-    
+
     // Generate slug
     const slug = pendingSignup.businessName
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-|-$/g, '');
-    
+
     // Check if slug exists
     let finalSlug = slug;
     let counter = 1;
@@ -425,12 +440,12 @@ const signupController = {
       finalSlug = `${slug}-${counter}`;
       counter++;
     }
-    
+
     // Get plan features
-    const features = plan.features instanceof Map 
+    const features = plan.features instanceof Map
       ? Object.fromEntries(plan.features)
       : plan.features || {};
-    
+
     // Create user if not exists
     if (!user) {
       user = new User({
@@ -445,7 +460,7 @@ const signupController = {
       user.$skipPasswordHash = true; // Skip re-hashing since password is already hashed
       await user.save();
     }
-    
+
     // Calculate subscription dates
     const startDate = new Date();
     const endDate = new Date();
@@ -454,7 +469,7 @@ const signupController = {
     } else {
       endDate.setMonth(endDate.getMonth() + 1);
     }
-    
+
     // Create tenancy
     const tenancy = await Tenancy.create({
       name: pendingSignup.businessName,
@@ -475,23 +490,23 @@ const signupController = {
       },
       status: 'active'
     });
-    
+
     // Update user with tenancy
     user.tenancy = tenancy._id;
     await user.save();
-    
+
     // Mark pending signup as completed
     await pendingSignup.markCompleted(tenancy._id, user._id);
-    
+
     // Store payment intent
     if (stripeSession?.payment_intent) {
       pendingSignup.stripePaymentIntentId = stripeSession.payment_intent;
       await pendingSignup.save();
     }
-    
+
     // TODO: Send welcome email
     // TODO: Create initial invoice record
-    
+
     // Notify all superadmins about new signup
     try {
       const NotificationService = require('../services/notificationService');
@@ -506,7 +521,7 @@ const signupController = {
     } catch (notifyError) {
       console.error('Failed to notify superadmins:', notifyError);
     }
-    
+
     return {
       tenancy: {
         id: tenancy._id,
@@ -522,7 +537,7 @@ const signupController = {
       loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/login`
     };
   },
-  
+
   /**
    * Stripe webhook handler for signup payments
    * POST /api/public/signup/webhook
@@ -530,7 +545,7 @@ const signupController = {
   handleStripeWebhook: async (req, res) => {
     const sig = req.headers['stripe-signature'];
     let event;
-    
+
     try {
       event = stripe.webhooks.constructEvent(
         req.body,
@@ -541,11 +556,11 @@ const signupController = {
       console.error('Webhook signature verification failed:', err.message);
       return res.status(400).send(`Webhook Error: ${err.message}`);
     }
-    
+
     // Handle checkout.session.completed for self-service signups
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object;
-      
+
       // Check if this is a self-service signup
       if (session.metadata?.type === 'self_service_signup') {
         try {
@@ -553,7 +568,7 @@ const signupController = {
             token: session.metadata.signupToken,
             status: { $in: ['pending', 'payment_processing'] }
           }).populate('plan');
-          
+
           if (pendingSignup) {
             await signupController.completePendingSignup(pendingSignup, session);
             console.log(`Signup completed via webhook: ${pendingSignup.email}`);
@@ -563,10 +578,10 @@ const signupController = {
         }
       }
     }
-    
+
     res.json({ received: true });
   },
-  
+
   /**
    * Get signup status by token
    * GET /api/public/signup/status/:token
@@ -574,22 +589,22 @@ const signupController = {
   getSignupStatus: async (req, res) => {
     try {
       const { token } = req.params;
-      
+
       const pendingSignup = await PendingSignup.findByToken(token);
-      
+
       if (!pendingSignup) {
         return res.status(404).json({
           success: false,
           message: 'Signup not found'
         });
       }
-      
+
       // Check if expired
       if (pendingSignup.isExpired) {
         pendingSignup.status = 'expired';
         await pendingSignup.save();
       }
-      
+
       res.json({
         success: true,
         data: {
@@ -601,7 +616,7 @@ const signupController = {
           completedAt: pendingSignup.completedAt
         }
       });
-      
+
     } catch (error) {
       console.error('Get signup status error:', error);
       res.status(500).json({

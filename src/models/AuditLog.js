@@ -223,15 +223,15 @@ auditLogSchema.statics.logAction = async function (logData) {
   // Handle backward compatibility - convert old format to new format
   let normalizedData = {}
 
-  if (logData.userId && logData.userType) {
+  if ((logData.userId || !logData.userId) && logData.userType) {
     // Old format - convert to new format
     normalizedData = {
-      who: logData.userEmail || logData.userId.toString(),
-      whoId: logData.userId,
+      who: logData.userEmail || (logData.userId ? logData.userId.toString() : 'Anonymous'),
+      whoId: logData.userId || new mongoose.Types.ObjectId(),
       role: this.mapUserTypeToRole(logData.userType),
       action: this.mapOldActionToNew(logData.action),
       entity: logData.entity || 'System',
-      entityId: logData.entityId || logData.userId.toString(),
+      entityId: logData.entityId || (logData.userId ? logData.userId.toString() : (logData.whoId ? logData.whoId.toString() : 'system')),
       tenantId: logData.tenantId || null,
       tenantName: logData.tenantName || (logData.tenantId ? 'Tenant' : 'Platform'),
       ipAddress: logData.ipAddress || '127.0.0.1',
@@ -294,13 +294,14 @@ auditLogSchema.statics.logAction = async function (logData) {
 auditLogSchema.statics.mapUserTypeToRole = function (userType) {
   const mapping = {
     'superadmin': 'Super Admin',
-    'center_admin': 'Tenant Admin',
+    'center_admin': 'Super Admin',
     'sales': 'Sales User',
     'support': 'Platform Support',
     'finance': 'Platform Finance Admin',
     'auditor': 'Platform Auditor',
     // Handle direct role names too
     'Super Admin': 'Super Admin',
+    'SuperAdmin': 'Super Admin',
     'Platform Support': 'Platform Support',
     'Platform Finance Admin': 'Platform Finance Admin',
     'Platform Auditor': 'Platform Auditor',
@@ -316,6 +317,8 @@ auditLogSchema.statics.mapOldActionToNew = function (action) {
   const mapping = {
     'login': 'LOGIN',
     'logout': 'LOGOUT',
+    'failed_login': 'LOGIN_FAILED',
+    'failed_mfa': 'SECURITY_ALERT',
     'create': 'CREATE_USER',
     'update': 'UPDATE_USER',
     'delete': 'DELETE_USER',

@@ -563,26 +563,21 @@ const handleStripeWebhook = async (req, res) => {
  */
 async function notifyPaymentReceived(paymentLink, lead) {
   try {
-    const SuperAdmin = require('../models/SuperAdmin');
-    const superadmins = await SuperAdmin.find({ isActive: true }).select('_id');
-
-    const notifications = superadmins.map(admin => ({
-      recipient: admin._id,
-      type: NOTIFICATION_TYPES.PAYMENT_RECEIVED || 'payment_received',
-      title: 'Payment Received',
-      message: `${lead?.businessName || 'A lead'} has paid ₹${paymentLink.amount.total} for ${paymentLink.plan} plan`,
+    const NotificationService = require('../services/notificationService');
+    await NotificationService.notifyAllSuperAdmins({
+      type: 'tenancy_payment_received',
+      title: 'Payment Received! 💳',
+      message: `${lead?.businessName || 'A business'} has paid ₹${paymentLink.amount.total} for ${paymentLink.plan} plan`,
+      icon: 'credit-card',
+      severity: 'success',
       data: {
-        additionalData: {
-          paymentLinkId: paymentLink._id,
-          leadId: paymentLink.lead
-        }
-      },
-      channels: { inApp: true, email: false }
-    }));
-
-    await Promise.all(
-      notifications.map(notif => Notification.createNotification(notif))
-    );
+        paymentLinkId: paymentLink._id,
+        leadId: paymentLink.lead,
+        amount: paymentLink.amount.total,
+        plan: paymentLink.plan,
+        link: '/billing'
+      }
+    });
   } catch (error) {
     console.error('Failed to create payment notifications:', error);
   }

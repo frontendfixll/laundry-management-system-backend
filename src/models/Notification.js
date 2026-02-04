@@ -278,7 +278,7 @@ notificationSchema.statics.getForUser = async function (recipientId, options = {
 
   const [notifications, total, unreadCount] = await Promise.all([
     this.find(query)
-      .sort({ priority: 1, createdAt: -1 }) // P0 first, then by date
+      .sort({ createdAt: -1 }) // Newest first (chronological) instead of priority-first
       .skip(skip)
       .limit(limit)
       .lean(),

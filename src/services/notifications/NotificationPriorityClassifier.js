@@ -16,11 +16,15 @@ class NotificationPriorityClassifier {
         events: [
           'payment_mismatch',
           'security_breach',
+          'security_alert',
           'cross_tenant_access_detected',
+          'account_locked',
           'system_critical_error',
           'data_corruption_detected',
           'unauthorized_admin_access',
-          'payment_fraud_detected'
+          'payment_fraud_detected',
+          'new_tenancy_signup',
+          'tenancy_payment_received'
         ],
         keywords: ['critical', 'security', 'breach', 'fraud', 'corruption'],
         conditions: {
@@ -42,7 +46,9 @@ class NotificationPriorityClassifier {
           'tenancy_features_updated',
           'account_locked',
           'refund_failed',
-          'integration_failure'
+          'integration_failure',
+          'new_lead',
+          'tenancy_subscription_expiring'
         ],
         keywords: ['failed', 'stuck', 'expired', 'suspended', 'locked'],
         conditions: {
@@ -109,7 +115,11 @@ class NotificationPriorityClassifier {
       // Critical overrides
       ['payment_mismatch', 'P0'],
       ['security_breach', 'P0'],
+      ['security_alert', 'P0'],
+      ['account_locked', 'P0'],
       ['cross_tenant_access_detected', 'P0'],
+      ['new_tenancy_signup', 'P1'],
+      ['tenancy_payment_received', 'P1'],
 
       // High priority overrides
       ['payment_failed', 'P1'],
@@ -120,6 +130,8 @@ class NotificationPriorityClassifier {
       ['order_updated', null],
       ['orderStatusUpdated', 'P2'],
       ['customer_updated', 'P2'],
+      ['new_lead', 'P2'],
+      ['tenancy_subscription_expiring', 'P2'],
       ['payment_reminder', null],
       ['feature_enabled', null]
     ]);

@@ -14,46 +14,60 @@ const FAILED_ATTEMPT_WINDOW = 15 * 60 * 1000; // 15 minutes
 const trackFailedAttempt = async (identifier, userType = 'user') => {
   const key = `${userType}:${identifier}`;
   const now = Date.now();
-  
+
   if (!failedAttempts.has(key)) {
     failedAttempts.set(key, []);
   }
-  
+
   const attempts = failedAttempts.get(key);
   // Remove old attempts outside the window
   const recentAttempts = attempts.filter(time => now - time < FAILED_ATTEMPT_WINDOW);
   recentAttempts.push(now);
   failedAttempts.set(key, recentAttempts);
-  
+
   // Send notification if threshold reached
   if (recentAttempts.length >= FAILED_ATTEMPT_LIMIT) {
     try {
       const NotificationService = require('../services/notificationService');
-      
+      const AuditLog = require('../models/AuditLog');
+
       // Find user to get their ID and tenancy
       let user = null;
-      let tenancy = null;
-      
+      let tenancyId = null;
+
       if (userType === 'user') {
         user = await User.findOne({ email: identifier }).select('_id tenancy');
-        tenancy = user?.tenancy;
+        tenancyId = user?.tenancy;
       } else if (userType === 'superadmin') {
         user = await SuperAdmin.findOne({ email: identifier }).select('_id');
       }
-      
-      if (user) {
+
+      // LOG TO AUDIT TRAIL
+      await AuditLog.logAction({
+        userId: user ? user._id : null,
+        userType: userType === 'superadmin' ? 'center_admin' : 'user',
+        userEmail: identifier,
+        action: 'failed_login',
+        category: 'auth',
+        description: `Failed login attempt (${recentAttempts.length} recent)`,
+        ipAddress: 'tracked-middleware', // We don't have req here easily
+        status: 'failure',
+        riskLevel: recentAttempts.length >= FAILED_ATTEMPT_LIMIT ? 'high' : 'low'
+      });
+
+      if (user && recentAttempts.length >= FAILED_ATTEMPT_LIMIT) {
         await NotificationService.notifyMultipleLoginAttempts(
-          user._id, 
-          recentAttempts.length, 
-          tenancy
+          user._id,
+          recentAttempts.length,
+          tenancyId
         );
         console.log(`🚨 Security alert sent for ${recentAttempts.length} failed attempts on ${identifier}`);
       }
     } catch (error) {
-      console.error('Failed to send security notification:', error);
+      console.error('Failed to send security notification/log:', error);
     }
   }
-  
+
   return recentAttempts.length;
 };
 
@@ -77,12 +91,12 @@ const protect = async (req, res, next) => {
 
     try {
       const decoded = verifyAccessToken(token);
-      
+
       // Get user from User model with roleId populated
       const user = await User.findById(decoded.userId)
         .select('-password')
         .populate('roleId', 'name slug permissions isActive color');
-      
+
       if (!user) {
         return res.status(401).json({
           success: false,
@@ -129,18 +143,18 @@ const protectAny = async (req, res, next) => {
 
     try {
       const decoded = verifyToken(token);
-      
+
       // Check if it's a superadmin token (has adminId and role=superadmin)
       if (decoded.adminId && decoded.role === 'superadmin') {
         const admin = await SuperAdmin.findById(decoded.adminId).select('-password');
-        
+
         if (admin && admin.isActive) {
           req.user = admin;
           req.isSuperAdmin = true;
           return next();
         }
       }
-      
+
       // Try as regular user (admin, staff, customer)
       if (decoded.userId) {
         const user = await User.findById(decoded.userId)
@@ -176,7 +190,7 @@ const protectAny = async (req, res, next) => {
 const restrictTo = (...roles) => {
   return (req, res, next) => {
     const userRole = req.user.role;
-    
+
     // Debug logging
     console.log('🔍 restrictTo middleware:', {
       userRole,
@@ -185,13 +199,13 @@ const restrictTo = (...roles) => {
       userId: req.user._id,
       userEmail: req.user.email
     });
-    
+
     // SuperAdmin has access to everything
     if (req.isSuperAdmin) {
       console.log('✅ SuperAdmin access granted');
       return next();
     }
-    
+
     // Map legacy roles to new roles for backward compatibility
     const normalizedRoles = roles.map(role => {
       if (LEGACY_ROLE_MAP && LEGACY_ROLE_MAP[role]) {
@@ -200,22 +214,22 @@ const restrictTo = (...roles) => {
       }
       return role;
     });
-    
+
     // Also add 'admin' if any legacy role is present
     if (roles.includes('center_admin') || roles.includes('branch_manager')) {
       if (!normalizedRoles.includes('admin')) {
         normalizedRoles.push('admin');
       }
     }
-    
+
     console.log('🔍 Normalized roles:', normalizedRoles);
-    
+
     // If superadmin is in allowed roles, allow it
     if (normalizedRoles.includes('superadmin') && req.isSuperAdmin) {
       console.log('✅ SuperAdmin role access granted');
       return next();
     }
-    
+
     if (!normalizedRoles.includes(userRole)) {
       console.log('❌ Access denied:', { userRole, normalizedRoles });
       return res.status(403).json({
@@ -223,7 +237,7 @@ const restrictTo = (...roles) => {
         message: 'Access denied. Insufficient permissions.'
       });
     }
-    
+
     console.log('✅ Role access granted');
     next();
   };
@@ -236,7 +250,7 @@ const requirePermission = (module, action) => {
     if (req.isSuperAdmin) {
       return next();
     }
-    
+
     // Only admin and branch_admin roles have RBAC permissions
     if (req.user.role !== 'admin' && req.user.role !== 'branch_admin') {
       return res.status(403).json({
@@ -244,21 +258,21 @@ const requirePermission = (module, action) => {
         message: 'Admin access required'
       });
     }
-    
+
     // If user has roleId, check permissions from Role model
     if (req.user.roleId) {
       try {
         const Role = require('../models/Role');
         const role = await Role.findById(req.user.roleId);
-        
+
         if (role && role.isActive) {
           // Map 'edit' action to 'edit' in Role model (Role uses edit, User uses update)
           const roleAction = action === 'update' ? 'edit' : action;
-          
+
           if (role.hasPermission(module, roleAction)) {
             return next();
           }
-          
+
           return res.status(403).json({
             success: false,
             message: `Permission denied: ${module}.${action}`
@@ -268,7 +282,7 @@ const requirePermission = (module, action) => {
         console.error('Role permission check error:', err);
       }
     }
-    
+
     // Fallback to user's direct permissions
     if (!req.user.hasPermission(module, action)) {
       return res.status(403).json({
@@ -276,7 +290,7 @@ const requirePermission = (module, action) => {
         message: `Permission denied: ${module}.${action}`
       });
     }
-    
+
     next();
   };
 };
@@ -299,7 +313,7 @@ const restrictToBranch = (req, res, next) => {
   if (req.isSuperAdmin || req.user.role === 'admin') {
     return next();
   }
-  
+
   // Branch admin must have an assigned branch
   if (req.user.role === 'branch_admin') {
     if (!req.user.assignedBranch) {
@@ -308,10 +322,10 @@ const restrictToBranch = (req, res, next) => {
         message: 'Branch admin must be assigned to a branch'
       });
     }
-    
+
     // Get branch ID from request (params, query, or body)
     const requestedBranchId = req.params.branchId || req.query.branchId || req.body.branchId;
-    
+
     // If a specific branch is requested, verify it matches assigned branch
     if (requestedBranchId && requestedBranchId.toString() !== req.user.assignedBranch.toString()) {
       return res.status(403).json({
@@ -319,12 +333,12 @@ const restrictToBranch = (req, res, next) => {
         message: 'Access denied. You can only access your assigned branch.'
       });
     }
-    
+
     // Inject branch filter for queries
     req.branchFilter = { branch: req.user.assignedBranch };
     return next();
   }
-  
+
   // Other roles don't have branch restrictions at this level
   next();
 };
@@ -338,7 +352,7 @@ const optionalAuth = async (req, res, next) => {
       try {
         const decoded = verifyAccessToken(token);
         const user = await User.findById(decoded.userId).select('-password');
-        
+
         if (user && user.isActive) {
           req.user = user;
         }
@@ -372,14 +386,14 @@ const protectSuperAdmin = async (req, res, next) => {
 
     try {
       const decoded = verifyToken(token);
-      
+
       console.log('🔐 SuperAdmin Auth - Decoded token:', {
         adminId: decoded.adminId,
         email: decoded.email,
         role: decoded.role,
         sessionId: decoded.sessionId
       });
-      
+
       // Check if it's a superadmin token
       if (!decoded.adminId || decoded.role !== 'superadmin') {
         console.log('❌ SuperAdmin Auth - Not a superadmin token');
@@ -388,9 +402,9 @@ const protectSuperAdmin = async (req, res, next) => {
           message: 'SuperAdmin access required'
         });
       }
-      
+
       const admin = await SuperAdmin.findById(decoded.adminId).select('-password');
-      
+
       if (!admin) {
         console.log('❌ SuperAdmin Auth - Admin not found');
         return res.status(401).json({
@@ -441,14 +455,14 @@ const requireAdmin = (req, res, next) => {
   if (req.isSuperAdmin) {
     return next();
   }
-  
+
   if (req.user.role !== 'admin' && req.user.role !== 'branch_admin') {
     return res.status(403).json({
       success: false,
       message: 'Admin access required'
     });
   }
-  
+
   next();
 };
 
@@ -457,14 +471,14 @@ const requireBranchAdmin = (req, res, next) => {
   if (req.isSuperAdmin) {
     return next();
   }
-  
+
   if (req.user.role !== 'admin' && req.user.role !== 'branch_admin') {
     return res.status(403).json({
       success: false,
       message: 'Branch admin access required'
     });
   }
-  
+
   next();
 };
 
@@ -473,25 +487,25 @@ const requireSupport = (req, res, next) => {
   if (req.isSuperAdmin) {
     // For SuperAdmin users, check if they have Platform Support RBAC role
     if (req.user.roles && req.user.roles.length > 0) {
-      const hasPlatformSupport = req.user.roles.some(role => 
+      const hasPlatformSupport = req.user.roles.some(role =>
         role.slug === 'platform-support' || role.name === 'Platform Support'
       );
       if (hasPlatformSupport) {
         return next();
       }
     }
-    
+
     // Also allow legacy SuperAdmin access for backward compatibility
     if (req.user.role === 'superadmin') {
       return next();
     }
-    
+
     return res.status(403).json({
       success: false,
       message: 'Access denied. Platform Support role required.'
     });
   }
-  
+
   // For regular users, check support role
   if (req.user.role !== 'support') {
     return res.status(403).json({
@@ -499,7 +513,7 @@ const requireSupport = (req, res, next) => {
       message: 'Access denied. Support role required.'
     });
   }
-  
+
   next();
 };
 

@@ -44,11 +44,6 @@ const {
   reactivateStaff,
   toggleStaffStatus,
   getBranches,
-  getNotifications,
-  getUnreadNotificationCount,
-  markNotificationsAsRead,
-  markAllNotificationsAsRead,
-  clearAllNotifications
 } = require('../../controllers/admin/adminController');
 
 // Import inventory functions from center admin controller
@@ -224,13 +219,6 @@ router.put('/branches/:branchId/delivery-pricing', updateBranchDeliveryPricing);
 // Delivery pricing routes
 router.get('/delivery-pricing', getDeliveryPricing);
 router.put('/delivery-pricing', updateDeliveryPricing);
-
-// Notification routes
-router.get('/notifications', getNotifications);
-router.get('/notifications/unread-count', getUnreadNotificationCount);
-router.put('/notifications/mark-read', markNotificationsAsRead);
-router.put('/notifications/mark-all-read', markAllNotificationsAsRead);
-router.delete('/notifications/all', clearAllNotifications);
 
 // Support Ticket routes (RBAC controlled - requires support permission)
 router.get('/support/dashboard', getSupportDashboard);

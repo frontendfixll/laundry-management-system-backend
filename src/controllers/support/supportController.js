@@ -1,9 +1,9 @@
 const Ticket = require('../../models/Ticket');
 const Order = require('../../models/Order');
 const User = require('../../models/User');
-const { 
-  sendSuccess, 
-  sendError, 
+const {
+  sendSuccess,
+  sendError,
   asyncHandler,
   getPagination,
   formatPaginationResponse
@@ -15,7 +15,7 @@ const { TICKET_STATUS, TICKET_PRIORITY, USER_ROLES } = require('../../config/con
 // @access  Private (Admin/Center Admin)
 const getSupportDashboard = asyncHandler(async (req, res) => {
   const user = req.user;
-  
+
   // Build query based on user role - all admins see all tickets
   let ticketQuery = {};
   // Admins and Center Admins see all tickets
@@ -78,7 +78,7 @@ const getSupportDashboard = asyncHandler(async (req, res) => {
   // Get ticket distribution by category
   let categoryMatch = {};
   // Admins see all tickets
-  
+
   const categoryDistribution = await Ticket.aggregate([
     { $match: categoryMatch },
     {
@@ -114,11 +114,11 @@ const getSupportDashboard = asyncHandler(async (req, res) => {
 // @access  Private (Admin)
 const getTickets = asyncHandler(async (req, res) => {
   const user = req.user;
-  const { 
-    page = 1, 
-    limit = 20, 
-    status, 
-    priority, 
+  const {
+    page = 1,
+    limit = 20,
+    status,
+    priority,
     category,
     assignedTo,
     search,
@@ -130,22 +130,22 @@ const getTickets = asyncHandler(async (req, res) => {
   // Build base query with tenancy and branch filter
   const tenancyId = req.tenancyId || req.user?.tenancy;
   const branchId = req.user?.assignedBranch;
-  
+
   let query = {};
-  
+
   // Add tenancy filter
   if (tenancyId) {
     query.tenancy = tenancyId;
   }
-  
+
   // Add branch filter if admin has assigned branch
   if (branchId) {
     query.branch = branchId;
   }
-  
+
   // Only show tickets that have a related order (order-based complaints only)
   query.relatedOrder = { $ne: null };
-  
+
   console.log('🎫 GET /admin/support/tickets called');
   console.log('🎫 User:', req.user?.email, 'Tenancy:', tenancyId, 'Branch:', branchId);
 
@@ -169,20 +169,20 @@ const getTickets = asyncHandler(async (req, res) => {
 
   const total = await Ticket.countDocuments(query);
   console.log('🎫 Query:', JSON.stringify(query), 'Total found:', total);
-  
+
   const tickets = await Ticket.find(query)
     .populate('raisedBy', 'name email phone')
     .populate('assignedTo', 'name')
     .populate('relatedOrder', 'orderNumber status')
-    .sort({ 
+    .sort({
       priority: -1, // High priority first
-      createdAt: -1 
+      createdAt: -1
     })
     .skip(skip)
     .limit(limitNum);
 
   console.log('🎫 Tickets returned:', tickets.length);
-  
+
   const response = formatPaginationResponse(tickets, total, pageNum, limitNum);
   sendSuccess(res, response, 'Tickets retrieved successfully');
 });
@@ -303,8 +303,8 @@ const addMessageToTicket = asyncHandler(async (req, res) => {
     .populate('messages.sender', 'name role')
     .select('messages');
 
-  sendSuccess(res, { 
-    messages: updatedTicket.messages 
+  sendSuccess(res, {
+    messages: updatedTicket.messages
   }, 'Message added successfully');
 });
 
@@ -326,7 +326,7 @@ const escalateTicket = asyncHandler(async (req, res) => {
   }
 
   let escalationTarget;
-  
+
   // If escalatedTo is 'admin' or 'center_admin', find any available admin
   if (escalatedTo === 'admin' || escalatedTo === 'center_admin' || !escalatedTo) {
     escalationTarget = await User.findOne({
@@ -355,6 +355,17 @@ const escalateTicket = asyncHandler(async (req, res) => {
   }
 
   await ticket.escalate(escalationTarget._id, reason);
+
+  // Notify SuperAdmins about escalation
+  try {
+    const NotificationService = require('../../services/notificationService');
+    const superAdmins = await User.find({ role: 'superadmin', isActive: true }).select('_id');
+    for (const superAdmin of superAdmins) {
+      await NotificationService.notifySuperAdminTicketEscalated(superAdmin._id, ticket);
+    }
+  } catch (error) {
+    console.error('Failed to notify SuperAdmins of escalation:', error.message);
+  }
 
   const updatedTicket = await Ticket.findById(ticketId)
     .populate('escalatedTo', 'name email');
