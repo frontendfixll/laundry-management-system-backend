@@ -312,48 +312,117 @@ const getPaymentSuccess = async (req, res) => {
 };
 
 /**
- * Stripe Webhook Handler for direct payments
+ * Stripe Webhook Handler for direct payments with enhanced logging
  * POST /api/public/stripe-webhook
  */
 const handleDirectStripeWebhook = async (req, res) => {
   const sig = req.headers['stripe-signature'];
+  const timestamp = new Date().toISOString();
+  
+  console.log(`🔔 [${timestamp}] Webhook received from Stripe`);
+  console.log(`📋 Headers:`, {
+    'stripe-signature': sig ? 'Present' : 'Missing',
+    'content-type': req.headers['content-type'],
+    'user-agent': req.headers['user-agent']
+  });
+  console.log(`📦 Body length:`, req.body ? req.body.length : 0);
+  
   let event;
 
   try {
+    if (!process.env.STRIPE_WEBHOOK_SECRET) {
+      console.error(`❌ [${timestamp}] STRIPE_WEBHOOK_SECRET not configured`);
+      return res.status(500).send('Webhook secret not configured');
+    }
+
     event = stripe.webhooks.constructEvent(
       req.body,
       sig,
       process.env.STRIPE_WEBHOOK_SECRET
     );
+    
+    console.log(`✅ [${timestamp}] Webhook signature verified successfully`);
+    console.log(`🎯 Event type: ${event.type}`);
+    console.log(`🆔 Event ID: ${event.id}`);
+    console.log(`📅 Event created: ${new Date(event.created * 1000).toISOString()}`);
+    
   } catch (err) {
-    console.error('Webhook signature verification failed:', err.message);
+    console.error(`❌ [${timestamp}] Webhook signature verification failed:`, err.message);
+    console.error(`🔑 Expected secret starts with: ${process.env.STRIPE_WEBHOOK_SECRET?.substring(0, 10)}...`);
+    console.error(`📝 Received signature: ${sig?.substring(0, 50)}...`);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  // Handle the event
+  // Handle the event with enhanced logging and retry logic
   try {
+    console.log(`🔄 [${timestamp}] Processing event: ${event.type}`);
+    
     switch (event.type) {
       case 'checkout.session.completed':
-        await handleCheckoutCompleted(event.data.object);
+        console.log(`💳 Processing checkout completion for session: ${event.data.object.id}`);
+        console.log(`💰 Amount: ₹${event.data.object.amount_total ? (event.data.object.amount_total / 100).toLocaleString() : 'N/A'}`);
+        console.log(`📧 Customer: ${event.data.object.customer_details?.email || 'N/A'}`);
+        
+        await processWebhookWithRetry(event.data.object, 'checkout_completed');
+        console.log(`✅ Checkout completion processed successfully`);
         break;
       
       case 'payment_intent.succeeded':
+        console.log(`✅ Processing successful payment: ${event.data.object.id}`);
+        console.log(`💰 Amount: ₹${event.data.object.amount ? (event.data.object.amount / 100).toLocaleString() : 'N/A'}`);
+        
         await handlePaymentSucceeded(event.data.object);
+        console.log(`✅ Payment success processed`);
         break;
       
       case 'payment_intent.payment_failed':
+        console.log(`❌ Processing failed payment: ${event.data.object.id}`);
+        console.log(`💸 Amount: ₹${event.data.object.amount ? (event.data.object.amount / 100).toLocaleString() : 'N/A'}`);
+        console.log(`🚫 Failure reason: ${event.data.object.last_payment_error?.message || 'Unknown'}`);
+        
         await handlePaymentFailed(event.data.object);
+        console.log(`✅ Payment failure processed`);
         break;
       
       default:
-        console.log(`Unhandled event type: ${event.type}`);
+        console.log(`ℹ️  Unhandled event type: ${event.type} - Event ID: ${event.id}`);
     }
+    
+    console.log(`🎉 [${timestamp}] Event processed successfully`);
+    
+    // Log successful webhook processing
+    await logWebhookEvent(event, 'success', null);
+    
   } catch (error) {
-    console.error('Webhook processing error:', error);
-    return res.status(500).json({ error: 'Webhook processing failed' });
+    console.error(`❌ [${timestamp}] Webhook processing error:`, error.message);
+    console.error(`📋 Error details:`, {
+      message: error.message,
+      stack: error.stack?.substring(0, 500),
+      eventType: event.type,
+      eventId: event.id
+    });
+    
+    // Log failed webhook processing
+    await logWebhookEvent(event, 'failed', error.message);
+    
+    // Send error notification to admins
+    await notifyWebhookError(error, event);
+    
+    return res.status(500).json({ 
+      error: 'Webhook processing failed',
+      eventId: event.id,
+      eventType: event.type,
+      timestamp 
+    });
   }
 
-  res.json({ received: true });
+  res.json({ 
+    received: true, 
+    eventId: event.id,
+    eventType: event.type,
+    timestamp,
+    status: 'processed'
+  });
 };
 
 /**
@@ -852,19 +921,114 @@ async function notifyDirectPurchaseReceived(customerEmail, businessName, metadat
   }
 }
 /**
- * Handle successful payment intent
+ * Process webhook with retry mechanism
  */
-async function handlePaymentSucceeded(paymentIntent) {
-  console.log('✅ Payment succeeded:', paymentIntent.id);
-  // Additional processing if needed
+async function processWebhookWithRetry(eventData, eventType, maxRetries = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`🔄 Processing attempt ${attempt}/${maxRetries} for ${eventType}`);
+      
+      if (eventType === 'checkout_completed') {
+        await handleCheckoutCompleted(eventData);
+      }
+      
+      console.log(`✅ Processing successful on attempt ${attempt}`);
+      return { success: true, attempt };
+      
+    } catch (error) {
+      console.error(`❌ Attempt ${attempt} failed:`, error.message);
+      
+      if (attempt === maxRetries) {
+        console.error(`🚨 All ${maxRetries} attempts failed for ${eventType}`);
+        throw error;
+      }
+      
+      // Exponential backoff: 1s, 2s, 4s
+      const delay = Math.pow(2, attempt) * 1000;
+      console.log(`⏳ Waiting ${delay}ms before retry...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
 }
 
 /**
- * Handle failed payment intent
+ * Log webhook events for monitoring
  */
-async function handlePaymentFailed(paymentIntent) {
-  console.log('❌ Payment failed:', paymentIntent.id);
-  // Handle payment failure - maybe notify customer or retry
+async function logWebhookEvent(event, status, errorMessage = null) {
+  try {
+    // Create a simple webhook log collection
+    const { MongoClient } = require('mongodb');
+    const client = new MongoClient(process.env.MONGODB_URI);
+    
+    await client.connect();
+    const db = client.db();
+    
+    await db.collection('webhook_logs').insertOne({
+      eventId: event.id,
+      eventType: event.type,
+      status, // 'success' or 'failed'
+      errorMessage,
+      eventData: {
+        amount: event.data.object.amount_total || event.data.object.amount,
+        customerEmail: event.data.object.customer_details?.email || event.data.object.receipt_email,
+        sessionId: event.data.object.id
+      },
+      createdAt: new Date(),
+      processedAt: new Date()
+    });
+    
+    await client.close();
+    console.log(`📝 Webhook event logged: ${event.id} - ${status}`);
+    
+  } catch (error) {
+    console.error('❌ Failed to log webhook event:', error.message);
+    // Don't throw error here to avoid breaking webhook processing
+  }
+}
+
+/**
+ * Notify admins about webhook errors
+ */
+async function notifyWebhookError(error, event) {
+  try {
+    const SuperAdmin = require('../models/SuperAdmin');
+    const Notification = require('../models/Notification');
+    const { NOTIFICATION_TYPES } = require('../config/constants');
+    
+    const superadmins = await SuperAdmin.find({ isActive: true }).select('_id');
+    
+    if (superadmins.length === 0) {
+      console.log('⚠️ No active superadmins found for webhook error notification');
+      return;
+    }
+    
+    const notifications = superadmins.map(admin => ({
+      recipient: admin._id,
+      type: NOTIFICATION_TYPES.SYSTEM_ERROR || 'system_error',
+      title: '🚨 Webhook Processing Failed',
+      message: `Payment webhook failed for ${event.type}: ${error.message}. Manual processing may be required.`,
+      data: {
+        additionalData: {
+          eventType: event.type,
+          eventId: event.id,
+          error: error.message,
+          timestamp: new Date().toISOString(),
+          sessionId: event.data.object.id,
+          amount: event.data.object.amount_total || event.data.object.amount,
+          customerEmail: event.data.object.customer_details?.email || 'N/A'
+        }
+      },
+      channels: { inApp: true, email: true }
+    }));
+
+    await Promise.all(
+      notifications.map(notif => Notification.createNotification(notif))
+    );
+    
+    console.log('🔔 Webhook error notifications sent to superadmins');
+  } catch (notifError) {
+    console.error('❌ Failed to send webhook error notifications:', notifError);
+  }
 }
 
 module.exports = {
@@ -873,3 +1037,53 @@ module.exports = {
   getPaymentSuccess,
   handleDirectStripeWebhook
 };
+
+/**
+ * Handle successful payment intent with enhanced logging
+ */
+async function handlePaymentSucceeded(paymentIntent) {
+  console.log('✅ Payment succeeded:', paymentIntent.id);
+  console.log(`💰 Amount: ₹${paymentIntent.amount ? (paymentIntent.amount / 100).toLocaleString() : 'N/A'}`);
+  console.log(`📧 Receipt email: ${paymentIntent.receipt_email || 'N/A'}`);
+  console.log(`🏦 Payment method: ${paymentIntent.payment_method_types?.join(', ') || 'N/A'}`);
+  
+  // Additional processing if needed
+  // This is usually handled by checkout.session.completed
+  // but we can add backup processing here if needed
+}
+
+/**
+ * Handle failed payment intent with enhanced logging
+ */
+async function handlePaymentFailed(paymentIntent) {
+  console.log('❌ Payment failed:', paymentIntent.id);
+  console.log(`💸 Amount: ₹${paymentIntent.amount ? (paymentIntent.amount / 100).toLocaleString() : 'N/A'}`);
+  console.log(`🚫 Failure reason: ${paymentIntent.last_payment_error?.message || 'Unknown'}`);
+  console.log(`📧 Customer email: ${paymentIntent.receipt_email || 'N/A'}`);
+  
+  // Handle payment failure - notify customer or create support ticket
+  try {
+    // Create a support ticket for failed payment
+    const Ticket = require('../models/Ticket');
+    
+    await Ticket.create({
+      title: `Payment Failed - ${paymentIntent.id}`,
+      description: `Payment of ₹${paymentIntent.amount ? (paymentIntent.amount / 100).toLocaleString() : 'N/A'} failed. Reason: ${paymentIntent.last_payment_error?.message || 'Unknown error'}`,
+      priority: 'high',
+      status: 'open',
+      category: 'payment',
+      source: 'webhook_payment_failed',
+      metadata: {
+        paymentIntentId: paymentIntent.id,
+        amount: paymentIntent.amount,
+        failureReason: paymentIntent.last_payment_error?.message,
+        customerEmail: paymentIntent.receipt_email
+      }
+    });
+    
+    console.log('🎫 Support ticket created for failed payment');
+    
+  } catch (error) {
+    console.error('❌ Failed to create support ticket for failed payment:', error.message);
+  }
+}

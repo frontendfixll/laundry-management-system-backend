@@ -26,9 +26,10 @@ class CenterAdminAuthController {
         .populate('roles', 'name slug description color permissions')
       if (!admin) {
         sessionService.recordFailedAttempt(ipAddress)
-        
+
         await AuditLog.logAction({
-          userId: null,
+          who: email,
+          whoId: new (require('mongoose').Types.ObjectId)(),
           userType: 'center_admin',
           userEmail: email,
           action: 'failed_login',
@@ -40,6 +41,21 @@ class CenterAdminAuthController {
           riskLevel: 'medium',
           errorMessage: 'Invalid credentials'
         })
+
+        // TRIGGER REAL-TIME NOTIFICATION
+        try {
+          const NotificationService = require('../services/notificationService');
+          await NotificationService.notifyAllSuperAdmins({
+            type: 'security_alert',
+            title: 'Failed Login Attempt',
+            message: `A login attempt was made with an invalid email: ${email}`,
+            icon: 'shield-alert',
+            severity: 'warning',
+            priority: 'P1'
+          });
+        } catch (notiError) {
+          console.error('Failed to send real-time notification for failed login:', notiError);
+        }
 
         return res.status(401).json({
           success: false,
@@ -97,6 +113,21 @@ class CenterAdminAuthController {
           errorMessage: 'Invalid credentials'
         })
 
+        // TRIGGER REAL-TIME NOTIFICATION
+        try {
+          const NotificationService = require('../services/notificationService');
+          await NotificationService.notifyAllSuperAdmins({
+            type: 'security_alert',
+            title: 'Security Alert: Failed Login',
+            message: `A failed login attempt was made on account: ${admin.email}`,
+            icon: 'shield-alert',
+            severity: 'error',
+            priority: 'P0' // CRITICAL if the user actually exists
+          });
+        } catch (notiError) {
+          console.error('Failed to send real-time notification for failed login (password):', notiError);
+        }
+
         return res.status(401).json({
           success: false,
           message: 'Invalid credentials'
@@ -110,7 +141,7 @@ class CenterAdminAuthController {
       if (admin.mfa && admin.mfa.isEnabled) {
         // Send OTP for MFA
         const otpResult = await mfaService.sendOTP(admin.email, 'login')
-        
+
         if (!otpResult.success) {
           return res.status(500).json({
             success: false,
@@ -120,7 +151,7 @@ class CenterAdminAuthController {
 
         // Generate temporary token for MFA verification
         const mfaToken = jwt.sign(
-          { 
+          {
             adminId: admin._id,
             email: admin.email,
             step: 'mfa_pending'
@@ -209,7 +240,7 @@ class CenterAdminAuthController {
 
       if (!verificationResult.success) {
         const ipAddress = req.ip || req.connection.remoteAddress || '127.0.0.1'
-        
+
         await AuditLog.logAction({
           userId: admin._id,
           userType: 'center_admin',

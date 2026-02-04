@@ -8,7 +8,7 @@ const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const { verifyToken } = require('../../utils/jwt');
 const User = require('../../models/User');
-const SuperAdmin = require('../../models/SuperAdmin');
+const CenterAdmin = require('../../models/CenterAdmin'); // SuperAdmin uses CenterAdmin model
 const NotificationPriorityClassifier = require('./NotificationPriorityClassifier');
 const NotificationChannelSelector = require('./NotificationChannelSelector');
 const NotificationReminderEngine = require('./NotificationReminderEngine');
@@ -107,12 +107,23 @@ class SocketIONotificationEngine {
       
       // Check if it's a SuperAdmin token
       if (decoded.adminId && decoded.role === 'superadmin') {
-        user = await SuperAdmin.findById(decoded.adminId).select('-password');
+        user = await CenterAdmin.findById(decoded.adminId).select('-password');
         userType = 'superadmin';
         
         if (!user || !user.isActive) {
           throw new Error('SuperAdmin not found or inactive');
         }
+        
+        // Attach SuperAdmin data to socket
+        socket.userId = user._id.toString();
+        socket.userType = userType;
+        socket.userRole = decoded.role;
+        socket.tenancyId = null; // SuperAdmin has no tenancy
+        socket.userEmail = user.email;
+        socket.userName = user.name;
+        socket.permissions = user.permissions || {};
+        socket.features = user.features || {};
+        
       } else if (decoded.userId) {
         // Regular user token
         user = await User.findById(decoded.userId)
@@ -122,19 +133,20 @@ class SocketIONotificationEngine {
         if (!user || !user.isActive) {
           throw new Error('User not found or inactive');
         }
+        
+        // Attach user data to socket
+        socket.userId = user._id.toString();
+        socket.userType = userType;
+        socket.userRole = user.role;
+        socket.tenancyId = user.tenancy?.toString() || null;
+        socket.userEmail = user.email;
+        socket.userName = user.name;
+        socket.permissions = user.permissions || {};
+        socket.features = user.features || {};
+        
       } else {
         throw new Error('Invalid token format');
       }
-
-      // Attach user data to socket
-      socket.userId = user._id.toString();
-      socket.userType = userType;
-      socket.userRole = user.role;
-      socket.tenancyId = user.tenancy?.toString() || null;
-      socket.userEmail = user.email;
-      socket.userName = user.name;
-      socket.permissions = user.permissions || {};
-      socket.features = user.features || {};
       
       // Security validation
       const securityCheck = await this.securityGuard.validateConnection(socket, user);

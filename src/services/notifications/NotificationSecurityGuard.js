@@ -9,7 +9,7 @@ const { NotificationAuditLogger } = require('./NotificationAuditLogger');
 class NotificationSecurityGuard {
   constructor() {
     this.auditLogger = new NotificationAuditLogger();
-    
+
     // Security rules and policies
     this.securityPolicies = {
       // Tenant isolation rules
@@ -18,7 +18,7 @@ class NotificationSecurityGuard {
         allowCrossTenantForRoles: ['superadmin', 'platform_support'],
         logAllCrossTenantAttempts: true
       },
-      
+
       // Data masking rules
       dataMasking: {
         enabled: true,
@@ -29,7 +29,7 @@ class NotificationSecurityGuard {
           email: true   // Always mask email addresses
         }
       },
-      
+
       // PII protection
       piiProtection: {
         enabled: true,
@@ -37,7 +37,7 @@ class NotificationSecurityGuard {
         allowedFields: ['firstName', 'businessName', 'orderId'],
         blockedFields: ['ssn', 'taxId', 'bankAccount', 'creditCard']
       },
-      
+
       // Rate limiting for security
       securityRateLimits: {
         maxNotificationsPerUser: 1000,
@@ -45,7 +45,7 @@ class NotificationSecurityGuard {
         suspiciousActivityThreshold: 100,
         timeWindow: 60 * 60 * 1000 // 1 hour
       },
-      
+
       // Webhook security
       webhookSecurity: {
         requireSignature: true,
@@ -57,7 +57,7 @@ class NotificationSecurityGuard {
 
     // Suspicious activity tracking
     this.suspiciousActivity = new Map();
-    
+
     // Blocked entities
     this.blockedUsers = new Set();
     this.blockedTenants = new Set();
@@ -138,12 +138,12 @@ class NotificationSecurityGuard {
 
     } catch (error) {
       console.error('❌ Error in security validation:', error);
-      
+
       await this.auditLogger.logSecurityEvent('validation_error', {
         notificationId: notification._id,
         error: error.message
       });
-      
+
       // Fail secure - reject on error
       return {
         passed: false,
@@ -159,16 +159,20 @@ class NotificationSecurityGuard {
    */
   async validateTenantIsolation(notification, context) {
     const result = { passed: true, violations: [] };
-    
+
     if (!this.securityPolicies.tenantIsolation.enforceStrict) {
       return result;
     }
 
     // Check if notification has proper tenant context
-    if (!notification.tenantId) {
+    // EXCEPTION: SuperAdmins and Support roles don't need a tenant context for platform-wide alerts
+    const allowedRoles = this.securityPolicies.tenantIsolation.allowCrossTenantForRoles;
+    const isPlatformAdmin = allowedRoles.includes(context.requestingUserRole);
+
+    if (!notification.tenantId && !isPlatformAdmin) {
       result.passed = false;
       result.violations.push('missing_tenant_context');
-      
+
       await this.auditLogger.logSecurityEvent('tenant_isolation_violation', {
         notificationId: notification._id,
         violation: 'missing_tenant_context',
@@ -177,16 +181,16 @@ class NotificationSecurityGuard {
     }
 
     // Check for cross-tenant access attempts
-    if (context.requestingTenantId && 
-        notification.tenantId?.toString() !== context.requestingTenantId?.toString()) {
-      
+    if (context.requestingTenantId &&
+      notification.tenantId?.toString() !== context.requestingTenantId?.toString()) {
+
       // Check if requesting role is allowed cross-tenant access
       const allowedRoles = this.securityPolicies.tenantIsolation.allowCrossTenantForRoles;
-      
+
       if (!allowedRoles.includes(context.requestingUserRole)) {
         result.passed = false;
         result.violations.push('cross_tenant_access_denied');
-        
+
         await this.auditLogger.logSecurityEvent('cross_tenant_access_attempt', {
           notificationId: notification._id,
           requestingTenantId: context.requestingTenantId,
@@ -214,7 +218,7 @@ class NotificationSecurityGuard {
    */
   async validatePIIProtection(notification) {
     const result = { passed: true, violations: [], warnings: [] };
-    
+
     if (!this.securityPolicies.piiProtection.enabled) {
       return result;
     }
@@ -268,11 +272,11 @@ class NotificationSecurityGuard {
     if (notification.userId) {
       const userKey = `user:${notification.userId}`;
       const userCount = this.getEntityCount(userKey, now, timeWindow);
-      
+
       if (userCount >= limits.maxNotificationsPerUser) {
         result.passed = false;
         result.violations.push('user_rate_limit_exceeded');
-        
+
         await this.auditLogger.logSecurityEvent('rate_limit_exceeded', {
           entityType: 'user',
           entityId: notification.userId,
@@ -286,11 +290,11 @@ class NotificationSecurityGuard {
     if (notification.tenantId) {
       const tenantKey = `tenant:${notification.tenantId}`;
       const tenantCount = this.getEntityCount(tenantKey, now, timeWindow);
-      
+
       if (tenantCount >= limits.maxNotificationsPerTenant) {
         result.passed = false;
         result.violations.push('tenant_rate_limit_exceeded');
-        
+
         await this.auditLogger.logSecurityEvent('rate_limit_exceeded', {
           entityType: 'tenant',
           entityId: notification.tenantId,
@@ -343,11 +347,11 @@ class NotificationSecurityGuard {
     if (notification.userId) {
       const userKey = `user:${notification.userId}`;
       const userCount = this.getEntityCount(userKey, now, timeWindow);
-      
+
       if (userCount >= threshold) {
         result.suspicious = true;
         result.warnings.push('rapid_notification_creation');
-        
+
         await this.auditLogger.logSecurityEvent('suspicious_activity_detected', {
           type: 'rapid_notification_creation',
           userId: notification.userId,
@@ -374,14 +378,14 @@ class NotificationSecurityGuard {
     const result = { warnings: [] };
 
     // Check for potential XSS
-    if (this.containsXSSPatterns(notification.title) || 
-        this.containsXSSPatterns(notification.message)) {
+    if (this.containsXSSPatterns(notification.title) ||
+      this.containsXSSPatterns(notification.message)) {
       result.warnings.push('potential_xss_content');
     }
 
     // Check for SQL injection patterns
-    if (this.containsSQLInjectionPatterns(notification.title) || 
-        this.containsSQLInjectionPatterns(notification.message)) {
+    if (this.containsSQLInjectionPatterns(notification.title) ||
+      this.containsSQLInjectionPatterns(notification.message)) {
       result.warnings.push('potential_sql_injection');
     }
 
@@ -428,7 +432,7 @@ class NotificationSecurityGuard {
     const algorithm = this.securityPolicies.webhookSecurity.signatureAlgorithm;
     const hmac = crypto.createHmac(algorithm, secret);
     hmac.update(JSON.stringify(payload));
-    
+
     return `${algorithm}=${hmac.digest('hex')}`;
   }
 
@@ -452,7 +456,7 @@ class NotificationSecurityGuard {
    */
   async blockUser(userId, reason) {
     this.blockedUsers.add(userId.toString());
-    
+
     await this.auditLogger.logSecurityEvent('user_blocked', {
       userId,
       reason
@@ -461,7 +465,7 @@ class NotificationSecurityGuard {
 
   async blockTenant(tenantId, reason) {
     this.blockedTenants.add(tenantId.toString());
-    
+
     await this.auditLogger.logSecurityEvent('tenant_blocked', {
       tenantId,
       reason
@@ -470,7 +474,7 @@ class NotificationSecurityGuard {
 
   async blockIP(ipAddress, reason) {
     this.blockedIPs.add(ipAddress);
-    
+
     await this.auditLogger.logSecurityEvent('ip_blocked', {
       ipAddress,
       reason
@@ -484,19 +488,19 @@ class NotificationSecurityGuard {
     if (!this.suspiciousActivity.has(entityKey)) {
       this.suspiciousActivity.set(entityKey, []);
     }
-    
+
     const timestamps = this.suspiciousActivity.get(entityKey);
-    
+
     // Remove old timestamps
     const cutoff = now - timeWindow;
     const recentTimestamps = timestamps.filter(ts => ts > cutoff);
-    
+
     // Add current timestamp
     recentTimestamps.push(now);
-    
+
     // Update the map
     this.suspiciousActivity.set(entityKey, recentTimestamps);
-    
+
     return recentTimestamps.length;
   }
 
@@ -551,65 +555,65 @@ class NotificationSecurityGuard {
 
   containsXSSPatterns(content) {
     if (!content) return false;
-    
+
     const xssPatterns = [
       /<script/i,
       /javascript:/i,
       /on\w+\s*=/i,
       /<iframe/i
     ];
-    
+
     return xssPatterns.some(pattern => pattern.test(content));
   }
 
   containsSQLInjectionPatterns(content) {
     if (!content) return false;
-    
+
     const sqlPatterns = [
       /union\s+select/i,
       /drop\s+table/i,
       /insert\s+into/i,
       /delete\s+from/i
     ];
-    
+
     return sqlPatterns.some(pattern => pattern.test(content));
   }
 
   containsMaliciousURLs(content) {
     if (!content) return false;
-    
+
     // This would integrate with threat intelligence feeds
     const suspiciousDomains = [
       'bit.ly',
       'tinyurl.com',
       // Add more suspicious domains
     ];
-    
+
     return suspiciousDomains.some(domain => content.includes(domain));
   }
 
   maskContent(content, maskFields, maskThreshold) {
     if (!content) return content;
-    
+
     let masked = content;
-    
+
     // Mask phone numbers
     masked = masked.replace(/\b\d{3}[\s.-]?\d{3}[\s.-]?\d{4}\b/g, 'XXX-XXX-XXXX');
-    
+
     // Mask email addresses
     masked = masked.replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, 'xxx@xxx.com');
-    
+
     // Mask amounts over threshold
     if (maskThreshold.amount) {
       masked = masked.replace(/\$(\d{4,})/g, '$***');
     }
-    
+
     return masked;
   }
 
   maskMetadata(metadata, maskFields, maskThreshold) {
     const masked = { ...metadata };
-    
+
     for (const field of maskFields) {
       if (masked[field]) {
         if (field === 'amount' && masked[field] > maskThreshold.amount) {
@@ -619,18 +623,18 @@ class NotificationSecurityGuard {
         }
       }
     }
-    
+
     return masked;
   }
 
   sanitizeContext(context) {
     const sanitized = { ...context };
-    
+
     // Remove sensitive fields
     delete sanitized.password;
     delete sanitized.token;
     delete sanitized.apiKey;
-    
+
     return sanitized;
   }
 
@@ -654,9 +658,9 @@ class NotificationSecurityGuard {
    */
   updateSecurityPolicies(newPolicies) {
     this.securityPolicies = { ...this.securityPolicies, ...newPolicies };
-    
+
     console.log('✅ Security policies updated');
-    
+
     this.auditLogger.logSecurityEvent('policies_updated', {
       updatedPolicies: Object.keys(newPolicies)
     });

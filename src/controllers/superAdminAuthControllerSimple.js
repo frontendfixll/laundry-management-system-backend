@@ -47,6 +47,36 @@ class CenterAdminAuthController {
       }
 
       if (!admin) {
+        // Log failed attempt
+        try {
+          await AuditLog.logAction({
+            who: email,
+            whoId: new (require('mongoose').Types.ObjectId)(),
+            userType: 'superadmin',
+            userEmail: email,
+            action: 'failed_login',
+            category: 'auth',
+            description: 'Login attempt with non-existent email',
+            ipAddress: req.ip || req.connection.remoteAddress || '127.0.0.1',
+            userAgent: req.get('User-Agent') || 'Unknown',
+            status: 'failure',
+            riskLevel: 'medium'
+          });
+
+          // TRIGGER REAL-TIME NOTIFICATION
+          const NotificationService = require('../services/notificationService');
+          await NotificationService.notifyAllSuperAdmins({
+            type: 'security_alert',
+            title: 'Failed Login Attempt',
+            message: `A login attempt was made with an invalid email: ${email}`,
+            icon: 'shield-alert',
+            severity: 'warning',
+            priority: 'P1'
+          });
+        } catch (err) {
+          console.error('Failed to log/notify failed login:', err);
+        }
+
         return res.status(401).json({
           success: false,
           message: 'Invalid credentials'
@@ -64,6 +94,35 @@ class CenterAdminAuthController {
       // Check password
       const isValidPassword = await admin.comparePassword(password)
       if (!isValidPassword) {
+        // Log failed attempt
+        try {
+          await AuditLog.logAction({
+            userId: admin._id,
+            userType: adminType,
+            userEmail: admin.email,
+            action: 'failed_login',
+            category: 'auth',
+            description: 'Login attempt with invalid password',
+            ipAddress: req.ip || req.connection.remoteAddress || '127.0.0.1',
+            userAgent: req.get('User-Agent') || 'Unknown',
+            status: 'failure',
+            riskLevel: 'high'
+          });
+
+          // TRIGGER REAL-TIME NOTIFICATION
+          const NotificationService = require('../services/notificationService');
+          await NotificationService.notifyAllSuperAdmins({
+            type: 'security_alert',
+            title: 'Security Alert: Failed Login',
+            message: `A failed login attempt was made on account: ${admin.email}`,
+            icon: 'shield-alert',
+            severity: 'error',
+            priority: 'P0'
+          });
+        } catch (err) {
+          console.error('Failed to log/notify failed login (password):', err);
+        }
+
         return res.status(401).json({
           success: false,
           message: 'Invalid credentials'

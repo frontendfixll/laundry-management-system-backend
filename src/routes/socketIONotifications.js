@@ -16,7 +16,7 @@ const { protect } = require('../middlewares/auth');
 router.post('/test', protect, async (req, res) => {
   try {
     const { title, message, priority = 'P3', eventType = 'test_notification' } = req.body;
-    
+
     if (!title || !message) {
       return res.status(400).json({
         success: false,
@@ -25,7 +25,7 @@ router.post('/test', protect, async (req, res) => {
     }
 
     const testNotification = {
-      userId: req.user.id,
+      userId: req.user._id,
       tenantId: req.user.tenantId,
       eventType,
       title,
@@ -62,15 +62,15 @@ router.post('/test', protect, async (req, res) => {
  */
 router.post('/send-to-user', protect, async (req, res) => {
   try {
-    const { 
-      userId, 
-      title, 
-      message, 
-      priority = 'P3', 
+    const {
+      userId,
+      title,
+      message,
+      priority = 'P3',
       eventType = 'admin_message',
       category = 'admin'
     } = req.body;
-    
+
     if (!userId || !title || !message) {
       return res.status(400).json({
         success: false,
@@ -116,14 +116,14 @@ router.post('/send-to-user', protect, async (req, res) => {
  */
 router.post('/send-to-tenant', protect, async (req, res) => {
   try {
-    const { 
-      title, 
-      message, 
-      priority = 'P3', 
+    const {
+      title,
+      message,
+      priority = 'P3',
       eventType = 'tenant_announcement',
       category = 'announcement'
     } = req.body;
-    
+
     if (!title || !message) {
       return res.status(400).json({
         success: false,
@@ -168,7 +168,7 @@ router.post('/send-to-tenant', protect, async (req, res) => {
 router.get('/stats', protect, async (req, res) => {
   try {
     const stats = await notificationServiceIntegration.getStatistics();
-    
+
     res.json({
       success: true,
       stats
@@ -190,7 +190,7 @@ router.get('/stats', protect, async (req, res) => {
 router.get('/health', async (req, res) => {
   try {
     const health = await notificationServiceIntegration.healthCheck();
-    
+
     res.json({
       success: true,
       health
@@ -220,7 +220,7 @@ router.post('/switch-system', protect, async (req, res) => {
     }
 
     const { useSocketIO } = req.body;
-    
+
     if (typeof useSocketIO !== 'boolean') {
       return res.status(400).json({
         success: false,
@@ -256,7 +256,7 @@ router.post('/test-priorities', protect, async (req, res) => {
 
     for (const priority of priorities) {
       const testNotification = {
-        userId: req.user.id,
+        userId: req.user._id,
         tenantId: req.user.tenantId,
         eventType: `test_${priority.toLowerCase()}`,
         title: `${priority} Test Notification`,

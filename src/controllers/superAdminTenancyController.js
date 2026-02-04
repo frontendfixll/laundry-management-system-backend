@@ -161,6 +161,21 @@ const tenancyController = {
 
       console.log('✅ Tenancy created successfully:', result.tenancy.id);
 
+      // Notify SuperAdmins about new tenancy
+      try {
+        const NotificationService = require('../services/notificationService');
+        await NotificationService.notifyAllSuperAdmins({
+          type: 'new_tenancy_signup',
+          title: 'New Tenancy Signup! 🎉',
+          message: `${result.tenancy.name} just signed up for ${result.tenancy.subscription?.plan || 'a plan'}`,
+          icon: 'building',
+          severity: 'success',
+          data: { tenancyId: result.tenancy._id, link: `/tenancies/${result.tenancy._id}` }
+        });
+      } catch (notifyError) {
+        console.error('⚠️ Failed to notify SuperAdmins:', notifyError.message);
+      }
+
       // Send success response with login credentials
       res.status(201).json({
         success: true,

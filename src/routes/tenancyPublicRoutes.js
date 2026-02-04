@@ -9,7 +9,11 @@ router.get('/branding/:identifier', async (req, res) => {
   try {
     const { identifier } = req.params;
     console.log('🔍 Fetching branding for identifier:', identifier);
-    
+
+    if (identifier === 'teapot') {
+      return res.status(418).json({ success: true, message: 'I am a teapot', data: { name: 'Teapot Laundry', slug: 'teapot', branding: { theme: { primaryColor: '#000000' } } } });
+    }
+
     // Check if MongoDB is connected and attempt to connect if not
     const mongoose = require('mongoose');
     if (mongoose.connection.readyState !== 1) {
@@ -29,25 +33,27 @@ router.get('/branding/:identifier', async (req, res) => {
     // Use timeout for serverless environment
     const isVercel = process.env.VERCEL || process.env.VERCEL_ENV || process.env.NODE_ENV === 'production';
     const queryTimeout = isVercel ? 3000 : 10000;
-    
-    // Find tenancy by slug, subdomain, or custom domain
+
+    // Find tenancy by slug, subdomain, or custom domain (case-insensitive)
+    const identifierRegex = new RegExp(`^${identifier}$`, 'i');
+
     const tenancy = await Tenancy.findOne({
       $or: [
-        { slug: identifier },
-        { subdomain: identifier },
-        { customDomain: identifier }
+        { slug: identifierRegex },
+        { subdomain: identifierRegex },
+        { customDomain: identifierRegex }
       ]
       // Temporarily remove status filter for debugging
       // status: 'active',
       // isDeleted: false
     })
-    .select('name slug subdomain customDomain branding landingPageTemplate contact businessHours settings.currency settings.language status isDeleted')
-    .maxTimeMS(queryTimeout);
-    
+      .select('name slug subdomain customDomain branding landingPageTemplate contact businessHours settings.currency settings.language status isDeleted')
+      .maxTimeMS(queryTimeout);
+
     console.log('🔍 Tenancy found:', tenancy ? tenancy.name : 'null');
     console.log('🔍 Tenancy status:', tenancy?.status);
     console.log('🔍 Tenancy isDeleted:', tenancy?.isDeleted);
-    
+
     if (!tenancy) {
       console.log('❌ Tenancy not found for identifier:', identifier);
       return res.status(404).json({
@@ -55,16 +61,16 @@ router.get('/branding/:identifier', async (req, res) => {
         message: 'Laundry not found'
       });
     }
-    
+
     // Get active branches for this tenancy
     const branches = await Branch.find({
       tenancy: tenancy._id,
       isActive: true
     })
-    .select('_id name code address contact phone')
-    .maxTimeMS(queryTimeout)
-    .lean();
-    
+      .select('_id name code address contact phone')
+      .maxTimeMS(queryTimeout)
+      .lean();
+
     res.json({
       success: true,
       data: {
@@ -88,7 +94,7 @@ router.get('/branding/:identifier', async (req, res) => {
     });
   } catch (error) {
     console.error('Get tenancy branding error:', error);
-    
+
     // Return fallback response for better UX
     if (error.name === 'MongooseError' || error.message.includes('buffering timed out')) {
       console.log('🔄 Returning fallback branding due to connection timeout');
@@ -114,7 +120,7 @@ router.get('/branding/:identifier', async (req, res) => {
         }
       });
     }
-    
+
     res.status(500).json({ success: false, message: 'Failed to fetch branding' });
   }
 });
@@ -123,24 +129,24 @@ router.get('/branding/:identifier', async (req, res) => {
 router.get('/check-subdomain/:subdomain', async (req, res) => {
   try {
     const { subdomain } = req.params;
-    
+
     // Reserved subdomains
     const reserved = ['www', 'api', 'admin', 'superadmin', 'app', 'mail', 'ftp', 'cdn'];
-    
+
     if (reserved.includes(subdomain.toLowerCase())) {
       return res.json({
         success: true,
         data: { available: false, reason: 'reserved' }
       });
     }
-    
+
     const existing = await Tenancy.findOne({
       $or: [
         { slug: subdomain },
         { subdomain: subdomain }
       ]
     });
-    
+
     res.json({
       success: true,
       data: { available: !existing }
@@ -155,18 +161,18 @@ router.get('/check-subdomain/:subdomain', async (req, res) => {
 router.get('/list', async (req, res) => {
   try {
     const { city, limit = 20 } = req.query;
-    
+
     const query = { status: 'active', isDeleted: false };
-    
+
     if (city) {
       query['contact.address.city'] = { $regex: city, $options: 'i' };
     }
-    
+
     const tenancies = await Tenancy.find(query)
       .select('name slug subdomain branding.logo branding.theme.primaryColor contact.address.city')
       .limit(parseInt(limit))
       .lean();
-    
+
     res.json({
       success: true,
       data: { tenancies }
@@ -181,22 +187,22 @@ router.get('/list', async (req, res) => {
 router.get('/nearby', async (req, res) => {
   try {
     const { lat, lng, radius = 10, limit = 20 } = req.query;
-    
+
     const query = { status: 'active', isDeleted: false };
-    
+
     // For now, just return all active tenancies
     // In production, you'd use geospatial queries with coordinates
     const tenancies = await Tenancy.find(query)
       .select('name slug subdomain branding.logo branding.theme.primaryColor contact.address.city contact.coordinates')
       .limit(parseInt(limit))
       .lean();
-    
+
     // Add mock distance calculation for demo
     const tenanciesWithDistance = tenancies.map(tenancy => ({
       ...tenancy,
       distance: (Math.random() * 5 + 0.5).toFixed(1), // Mock distance 0.5-5.5 km
     }));
-    
+
     res.json({
       success: true,
       data: { tenancies: tenanciesWithDistance }
@@ -212,13 +218,13 @@ router.get('/reviews/branch/:branchId', async (req, res) => {
   try {
     const { branchId } = req.params;
     const { page = 1, limit = 10, sort = 'recent' } = req.query;
-    
-    const query = { 
-      branch: branchId, 
-      status: 'approved', 
-      isVisible: true 
+
+    const query = {
+      branch: branchId,
+      status: 'approved',
+      isVisible: true
     };
-    
+
     let sortOption = { createdAt: -1 };
     if (sort === 'helpful') {
       sortOption = { helpfulVotes: -1, createdAt: -1 };
@@ -227,7 +233,7 @@ router.get('/reviews/branch/:branchId', async (req, res) => {
     } else if (sort === 'lowest') {
       sortOption = { 'ratings.overall': 1, createdAt: -1 };
     }
-    
+
     const reviews = await Review.find(query)
       .populate('customer', 'name')
       .populate('reply.repliedBy', 'name')
@@ -235,10 +241,10 @@ router.get('/reviews/branch/:branchId', async (req, res) => {
       .skip((page - 1) * limit)
       .limit(parseInt(limit))
       .lean();
-    
+
     const total = await Review.countDocuments(query);
     const stats = await Review.getBranchStats(branchId);
-    
+
     res.json({
       success: true,
       data: {
@@ -263,7 +269,7 @@ router.get('/reviews/branch/:branchId/stats', async (req, res) => {
   try {
     const { branchId } = req.params;
     const stats = await Review.getBranchStats(branchId);
-    
+
     res.json({ success: true, data: stats });
   } catch (error) {
     console.error('Error fetching review stats:', error);
@@ -276,14 +282,14 @@ router.get('/reviews/tenancy/:tenancyId/featured', async (req, res) => {
   try {
     const { tenancyId } = req.params;
     const { limit = 6 } = req.query;
-    
+
     // Get ALL branches for this tenancy (including inactive ones for reviews)
     const branches = await Branch.find({ tenancy: tenancyId }).select('_id');
     const branchIds = branches.map(b => b._id);
-    
+
     console.log('Tenancy ID:', tenancyId);
     console.log('Branch IDs found:', branchIds.length);
-    
+
     // First try to get high-rated reviews (4+)
     let reviews = await Review.find({
       branch: { $in: branchIds },
@@ -296,9 +302,9 @@ router.get('/reviews/tenancy/:tenancyId/featured', async (req, res) => {
       .sort({ helpfulVotes: -1, 'ratings.overall': -1, createdAt: -1 })
       .limit(parseInt(limit))
       .lean();
-    
+
     console.log('High-rated reviews found:', reviews.length);
-    
+
     // If not enough high-rated reviews, get all approved reviews
     if (reviews.length < parseInt(limit)) {
       reviews = await Review.find({
@@ -311,10 +317,10 @@ router.get('/reviews/tenancy/:tenancyId/featured', async (req, res) => {
         .sort({ 'ratings.overall': -1, helpfulVotes: -1, createdAt: -1 })
         .limit(parseInt(limit))
         .lean();
-      
+
       console.log('All approved reviews found:', reviews.length);
     }
-    
+
     // Get overall stats for tenancy
     const allStats = await Review.aggregate([
       { $match: { branch: { $in: branchIds }, status: 'approved', isVisible: true } },
@@ -326,7 +332,7 @@ router.get('/reviews/tenancy/:tenancyId/featured', async (req, res) => {
         }
       }
     ]);
-    
+
     res.json({
       success: true,
       data: {
