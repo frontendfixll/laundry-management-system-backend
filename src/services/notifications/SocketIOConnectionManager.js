@@ -103,6 +103,8 @@ class SocketIOConnectionManager {
           throw new Error('Invalid token structure: missing userId or adminId');
         }
 
+        const userRole = decoded.role;
+
         // Use tenancyId if tenantId is not present (backward compatibility)
         const tenantId = decoded.tenantId || decoded.tenancyId;
 
@@ -112,7 +114,7 @@ class SocketIOConnectionManager {
           {
             requestingUserId: userId,
             requestingTenantId: tenantId,
-            requestingUserRole: decoded.role,
+            requestingUserRole: userRole,
             ipAddress: socket.handshake.address
           }
         );
@@ -125,7 +127,7 @@ class SocketIOConnectionManager {
         socket.userId = String(userId);
         socket.tenantId = decoded.tenantId || decoded.tenancyId ? String(decoded.tenantId || decoded.tenancyId) : null;
         // SuperAdmin: always join role:superadmin so they receive platform notifications
-        socket.userRole = decoded.adminId ? 'superadmin' : (decoded.role || null);
+        socket.userRole = decoded.adminId ? 'superadmin' : (decoded.role || userRole || null);
         socket.userEmail = decoded.email;
         socket.authenticatedAt = new Date();
 

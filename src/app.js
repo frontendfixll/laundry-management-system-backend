@@ -320,19 +320,19 @@ app.get('/health/database', async (req, res) => {
   try {
     const mongoose = require('mongoose');
     const { testConnection } = require('./utils/serverlessDB');
-    
+
     // Quick connection state check
     const connectionState = mongoose.connection.readyState;
     const stateText = connectionState === 1 ? 'connected' :
       connectionState === 2 ? 'connecting' :
         connectionState === 3 ? 'disconnecting' : 'disconnected';
-    
+
     // If not connected, try to test connection
     let testResult = null;
     if (connectionState !== 1) {
       testResult = await testConnection();
     }
-    
+
     res.status(200).json({
       success: true,
       message: 'Database health check',
@@ -409,6 +409,12 @@ app.use('/api/superadmin/promotional', superAdminPromotionalRoutes);
 app.use('/api/superadmin/campaigns', superAdminCampaignRoutes);
 app.use('/api/superadmin/inventory-requests', superAdminInventoryRequestRoutes);
 app.use('/api/superadmin/leads', leadSuperadminRoutes);
+
+app.use('/api/superadmin/leads', leadSuperadminRoutes);
+
+// ABAC Routes
+const abacRoutes = require('./routes/superAdmin/abacRoutes');
+app.use('/api/superadmin/abac', abacRoutes);
 
 // Support routes - Accept both SuperAdmin and User tokens
 const { protectAny, protect } = require('./middlewares/auth');

@@ -46,6 +46,10 @@ const authenticateSuperAdmin = async (req, res, next) => {
       'center_admin',
       'superadmin',
       'super-admin',
+      'auditor',
+      'support',
+      'finance',
+      'sales',
       'platform-support',
       'platform-finance-admin',
       'platform-auditor',
@@ -58,7 +62,7 @@ const authenticateSuperAdmin = async (req, res, next) => {
       console.log('🔐 SuperAdmin Auth - Role mismatch! Role:', decoded.role, 'is not in', validRoles)
       return res.status(403).json({
         success: false,
-        message: 'Access denied. SuperAdmin or Auditor role required.'
+        message: 'Access denied. Valid role required.'
       })
     }
 
