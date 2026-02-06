@@ -42,13 +42,17 @@ const authenticateSuperAdmin = async (req, res, next) => {
     }
 
     // Check if token is for center_admin, superadmin, or auditor (all are valid for SuperAdmin routes)
-    const validRoles = ['center_admin', 'superadmin', 'auditor', 'support', 'finance', 'sales']
+    // Check if token is for center_admin, superadmin, or auditor (all are valid for SuperAdmin routes)
+    const validRoles = [
+      'center_admin', 'superadmin', 'auditor', 'support', 'finance', 'sales',
+      'platform-finance-admin', 'platform-support', 'platform-sales', 'platform-auditor', 'super-admin'
+    ]
     console.log('🔐 SuperAdmin Auth - Checking role:', decoded.role, 'against valid roles:', validRoles)
     if (!validRoles.includes(decoded.role)) {
       console.log('🔐 SuperAdmin Auth - Role mismatch! Role:', decoded.role, 'is not in', validRoles)
       return res.status(403).json({
         success: false,
-        message: 'Access denied. SuperAdmin or Auditor role required.'
+        message: 'Access denied. Valid role required.'
       })
     }
 

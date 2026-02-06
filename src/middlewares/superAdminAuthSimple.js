@@ -8,9 +8,9 @@ const authenticateSuperAdmin = async (req, res, next) => {
   try {
     // Get token from superadmin cookie or header
     const token = getSuperAdminTokenFromRequest(req)
-    
+
     console.log('🔐 SuperAdmin Auth - Token received:', token ? `${token.substring(0, 30)}...` : 'NO TOKEN')
-    
+
     if (!token) {
       return res.status(401).json({
         success: false,
@@ -22,11 +22,11 @@ const authenticateSuperAdmin = async (req, res, next) => {
     let decoded
     try {
       decoded = jwt.verify(token, process.env.JWT_SECRET)
-      console.log('🔐 SuperAdmin Auth - Decoded token:', { 
-        adminId: decoded.adminId, 
-        email: decoded.email, 
+      console.log('🔐 SuperAdmin Auth - Decoded token:', {
+        adminId: decoded.adminId,
+        email: decoded.email,
         role: decoded.role,
-        sessionId: decoded.sessionId 
+        sessionId: decoded.sessionId
       })
     } catch (error) {
       console.log('🔐 SuperAdmin Auth - JWT verify error:', error.message)
@@ -37,12 +37,23 @@ const authenticateSuperAdmin = async (req, res, next) => {
     }
 
     // Check if token is for center_admin, superadmin, or auditor (all are valid for SuperAdmin routes)
-    const validRoles = ['center_admin', 'superadmin', 'auditor']
+    // Check if token is for center_admin, superadmin, or auditor (all are valid for SuperAdmin routes)
+    // Also include new platform roles
+    const validRoles = [
+      'center_admin',
+      'superadmin',
+      'auditor',
+      'platform-finance-admin',
+      'platform-support',
+      'platform-sales',
+      'platform-auditor',
+      'super-admin'
+    ]
     if (!validRoles.includes(decoded.role)) {
       console.log('🔐 SuperAdmin Auth - Role mismatch:', decoded.role, 'not in', validRoles)
       return res.status(403).json({
         success: false,
-        message: `Access denied. SuperAdmin or Auditor role required. Your role: ${decoded.role}`
+        message: `Access denied. Valid role required. Your role: ${decoded.role}`
       })
     }
 
@@ -51,7 +62,7 @@ const authenticateSuperAdmin = async (req, res, next) => {
     if (!admin) {
       admin = await CenterAdmin.findById(decoded.adminId)
     }
-    
+
     console.log('🔐 SuperAdmin Auth - Admin found:', admin ? { id: admin._id, email: admin.email, role: admin.role, isActive: admin.isActive } : 'NOT FOUND')
     if (!admin) {
       return res.status(401).json({

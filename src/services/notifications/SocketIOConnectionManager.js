@@ -97,21 +97,25 @@ class SocketIOConnectionManager {
         // Verify JWT token
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-        // Validate token structure - make tenantId optional for backward compatibility
-        if (!decoded.userId) {
-          throw new Error('Invalid token structure: missing userId');
+        // Validate token structure - support both regular users and SuperAdmin
+        if (!decoded.userId && !decoded.adminId) {
+          throw new Error('Invalid token structure: missing userId or adminId');
         }
+
+        // Use appropriate ID based on token type
+        const userId = decoded.userId || decoded.adminId;
+        const userRole = decoded.role;
 
         // Use tenancyId if tenantId is not present (backward compatibility)
         const tenantId = decoded.tenantId || decoded.tenancyId;
 
         // Security validation
         const securityCheck = await this.securityGuard.validateNotificationSecurity(
-          { userId: decoded.userId, tenantId: tenantId },
+          { userId: userId, tenantId: tenantId },
           {
-            requestingUserId: decoded.userId,
+            requestingUserId: userId,
             requestingTenantId: tenantId,
-            requestingUserRole: decoded.role,
+            requestingUserRole: userRole,
             ipAddress: socket.handshake.address
           }
         );
@@ -121,9 +125,9 @@ class SocketIOConnectionManager {
         }
 
         // Attach user info to socket (Normalize to strings)
-        socket.userId = String(decoded.userId);
+        socket.userId = String(userId);
         socket.tenantId = decoded.tenantId || decoded.tenancyId ? String(decoded.tenantId || decoded.tenancyId) : null;
-        socket.userRole = decoded.role;
+        socket.userRole = userRole;
         socket.userEmail = decoded.email;
         socket.authenticatedAt = new Date();
 

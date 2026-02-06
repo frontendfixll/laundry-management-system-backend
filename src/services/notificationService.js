@@ -193,7 +193,7 @@ class NotificationService {
       message: `New order ${order.orderNumber} from ${order.customer?.name || 'Customer'}`,
       icon: 'shopping-bag',
       severity: 'info',
-      data: { orderId: order._id, link: `/admin/orders` }
+      data: { orderId: order._id, link: `/admin/orders?id=${order._id}` }
     });
   }
 
@@ -298,7 +298,7 @@ class NotificationService {
       message: `Order ${order.orderNumber} assigned to your branch`,
       icon: 'shopping-bag',
       severity: 'info',
-      data: { orderId: order._id, link: `/branch/orders/${order._id}` }
+      data: { orderId: order._id, link: `/branch/orders?id=${order._id}` }
     });
   }
 

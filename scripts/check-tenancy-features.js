@@ -3,13 +3,13 @@ const Tenancy = require('../src/models/Tenancy');
 require('dotenv').config();
 
 /**
- * Script to check tenancy features
+ * Script to check tenancy  features
  */
 async function checkFeatures() {
   try {
     console.log('🔍 Checking tenancy features...\n');
     await mongoose.connect(process.env.MONGODB_URI);
-    
+       
     const tenancies = await Tenancy.find({}).select('name slug subscription.features subscription.plan');
     
     console.log(`Found ${tenancies.length} tenancies:\n`);
