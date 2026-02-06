@@ -70,9 +70,6 @@ const socketIONotificationRoutes = require('./routes/socketIONotifications');
 // Automation routes
 const automationRoutes = require('./routes/automationRoutes');
 
-// ABAC routes
-const abacRoutes = require('./routes/abacRoutes');
-
 // Banner routes
 const adminBannerRoutes = require('./routes/admin/bannerRoutes');
 const superAdminBannerRoutes = require('./routes/superAdmin/bannerRoutes');
