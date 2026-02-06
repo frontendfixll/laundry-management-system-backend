@@ -11,7 +11,7 @@ const { NotificationAuditLogger } = require('./NotificationAuditLogger');
 const { NotificationSecurityGuard } = require('./NotificationSecurityGuard');
 const { SocketIOConnectionManager } = require('./SocketIOConnectionManager');
 const { NotificationRateLimiter } = require('./NotificationRateLimiter');
-const { Notification } = require('../../models/Notification');
+const Notification = require('../../models/Notification');
 const { sendEmail } = require('../../config/email');
 
 class SocketIONotificationEngine {
@@ -114,19 +114,30 @@ class SocketIONotificationEngine {
       }
 
       // 3. Priority classification
-      const priority = await this.priorityClassifier.classifyPriority(notification.eventType, {
+      const classifiedPriority = await this.priorityClassifier.classifyPriority(notification.eventType, {
         ...context,
         amount: notification.metadata?.amount,
         businessImpact: notification.metadata?.businessImpact,
         securityLevel: notification.metadata?.securityLevel,
         isTimeSensitive: notification.metadata?.isTimeSensitive,
-        isHighValueCustomer: notification.metadata?.isHighValueCustomer
+        isHighValueCustomer: notification.metadata?.isHighValueCustomer,
+        manualPriority: notificationData.priority // Pass through for classification logic if needed
       });
 
-      notification.priority = priority;
+      // Respect manually provided priority if it's higher (more critical) than the classified one
+      // P0 > P1 > P2 > P3 > P4
+      const priorityLevels = ['P0', 'P1', 'P2', 'P3', 'P4'];
+      const manualPriorityIndex = notificationData.priority ? priorityLevels.indexOf(notificationData.priority) : 99;
+      const classifiedPriorityIndex = priorityLevels.indexOf(classifiedPriority);
+
+      notification.priority = (manualPriorityIndex <= classifiedPriorityIndex)
+        ? notificationData.priority
+        : classifiedPriority;
+
+      console.log(`⚖️ Priority Classification: Event=${notification.eventType}, Manual=${notificationData.priority || 'none'}, Classified=${classifiedPriority} -> Final=${notification.priority}`);
 
       // Automatically set autoAction for high-priority notifications if not provided
-      if ((priority === 'P0' || priority === 'P1') && !notification.metadata?.autoAction) {
+      if ((notification.priority === 'P0' || notification.priority === 'P1') && !notification.metadata?.autoAction) {
         notification.metadata = {
           ...notification.metadata,
           autoAction: 'escalate_to_admin'
@@ -250,10 +261,16 @@ class SocketIONotificationEngine {
       _id: notificationData._id || new require('mongoose').Types.ObjectId(),
       userId: notificationData.userId,
       tenantId: notificationData.tenantId,
+      recipient: notificationData.userId || notificationData.recipient,
+      recipientModel: notificationData.metadata?.recipientModel || 'User',
+      recipientType: notificationData.metadata?.recipientType || 'customer',
       eventType: notificationData.eventType,
       title: notificationData.title,
       message: notificationData.message,
       category: notificationData.category || 'general',
+      priority: notificationData.priority || 'P3',
+      severity: notificationData.severity || 'info',
+      icon: notificationData.icon || 'bell',
       metadata: notificationData.metadata || {},
       createdAt: new Date(),
       isReminder: notificationData.isReminder || false,
@@ -411,6 +428,8 @@ class SocketIONotificationEngine {
       message: notification.message,
       priority: notification.priority,
       category: notification.category,
+      severity: notification.severity,
+      icon: notification.icon,
       eventType: notification.eventType,
       createdAt: notification.createdAt,
       metadata: notification.metadata,
@@ -460,7 +479,15 @@ class SocketIONotificationEngine {
       delivered = delivered || roleDelivered;
     }
 
-    // 5. High priority broadcasting to admins
+    // 5. Broadcast to platform admins (SuperAdmin) – P0, P1, and P2 so they get live notifications
+    if (['P0', 'P1', 'P2'].includes(notification.priority)) {
+      // 5a. Global SuperAdmin broadcast – all important priorities for platform visibility
+      this.connectionManager.emitToRole('superadmin', 'notification', {
+        ...payload,
+        isBroadcast: true
+      });
+    }
+    // 5b. P0/P1 only: high-priority copy for tenant_admin + tenant-scoped admin
     if (['P0', 'P1'].includes(notification.priority)) {
       this.connectionManager.emitToRole('tenant_admin', 'high_priority_notification', {
         ...payload,
@@ -474,6 +501,7 @@ class SocketIONotificationEngine {
       }
     }
 
+    console.log(`📤 In-App Delivery Summary: userId=${!!notification.userId}, tenantId=${!!notification.tenantId}, role=${!!notification.metadata?.recipientType}, delivered=${delivered}`);
     return {
       delivered,
       payload
@@ -668,9 +696,9 @@ class SocketIONotificationEngine {
    */
   async emitToTenantRole(tenantId, role, event, data) {
     console.log(`📡 SocketIONotificationEngine.emitToTenantRole: tenantId=${tenantId}, role=${role}, event=${event}`);
-    if (this.connectionManager) {
+    if (this.connectionManager && this.connectionManager.io) {
       const room = `tenant:${tenantId}:role:${role}`;
-      this.io.to(room).emit(event, data);
+      this.connectionManager.io.to(room).emit(event, data);
       console.log(`📤 Emitted to room: ${room}`);
       return true;
     }

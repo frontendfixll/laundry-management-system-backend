@@ -97,13 +97,12 @@ class SocketIOConnectionManager {
         // Verify JWT token
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-        // Validate token structure - support both regular users and SuperAdmin
-        if (!decoded.userId && !decoded.adminId) {
+        // Validate token structure - handle both regular users and SuperAdmin
+        const userId = decoded.userId || decoded.adminId;
+        if (!userId) {
           throw new Error('Invalid token structure: missing userId or adminId');
         }
 
-        // Use appropriate ID based on token type
-        const userId = decoded.userId || decoded.adminId;
         const userRole = decoded.role;
 
         // Use tenancyId if tenantId is not present (backward compatibility)
@@ -127,7 +126,8 @@ class SocketIOConnectionManager {
         // Attach user info to socket (Normalize to strings)
         socket.userId = String(userId);
         socket.tenantId = decoded.tenantId || decoded.tenancyId ? String(decoded.tenantId || decoded.tenancyId) : null;
-        socket.userRole = userRole;
+        // SuperAdmin: always join role:superadmin so they receive platform notifications
+        socket.userRole = decoded.adminId ? 'superadmin' : (decoded.role || userRole || null);
         socket.userEmail = decoded.email;
         socket.authenticatedAt = new Date();
 
@@ -143,6 +143,7 @@ class SocketIOConnectionManager {
           }
         });
 
+        console.log(`📡 Socket Auth OK: ${socket.userId} (${decoded.role})`);
         next();
 
       } catch (error) {
@@ -237,6 +238,8 @@ class SocketIOConnectionManager {
       if (sTenantId) {
         await socket.join(`tenant:${sTenantId}:role:${socket.userRole}`);
       }
+
+      console.log(`🏠 Socket joined rooms: user:${sUserId}, role:${socket.userRole}${sTenantId ? `, tenant:${sTenantId}` : ''}`);
     }
 
     console.log(`🔌 New connection: ${socket.userEmail} (${socket.id})`);
@@ -552,8 +555,13 @@ class SocketIOConnectionManager {
    * Utility methods
    */
   extractToken(socket) {
-    // Try to get token from query parameters
-    if (socket.handshake.query.token) {
+    // Try to get token from modern auth object first
+    if (socket.handshake.auth && socket.handshake.auth.token) {
+      return socket.handshake.auth.token;
+    }
+
+    // Try to get token from query parameters (legacy fallback)
+    if (socket.handshake.query && socket.handshake.query.token) {
       return socket.handshake.query.token;
     }
 

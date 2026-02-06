@@ -168,6 +168,22 @@ if (isVercel) {
         // Make engine available globally for other services
         global.notificationEngine = notificationEngine;
 
+        // Initialize Automation Engine with notification system
+        console.log('🤖 Initializing Automation Engine...');
+        const automationEngine = require('./src/services/automationEngine');
+        automationEngine.initialize(notificationEngine);
+        console.log('✅ Automation Engine initialized and connected to notifications');
+
+        // Make automation engine available globally
+        global.automationEngine = automationEngine;
+
+        // Initialize Automation Triggers
+        console.log('🎯 Initializing Automation Triggers...');
+        const automationTriggers = require('./src/services/automationTriggers');
+        automationTriggers.initialize();
+        global.automationTriggers = automationTriggers;
+        console.log('✅ Automation Triggers initialized');
+
       } catch (socketIOError) {
         console.error('❌ Socket.IO Notification Engine initialization failed:', socketIOError);
         console.log('⚠️ Running without real-time notifications');

@@ -8,12 +8,12 @@ const { sendSuccess, sendError, asyncHandler } = require('../utils/helpers');
  */
 const createLead = async (req, res) => {
   try {
-    const { 
-      name, 
-      email, 
-      phone, 
-      businessName, 
-      businessType, 
+    const {
+      name,
+      email,
+      phone,
+      businessName,
+      businessType,
       message,
       interestedPlan,
       expectedMonthlyOrders,
@@ -101,13 +101,20 @@ const createLead = async (req, res) => {
       });
     }
 
-    console.log('✅ Lead created from marketing website:', {
-      leadId: lead._id,
-      businessName: lead.businessName,
-      score: lead.score,
-      priority: lead.priority,
-      assignedTo: salesUser ? salesUser.name : 'Unassigned'
-    });
+    // Notify SuperAdmins about new lead
+    try {
+      const NotificationService = require('../services/notificationService');
+      await NotificationService.notifyAllSuperAdmins({
+        type: 'new_lead',
+        title: 'New Lead Inquiry! 💼',
+        message: `${lead.businessName} has shown interest in the ${lead.interestedPlan} plan.`,
+        icon: 'user-plus',
+        severity: 'info',
+        data: { leadId: lead._id, link: `/leads` }
+      });
+    } catch (notifyError) {
+      console.error('⚠️ Failed to notify SuperAdmins about new lead:', notifyError.message);
+    }
 
     res.status(201).json({
       success: true,
@@ -116,7 +123,7 @@ const createLead = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Create lead error:', error);
-    
+
     if (error.name === 'ValidationError') {
       const messages = Object.values(error.errors).map(e => e.message);
       return res.status(400).json({
@@ -140,7 +147,7 @@ const createLead = async (req, res) => {
 const getLeads = async (req, res) => {
   try {
     const { status, page = 1, limit = 20 } = req.query;
-    
+
     const query = {};
     if (status) {
       query.status = status;
@@ -212,7 +219,7 @@ const getLeadById = async (req, res) => {
 const updateLead = async (req, res) => {
   try {
     const { status, priority, interestedPlan, estimatedRevenue, assignedTo } = req.body;
-    
+
     const updateData = {};
     if (status) updateData.status = status;
     if (priority) updateData.priority = priority;

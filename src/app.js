@@ -67,6 +67,12 @@ const permissionSyncRoutes = require('./routes/permissionSyncRoutes');
 // Socket.IO Notification routes
 const socketIONotificationRoutes = require('./routes/socketIONotifications');
 
+// Automation routes
+const automationRoutes = require('./routes/automationRoutes');
+
+// ABAC routes
+const abacRoutes = require('./routes/abacRoutes');
+
 // Banner routes
 const adminBannerRoutes = require('./routes/admin/bannerRoutes');
 const superAdminBannerRoutes = require('./routes/superAdmin/bannerRoutes');
@@ -434,6 +440,10 @@ app.use('/api/superadmin/sales-users', superAdminSalesRoutes);
 app.use('/api/addons', addOnRoutes);
 app.use('/api/superadmin/addons', superAdminAddOnRoutes);
 
+// Webhook monitoring routes
+const webhookStatusRoutes = require('./routes/webhookStatusRoutes');
+app.use('/api/admin', webhookStatusRoutes);
+
 // Blog routes
 app.use('/api/superadmin/blog', blogRoutes);
 app.use('/api/blog', publicBlogRoutes);
@@ -567,6 +577,12 @@ const notificationRoutes = require('./routes/notificationRoutes');
 const superAdminNotificationRoutes = require('./routes/superAdminNotificationRoutes');
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/superadmin/notifications', superAdminNotificationRoutes);
+
+// Automation routes
+app.use('/api/automation', automationRoutes);
+
+// ABAC routes
+app.use('/api/superadmin/abac', abacRoutes);
 
 // Legacy DeepNoti SSE routes (DISABLED - Using Socket.IO instead)
 // const sseRoutes = require('./routes/sseRoutes');

@@ -1867,73 +1867,7 @@ const getBranches = asyncHandler(async (req, res) => {
   }, 'Branches retrieved successfully');
 });
 
-// @desc    Get admin notifications
-// @route   GET /api/admin/notifications
-// @access  Private (Admin)
-const getNotifications = asyncHandler(async (req, res) => {
-  const { page = 1, limit = 20, unreadOnly } = req.query;
-  const NotificationService = require('../../services/notificationService');
 
-  const result = await NotificationService.getUserNotifications(req.user._id, {
-    page: parseInt(page),
-    limit: parseInt(limit),
-    unreadOnly: unreadOnly === 'true'
-  });
-
-  sendSuccess(res, result, 'Notifications retrieved successfully');
-});
-
-// @desc    Get unread notification count
-// @route   GET /api/admin/notifications/unread-count
-// @access  Private (Admin)
-const getUnreadNotificationCount = asyncHandler(async (req, res) => {
-  const NotificationService = require('../../services/notificationService');
-
-  const result = await NotificationService.getUserNotifications(req.user._id, {
-    page: 1,
-    limit: 1
-  });
-
-  sendSuccess(res, { unreadCount: result.unreadCount }, 'Unread count retrieved successfully');
-});
-
-// @desc    Mark notifications as read
-// @route   PUT /api/admin/notifications/mark-read
-// @access  Private (Admin)
-const markNotificationsAsRead = asyncHandler(async (req, res) => {
-  const { notificationIds } = req.body;
-  const NotificationService = require('../../services/notificationService');
-
-  if (!notificationIds || !Array.isArray(notificationIds)) {
-    return sendError(res, 'INVALID_DATA', 'Notification IDs array is required', 400);
-  }
-
-  await NotificationService.markAsRead(req.user._id, notificationIds);
-
-  sendSuccess(res, null, 'Notifications marked as read');
-});
-
-// @desc    Mark all notifications as read
-// @route   PUT /api/admin/notifications/mark-all-read
-// @access  Private (Admin)
-const markAllNotificationsAsRead = asyncHandler(async (req, res) => {
-  const NotificationService = require('../../services/notificationService');
-
-  await NotificationService.markAllAsRead(req.user._id);
-
-  sendSuccess(res, null, 'All notifications marked as read');
-});
-
-// @desc    Clear all notifications (delete)
-// @route   DELETE /api/admin/notifications/all
-// @access  Private (Admin)
-const clearAllNotifications = asyncHandler(async (req, res) => {
-  const NotificationService = require('../../services/notificationService');
-
-  await NotificationService.clearAllNotifications(req.user._id);
-
-  sendSuccess(res, null, 'All notifications cleared successfully');
-});
 
 // @desc    Update payment status
 // @route   PUT /api/admin/orders/:orderId/payment-status
@@ -2030,10 +1964,5 @@ module.exports = {
   deleteStaff,
   reactivateStaff,
   toggleStaffStatus,
-  getBranches,
-  getNotifications,
-  getUnreadNotificationCount,
-  markNotificationsAsRead,
-  markAllNotificationsAsRead,
-  clearAllNotifications
+  getBranches
 };

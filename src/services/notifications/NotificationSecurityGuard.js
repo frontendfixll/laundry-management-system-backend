@@ -165,9 +165,11 @@ class NotificationSecurityGuard {
     }
 
     // Check if notification has proper tenant context
-    // Allow platform admins to have missing tenant context
+    // EXCEPTION: SuperAdmins and Support roles don't need a tenant context for platform-wide alerts
     const platformRoles = ['superadmin', 'platform_support', 'audit_admin', 'finance_admin', 'sales_admin'];
-    const isPlatformAdmin = context.requestingUserRole && platformRoles.includes(context.requestingUserRole);
+    const allowedRoles = this.securityPolicies.tenantIsolation.allowCrossTenantForRoles;
+    const isPlatformAdmin = (context.requestingUserRole && platformRoles.includes(context.requestingUserRole)) || 
+                           allowedRoles.includes(context.requestingUserRole);
 
     if (!notification.tenantId && !isPlatformAdmin) {
       result.passed = false;

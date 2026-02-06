@@ -22,10 +22,10 @@ exports.getSubscriptions = asyncHandler(async (req, res) => {
 
   // Build filter
   const filter = {};
-  
+
   if (status) filter['subscription.status'] = status;
   if (plan) filter['subscription.plan'] = plan;
-  
+
   // Search by tenancy name or slug
   if (search) {
     filter.$or = [
@@ -122,8 +122,8 @@ exports.assignPlan = asyncHandler(async (req, res) => {
   tenancy.subscription.plan = plan.name;
   tenancy.subscription.planId = plan._id;
   tenancy.subscription.billingCycle = billingCycle;
-  tenancy.subscription.features = plan.features instanceof Map 
-    ? Object.fromEntries(plan.features) 
+  tenancy.subscription.features = plan.features instanceof Map
+    ? Object.fromEntries(plan.features)
     : plan.features;
 
   // Set trial if specified
@@ -153,7 +153,7 @@ exports.activateSubscription = asyncHandler(async (req, res) => {
 
   tenancy.subscription.status = 'active';
   tenancy.subscription.startDate = startDate || new Date();
-  
+
   if (endDate) {
     tenancy.subscription.endDate = new Date(endDate);
   } else {
@@ -171,11 +171,28 @@ exports.activateSubscription = asyncHandler(async (req, res) => {
   tenancy.isActive = true;
   await tenancy.save();
 
+  // Notify SuperAdmins about subscription activation
+  try {
+    const NotificationService = require('../services/notificationService');
+    const User = require('../models/User');
+    const superAdmins = await User.find({ role: 'superadmin', isActive: true }).select('_id');
+    for (const superAdmin of superAdmins) {
+      await NotificationService.notifySuperAdminSubscriptionUpdate(
+        superAdmin._id,
+        tenancy,
+        'Activated',
+        `has activated their ${tenancy.subscription.plan} subscription.`
+      );
+    }
+  } catch (error) {
+    console.error('Failed to notify SuperAdmins of activation:', error.message);
+  }
+
   // Update lead if exists
   const lead = await Lead.findOne({ tenancyId: tenancy._id });
   if (lead && !lead.isConverted) {
     await lead.convertToCustomer(tenancy._id);
-    
+
     // Update sales user performance
     await req.salesUser.updatePerformance({
       leadsConverted: req.salesUser.performance.leadsConverted + 1
@@ -199,7 +216,7 @@ exports.pauseSubscription = asyncHandler(async (req, res) => {
 
   tenancy.subscription.status = 'cancelled';
   tenancy.isActive = false;
-  
+
   // Store pause reason in metadata (you can add this field to schema if needed)
   await tenancy.save();
 
@@ -212,11 +229,11 @@ exports.pauseSubscription = asyncHandler(async (req, res) => {
  */
 exports.upgradeSubscription = asyncHandler(async (req, res) => {
   const { planId, paymentMethod = 'manual' } = req.body;
-  
+
   console.log('🔄 Upgrade request - Tenancy ID:', req.params.tenancyId);
   console.log('🔄 Upgrade request - New Plan ID:', planId);
   console.log('💳 Payment Method:', paymentMethod);
-  
+
   const tenancy = await Tenancy.findById(req.params.tenancyId);
 
   if (!tenancy) {
@@ -236,7 +253,7 @@ exports.upgradeSubscription = asyncHandler(async (req, res) => {
   console.log('✅ New plan found:', newPlan.displayName);
 
   const currentPlan = await BillingPlan.findById(tenancy.subscription.planId);
-  
+
   // Verify it's an upgrade (higher price)
   const billingCycle = tenancy.subscription?.billingCycle || 'monthly';
   const currentPrice = currentPlan?.price?.[billingCycle] || 0;
@@ -252,11 +269,28 @@ exports.upgradeSubscription = asyncHandler(async (req, res) => {
   // Update subscription
   tenancy.subscription.plan = newPlan.name;
   tenancy.subscription.planId = newPlan._id;
-  tenancy.subscription.features = newPlan.features instanceof Map 
-    ? Object.fromEntries(newPlan.features) 
+  tenancy.subscription.features = newPlan.features instanceof Map
+    ? Object.fromEntries(newPlan.features)
     : newPlan.features;
 
   await tenancy.save();
+
+  // Notify SuperAdmins about upgrade
+  try {
+    const NotificationService = require('../services/notificationService');
+    const User = require('../models/User');
+    const superAdmins = await User.find({ role: 'superadmin', isActive: true }).select('_id');
+    for (const superAdmin of superAdmins) {
+      await NotificationService.notifySuperAdminSubscriptionUpdate(
+        superAdmin._id,
+        tenancy,
+        'Upgraded',
+        `has upgraded to ${newPlan.displayName}.`
+      );
+    }
+  } catch (error) {
+    console.error('Failed to notify SuperAdmins of upgrade:', error.message);
+  }
 
   // Calculate upgrade amount (difference between plans)
   const upgradeAmount = newPrice - currentPrice;
@@ -321,8 +355,8 @@ exports.downgradeSubscription = asyncHandler(async (req, res) => {
   // Update subscription
   tenancy.subscription.plan = newPlan.name;
   tenancy.subscription.planId = newPlan._id;
-  tenancy.subscription.features = newPlan.features instanceof Map 
-    ? Object.fromEntries(newPlan.features) 
+  tenancy.subscription.features = newPlan.features instanceof Map
+    ? Object.fromEntries(newPlan.features)
     : newPlan.features;
 
   await tenancy.save();
@@ -330,7 +364,7 @@ exports.downgradeSubscription = asyncHandler(async (req, res) => {
   // Create payment record for downgrade (usually a credit/refund)
   if (currentPrice > newPrice) {
     const creditAmount = currentPrice - newPrice;
-    
+
     const payment = await TenancyPayment.create({
       tenancy: tenancy._id,
       amount: -creditAmount, // Negative amount for credit
@@ -351,7 +385,7 @@ exports.downgradeSubscription = asyncHandler(async (req, res) => {
     });
 
     console.log('💰 Downgrade credit created:', payment._id, 'Amount:', creditAmount);
-    
+
     sendSuccess(res, { tenancy, payment }, 'Subscription downgraded successfully');
   } else {
     sendSuccess(res, { tenancy }, 'Subscription downgraded successfully');
@@ -455,7 +489,7 @@ exports.getSubscriptionStats = asyncHandler(async (req, res) => {
  */
 exports.getExpiringTrials = asyncHandler(async (req, res) => {
   const { days = 7 } = req.query;
-  
+
   const expiryDate = new Date();
   expiryDate.setDate(expiryDate.getDate() + parseInt(days));
 

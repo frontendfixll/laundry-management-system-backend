@@ -8,14 +8,14 @@ const { validationResult } = require('express-validator')
 
 const centerAdminDashboardController = {
   // Get comprehensive dashboard overview
-  getDashboardOverview: async function(req, res) {
+  getDashboardOverview: async function (req, res) {
     try {
       const { timeframe = '30d' } = req.query
-      
+
       // Calculate date range
       const now = new Date()
       let startDate
-      
+
       switch (timeframe) {
         case '24h':
           startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000)
@@ -85,7 +85,7 @@ const centerAdminDashboardController = {
   },
 
   // Get total statistics
-  getTotalStats: async function(startDate) {
+  getTotalStats: async function (startDate) {
     const [
       totalOrders,
       totalRevenue,
@@ -107,7 +107,7 @@ const centerAdminDashboardController = {
         { $match: { createdAt: { $gte: startDate } } },
         { $group: { _id: null, total: { $sum: '$pricing.total' } } }
       ]),
-      User.countDocuments({ 
+      User.countDocuments({
         role: 'customer',
         createdAt: { $gte: startDate }
       }),
@@ -145,7 +145,7 @@ const centerAdminDashboardController = {
   },
 
   // Get tenancy statistics
-  getTenancyStats: async function(startDate) {
+  getTenancyStats: async function (startDate) {
     try {
       const [
         totalTenancies,
@@ -189,7 +189,7 @@ const centerAdminDashboardController = {
   },
 
   // Get recent orders
-  getRecentOrders: async function(limit = 10) {
+  getRecentOrders: async function (limit = 10) {
     const orders = await Order.find()
       .populate('customer', 'name email')
       .populate('branch', 'name code')
@@ -197,7 +197,7 @@ const centerAdminDashboardController = {
       .limit(limit)
       .select('orderNumber status pricing createdAt items')
       .lean()
-    
+
     // Transform to match frontend expectations
     return orders.map(order => ({
       _id: order._id,
@@ -212,7 +212,7 @@ const centerAdminDashboardController = {
   },
 
   // Get top performing branches
-  getTopBranches: async function(startDate, limit = 5) {
+  getTopBranches: async function (startDate, limit = 5) {
     return await Order.aggregate([
       { $match: { createdAt: { $gte: startDate } } },
       {
@@ -248,7 +248,7 @@ const centerAdminDashboardController = {
   },
 
   // Get revenue data for charts
-  getRevenueData: async function(startDate) {
+  getRevenueData: async function (startDate) {
     const dailyRevenue = await Order.aggregate([
       { $match: { createdAt: { $gte: startDate } } },
       {
@@ -293,10 +293,10 @@ const centerAdminDashboardController = {
   },
 
   // Get customer growth data
-  getCustomerGrowth: async function(startDate) {
+  getCustomerGrowth: async function (startDate) {
     return await User.aggregate([
-      { 
-        $match: { 
+      {
+        $match: {
           role: 'customer',
           createdAt: { $gte: startDate }
         }
@@ -316,7 +316,7 @@ const centerAdminDashboardController = {
   },
 
   // Get order status distribution
-  getOrderStatusDistribution: async function(startDate) {
+  getOrderStatusDistribution: async function (startDate) {
     return await Order.aggregate([
       { $match: { createdAt: { $gte: startDate } } },
       {
@@ -331,19 +331,19 @@ const centerAdminDashboardController = {
   },
 
   // Get recent system activities
-  getRecentActivities: async function(limit = 10) {
+  getRecentActivities: async function (limit = 10) {
     return await AuditLog.find({
       category: { $in: ['orders', 'branches', 'users', 'finances'] },
       riskLevel: { $in: ['medium', 'high', 'critical'] }
     })
-    .sort({ timestamp: -1 })
-    .limit(limit)
-    .select('action description userEmail timestamp riskLevel category')
-    .lean()
+      .sort({ timestamp: -1 })
+      .limit(limit)
+      .select('action description userEmail timestamp riskLevel category')
+      .lean()
   },
 
   // Get system alerts
-  getSystemAlerts: async function() {
+  getSystemAlerts: async function () {
     const now = new Date()
     const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000)
 
@@ -354,11 +354,11 @@ const centerAdminDashboardController = {
       systemErrors
     ] = await Promise.all([
       AuditLog.countDocuments({
-        action: 'failed_login',
+        action: 'LOGIN_FAILED',
         timestamp: { $gte: last24h }
       }),
       AuditLog.countDocuments({
-        riskLevel: { $in: ['high', 'critical'] },
+        severity: { $in: ['high', 'critical'] },
         timestamp: { $gte: last24h }
       }),
       Order.countDocuments({
@@ -366,22 +366,22 @@ const centerAdminDashboardController = {
         createdAt: { $gte: last24h }
       }),
       AuditLog.countDocuments({
-        status: 'failure',
-        category: 'system',
+        outcome: 'failure',
+        entity: 'System',
         timestamp: { $gte: last24h }
       })
     ])
 
     const alerts = []
 
-    if (failedLogins > 10) {
+    if (failedLogins > 0) {
       alerts.push({
         id: `alert-failed-logins-${Date.now()}`,
         type: 'security',
         level: 'high',
         message: `${failedLogins} failed login attempts in last 24h`,
         action: 'Review security logs',
-        actionUrl: '/superadmin/audit?filter=failed_login'
+        actionUrl: '/superadmin/audit?filter=LOGIN_FAILED'
       })
     }
 
@@ -392,7 +392,7 @@ const centerAdminDashboardController = {
         level: 'critical',
         message: `${suspiciousActivities} suspicious activities detected`,
         action: 'Investigate immediately',
-        actionUrl: '/superadmin/audit?riskLevel=high,critical'
+        actionUrl: '/superadmin/audit?severity=high,critical'
       })
     }
 
@@ -407,14 +407,14 @@ const centerAdminDashboardController = {
       })
     }
 
-    if (systemErrors > 5) {
+    if (systemErrors > 0) {
       alerts.push({
         id: `alert-system-errors-${Date.now()}`,
         type: 'system',
         level: 'high',
         message: `${systemErrors} system errors in last 24h`,
         action: 'Check system health',
-        actionUrl: '/superadmin/audit?category=system&status=failure'
+        actionUrl: '/superadmin/audit?category=system&outcome=failure'
       })
     }
 
@@ -422,7 +422,7 @@ const centerAdminDashboardController = {
   },
 
   // Get system health metrics
-  getSystemHealth: async function() {
+  getSystemHealth: async function () {
     const now = new Date()
     const last30Days = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
     const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000)
@@ -480,7 +480,7 @@ const centerAdminDashboardController = {
   },
 
   // Get detailed analytics
-  getDetailedAnalytics: async function(req, res) {
+  getDetailedAnalytics: async function (req, res) {
     try {
       const errors = validationResult(req)
       if (!errors.isEmpty()) {
@@ -491,9 +491,9 @@ const centerAdminDashboardController = {
         })
       }
 
-      const { 
-        startDate, 
-        endDate, 
+      const {
+        startDate,
+        endDate,
         groupBy = 'day',
         metrics = ['revenue', 'orders', 'customers']
       } = req.query
@@ -539,12 +539,12 @@ const centerAdminDashboardController = {
   },
 
   // Revenue analytics helper
-  getRevenueAnalytics: async function(startDate, endDate, groupBy) {
+  getRevenueAnalytics: async function (startDate, endDate, groupBy) {
     const groupStage = centerAdminDashboardController.getGroupStage(groupBy)
-    
+
     return await Order.aggregate([
-      { 
-        $match: { 
+      {
+        $match: {
           createdAt: { $gte: startDate, $lte: endDate }
         }
       },
@@ -561,12 +561,12 @@ const centerAdminDashboardController = {
   },
 
   // Order analytics helper
-  getOrderAnalytics: async function(startDate, endDate, groupBy) {
+  getOrderAnalytics: async function (startDate, endDate, groupBy) {
     const groupStage = centerAdminDashboardController.getGroupStage(groupBy)
-    
+
     return await Order.aggregate([
-      { 
-        $match: { 
+      {
+        $match: {
           createdAt: { $gte: startDate, $lte: endDate }
         }
       },
@@ -584,12 +584,12 @@ const centerAdminDashboardController = {
   },
 
   // Customer analytics helper
-  getCustomerAnalytics: async function(startDate, endDate, groupBy) {
+  getCustomerAnalytics: async function (startDate, endDate, groupBy) {
     const groupStage = centerAdminDashboardController.getGroupStage(groupBy)
-    
+
     return await User.aggregate([
-      { 
-        $match: { 
+      {
+        $match: {
           role: 'customer',
           createdAt: { $gte: startDate, $lte: endDate }
         }
@@ -605,10 +605,10 @@ const centerAdminDashboardController = {
   },
 
   // Branch analytics helper
-  getBranchAnalytics: async function(startDate, endDate) {
+  getBranchAnalytics: async function (startDate, endDate) {
     return await Order.aggregate([
-      { 
-        $match: { 
+      {
+        $match: {
           createdAt: { $gte: startDate, $lte: endDate }
         }
       },
@@ -646,7 +646,7 @@ const centerAdminDashboardController = {
   },
 
   // Helper to get group stage based on groupBy parameter
-  getGroupStage: function(groupBy) {
+  getGroupStage: function (groupBy) {
     switch (groupBy) {
       case 'hour':
         return {

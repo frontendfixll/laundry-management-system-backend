@@ -202,7 +202,14 @@ superAdminRoleSchema.statics.createDefaultRoles = async function () {
         createdRoles.push(role);
         console.log(`✅ Created platform role: ${roleData.name}`);
       } else {
-        console.log(`⚠️ Platform role already exists: ${roleData.name}`);
+        // Update existing role to ensure permissions are in sync
+        existing.permissions = roleData.permissions;
+        existing.description = roleData.description;
+        existing.color = roleData.color;
+        existing.name = roleData.name;
+        await existing.save();
+        createdRoles.push(existing);
+        console.log(`📝 Updated existing platform role: ${roleData.name}`);
       }
     } catch (error) {
       console.error(`❌ Error creating platform role ${roleData.name}:`, error);

@@ -19,12 +19,7 @@ const {
   rateOrder,
   reorder
 } = require('../../controllers/customer/orderController');
-const {
-  getNotifications,
-  markNotificationsAsRead,
-  markAllNotificationsAsRead,
-  getUnreadCount
-} = require('../../controllers/customer/notificationController');
+
 const {
   createTicket,
   getTickets,
@@ -99,12 +94,6 @@ router.get('/orders/:orderId/tracking', getOrderTracking);
 router.put('/orders/:orderId/cancel', cancelOrder);
 router.put('/orders/:orderId/rate', rateOrder);
 router.post('/orders/:orderId/reorder', checkOrderLimit, reorder);
-
-// Notification routes
-router.get('/notifications', getNotifications);
-router.get('/notifications/unread-count', getUnreadCount);
-router.put('/notifications/mark-read', markNotificationsAsRead);
-router.put('/notifications/mark-all-read', markAllNotificationsAsRead);
 
 // Ticket/Support routes
 router.get('/tickets/categories', getCategories);

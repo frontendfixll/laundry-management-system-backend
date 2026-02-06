@@ -66,7 +66,7 @@ class NotificationService {
           severity,
           priority,
           data,
-          channels
+          channels: normalizedChannels
         });
         console.log(`📧 Notification sent via Socket.IO: ${title} for user ${recipientId}`);
       } catch (socketIOError) {
@@ -253,6 +253,51 @@ class NotificationService {
     });
   }
 
+  // ==================== SUPER ADMIN NOTIFICATIONS ====================
+
+  static async notifySuperAdminNewTenancy(superAdminId, tenancy) {
+    return this.createNotification({
+      recipientId: superAdminId,
+      recipientModel: 'SuperAdmin',
+      recipientType: RECIPIENT_TYPES.SUPERADMIN,
+      type: NOTIFICATION_TYPES.NEW_TENANCY_SIGNUP,
+      title: 'New Tenancy Signup',
+      message: `New laundry "${tenancy.name}" has signed up.`,
+      icon: 'plus-circle',
+      severity: 'success',
+      data: { tenancyId: tenancy._id, link: `/superadmin/tenancies/${tenancy._id}` }
+    });
+  }
+
+  static async notifySuperAdminSubscriptionUpdate(superAdminId, tenancy, type, details) {
+    return this.createNotification({
+      recipientId: superAdminId,
+      recipientModel: 'SuperAdmin',
+      recipientType: RECIPIENT_TYPES.SUPERADMIN,
+      type: NOTIFICATION_TYPES.SUBSCRIPTION_UPDATED,
+      title: `Subscription ${type}`,
+      message: `${tenancy.name} ${details}`,
+      icon: 'credit-card',
+      severity: type === 'Activated' ? 'success' : 'info',
+      data: { tenancyId: tenancy._id, link: `/superadmin/tenancies/${tenancy._id}` }
+    });
+  }
+
+  static async notifySuperAdminTicketEscalated(superAdminId, ticket) {
+    return this.createNotification({
+      recipientId: superAdminId,
+      recipientModel: 'SuperAdmin',
+      recipientType: RECIPIENT_TYPES.SUPERADMIN,
+      type: NOTIFICATION_TYPES.NEW_COMPLAINT,
+      title: 'Ticket Escalated',
+      message: `Ticket #${ticket.ticketNumber} has been escalated to your level.`,
+      icon: 'shield-alert',
+      severity: 'warning',
+      data: { ticketId: ticket._id, link: `/superadmin/support/tickets/${ticket._id}` }
+    });
+  }
+
+
   /**
    * Notify all admins in a tenancy about an order status update (persistent)
    */
@@ -302,21 +347,7 @@ class NotificationService {
     });
   }
 
-  // ==================== SUPERADMIN NOTIFICATIONS ====================
-
-  static async notifySuperAdminNewTenancy(superAdminId, tenancy) {
-    return this.createNotification({
-      recipientId: superAdminId,
-      recipientModel: 'SuperAdmin',
-      recipientType: RECIPIENT_TYPES.SUPERADMIN,
-      type: NOTIFICATION_TYPES.NEW_TENANCY_SIGNUP,
-      title: 'New Business Signup! 🎉',
-      message: `${tenancy.name} just signed up for ${tenancy.subscription?.plan || 'a plan'}`,
-      icon: 'building',
-      severity: 'success',
-      data: { tenancyId: tenancy._id, link: `/tenancies/${tenancy._id}` }
-    });
-  }
+  // Duplicate SuperAdmin methods removed during cleanup
 
   static async notifySuperAdminPayment(superAdminId, tenancy, amount) {
     return this.createNotification({
@@ -351,7 +382,7 @@ class NotificationService {
       recipientId: superAdminId,
       recipientModel: 'SuperAdmin',
       recipientType: RECIPIENT_TYPES.SUPERADMIN,
-      type: NOTIFICATION_TYPES.TENANCY_SUBSCRIPTION_EXPIRING,
+      type: NOTIFICATION_TYPES.TENANCY_SUBSCRIPTION_EXPIRING || 'tenancy_subscription_expiring',
       title: 'Subscription Expiring',
       message: `${tenancy.name}'s subscription expires in ${daysLeft} days`,
       icon: 'alert-triangle',
@@ -365,6 +396,8 @@ class NotificationService {
   static async notifyAllSuperAdmins(notificationData) {
     const SuperAdmin = require('../models/SuperAdmin');
     const superAdmins = await SuperAdmin.find({ isActive: true }).select('_id');
+
+    console.log(`📡 Broadcasting notification "${notificationData.title}" to ${superAdmins.length} SuperAdmins`);
 
     const notifications = await Promise.all(
       superAdmins.map(sa => this.createNotification({

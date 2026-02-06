@@ -119,7 +119,7 @@ class CenterAdminAuditController {
       // Calculate date range
       const endDate = new Date()
       const startDate = new Date()
-      
+
       switch (timeframe) {
         case '24h':
           startDate.setHours(endDate.getHours() - 24)
@@ -381,17 +381,17 @@ class CenterAdminAuditController {
       ] = await Promise.all([
         AuditLog.countDocuments({ timestamp: { $gte: last24h } }),
         AuditLog.countDocuments({ timestamp: { $gte: last7d } }),
-        AuditLog.countDocuments({ 
-          riskLevel: 'critical',
+        AuditLog.countDocuments({
+          severity: 'critical',
           timestamp: { $gte: last24h }
         }),
         AuditLog.countDocuments({
-          action: 'failed_login',
+          action: 'LOGIN_FAILED',
           timestamp: { $gte: last24h }
         }),
         AuditLog.countDocuments({
-          status: 'failure',
-          category: 'system',
+          outcome: 'failure',
+          entity: 'System',
           timestamp: { $gte: last24h }
         })
       ])

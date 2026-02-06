@@ -36,18 +36,18 @@ const authenticateSuperAdmin = async (req, res, next) => {
       })
     }
 
-    // Check if token is for center_admin, superadmin, or auditor (all are valid for SuperAdmin routes)
-    // Check if token is for center_admin, superadmin, or auditor (all are valid for SuperAdmin routes)
-    // Also include new platform roles
+    // Check if token is for center_admin, superadmin, or any platform role
     const validRoles = [
       'center_admin',
       'superadmin',
+      'super-admin',
       'auditor',
-      'platform-finance-admin',
       'platform-support',
-      'platform-sales',
+      'platform-finance-admin',
       'platform-auditor',
-      'super-admin'
+      'platform-sales',
+      'platform-sales-junior',
+      'platform-sales-senior'
     ]
     if (!validRoles.includes(decoded.role)) {
       console.log('🔐 SuperAdmin Auth - Role mismatch:', decoded.role, 'not in', validRoles)
