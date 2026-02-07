@@ -144,9 +144,15 @@ const protectAny = async (req, res, next) => {
     try {
       const decoded = verifyToken(token);
 
-      // Check if it's a superadmin token (has adminId and role=superadmin)
-      if (decoded.adminId && decoded.role === 'superadmin') {
-        const admin = await SuperAdmin.findById(decoded.adminId).select('-password');
+      // Check if it's a superadmin/platform admin token (has adminId)
+      if (decoded.adminId) {
+        // Try SuperAdmin model first
+        let admin = await SuperAdmin.findById(decoded.adminId).select('-password');
+
+        // Fallback to CenterAdmin model
+        if (!admin) {
+          admin = await CenterAdmin.findById(decoded.adminId).select('-password');
+        }
 
         if (admin && admin.isActive) {
           req.user = admin;

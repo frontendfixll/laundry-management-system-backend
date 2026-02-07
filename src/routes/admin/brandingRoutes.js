@@ -20,12 +20,14 @@ const validateTheme = [
     .withMessage('Invalid layout option')
 ];
 
-// All routes require admin authentication
+// All routes require authentication
 router.use(protect);
-router.use(restrictTo('admin'));
 
-// Get branding
+// Get branding - allow all authenticated tenant users
 router.get('/branding', brandingController.getBranding);
+
+// Update routes - restricted to admin
+router.use(restrictTo('admin'));
 
 // Update branding
 router.put('/branding', brandingController.updateBranding);
