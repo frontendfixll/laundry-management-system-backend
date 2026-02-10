@@ -45,13 +45,19 @@ const getDashboard = asyncHandler(async (req, res) => {
     baseQuery = addBranchFilter(baseQuery, req.user);
   }
 
+  // Get only actual customer IDs (exclude admins, staff, etc.)
+  const actualCustomerIds = await User.find({ role: USER_ROLES.CUSTOMER }).distinct('_id');
+
   // For customer counts, we need to count customers who have orders in this tenancy/branch
   let totalCustomers = 0;
   let activeCustomers = 0;
 
   if (tenancyId) {
     // Get customer IDs from orders in this tenancy (and branch for branch_admin)
-    const customerQuery = isBranchAdmin ? { tenancy: tenancyId, branch: req.user.assignedBranch } : { tenancy: tenancyId };
+    // BUT only count orders from actual customers (not admins)
+    const customerQuery = isBranchAdmin 
+      ? { tenancy: tenancyId, branch: req.user.assignedBranch, customer: { $in: actualCustomerIds } } 
+      : { tenancy: tenancyId, customer: { $in: actualCustomerIds } };
     const customerIds = await Order.distinct('customer', customerQuery);
     totalCustomers = customerIds.length;
     activeCustomers = await User.countDocuments({
@@ -65,13 +71,19 @@ const getDashboard = asyncHandler(async (req, res) => {
   }
 
   // Build queries with branch filter for branch_admin
+  // AND exclude orders from non-customers (admins who placed test orders)
   const buildQuery = (additionalFilters = {}) => {
     let query = addTenancyFilter(additionalFilters, tenancyId);
     if (isBranchAdmin) {
       query = addBranchFilter(query, req.user);
     }
+    // Only count orders from actual customers
+    query.customer = { $in: actualCustomerIds };
     return query;
   };
+
+  // Update base query to exclude admin orders
+  baseQuery.customer = { $in: actualCustomerIds };
 
   // Get dashboard metrics
   const [
@@ -101,7 +113,7 @@ const getDashboard = asyncHandler(async (req, res) => {
       : User.countDocuments({ tenancy: tenancyId, role: 'staff', isActive: true })
   ]);
 
-  // Get recent orders
+  // Get recent orders (only from actual customers)
   const recentOrders = await Order.find(baseQuery)
     .populate('customer', 'name phone isVIP')
     .populate('branch', 'name code')
@@ -109,7 +121,7 @@ const getDashboard = asyncHandler(async (req, res) => {
     .limit(10)
     .select('orderNumber status pricing.total createdAt isExpress items');
 
-  // Get order status distribution
+  // Get order status distribution (only from actual customers)
   const statusDistribution = await Order.aggregate([
     { $match: baseQuery },
     {
@@ -171,8 +183,14 @@ const getAllOrders = asyncHandler(async (req, res) => {
 
   console.log('🔍 getAllOrders - tenancyId:', tenancyId, 'isBranchAdmin:', isBranchAdmin);
 
+  // Get only actual customer IDs (exclude admins, staff, etc.)
+  const actualCustomerIds = await User.find({ role: USER_ROLES.CUSTOMER }).distinct('_id');
+
   // Build query with tenancy filter
   let query = addTenancyFilter({}, tenancyId);
+
+  // Only show orders from actual customers (not admin test orders)
+  query.customer = { $in: actualCustomerIds };
 
   // For branch_admin, always filter by their assigned branch
   if (isBranchAdmin) {
@@ -417,7 +435,38 @@ const getCustomers = asyncHandler(async (req, res) => {
     })
   );
 
+  // Calculate additional stats
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  
+  // Count total active customers
+  const totalActiveCustomers = await User.countDocuments({
+    ...query,
+    isActive: true
+  });
+  
+  // Count total VIP customers
+  const totalVIPCustomers = await User.countDocuments({
+    ...query,
+    isVIP: true
+  });
+  
+  // Count new customers this month
+  const newCustomersThisMonth = await User.countDocuments({
+    ...query,
+    createdAt: { $gte: startOfMonth }
+  });
+
   const response = formatPaginationResponse(customersWithStats, total, pageNum, limitNum);
+  
+  // Add stats to response
+  response.stats = {
+    totalCustomers: total,
+    activeCustomers: totalActiveCustomers,
+    vipCustomers: totalVIPCustomers,
+    newThisMonth: newCustomersThisMonth
+  };
+  
   sendSuccess(res, response, 'Customers retrieved successfully');
 });
 

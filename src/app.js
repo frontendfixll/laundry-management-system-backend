@@ -375,6 +375,10 @@ app.use('/api/services', servicesRoutes);
 app.use('/api/customer', customerRoutes);
 app.use('/api/admin', adminRoutes);
 
+// Public order tracking routes (no authentication required)
+const publicTrackingRoutes = require('./routes/public');
+app.use('/api/public', publicTrackingRoutes);
+
 // Tenant verification routes (public, needed for middleware)
 const tenantVerificationRoutes = require('./routes/tenantVerification');
 app.use('/api/tenants', tenantVerificationRoutes);
