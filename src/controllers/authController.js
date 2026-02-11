@@ -338,11 +338,19 @@ const login = async (req, res) => {
       }
       if (user.tenancy) {
         if (user.tenancy._id.toString() !== tenancy._id.toString()) {
-          return res.status(403).json({
-            success: false,
-            message: 'This account is associated with a different laundry. Please login from that laundry\'s page.',
-            code: 'TENANCY_MISMATCH'
-          });
+          // Demo customer: allow login from any tenant and re-associate (for testing/demo on localhost + production)
+          const isDemoCustomer = email && String(email).toLowerCase() === 'testcustomer@demo.com';
+          if (isDemoCustomer) {
+            user.tenancy = tenancy._id;
+            await user.save({ validateBeforeSave: false });
+            user.tenancy = tenancy; // Keep full object for response
+          } else {
+            return res.status(403).json({
+              success: false,
+              message: 'This account is associated with a different laundry. Please login from that laundry\'s page.',
+              code: 'TENANCY_MISMATCH'
+            });
+          }
         }
       } else {
         // First-time: associate customer with tenant
