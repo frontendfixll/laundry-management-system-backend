@@ -26,8 +26,8 @@ router.use(protect);
 // Get branding - allow all authenticated tenant users
 router.get('/branding', brandingController.getBranding);
 
-// Update routes - restricted to admin
-router.use(restrictTo('admin'));
+// Update routes - restricted to admin, tenant_admin, tenant_owner, branch_admin (theme/branding is tenant-scoped)
+router.use(restrictTo('admin', 'tenant_admin', 'tenant_owner', 'branch_admin'));
 
 // Update branding
 router.put('/branding', brandingController.updateBranding);

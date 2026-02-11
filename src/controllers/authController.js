@@ -257,7 +257,7 @@ const resendVerificationEmail = async (req, res) => {
 // Login user
 const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, tenantSlug } = req.body;
 
     console.log(`🔐 Login attempt for: ${email}`);
     
@@ -313,6 +313,42 @@ const login = async (req, res) => {
         success: false,
         message: 'Account is deactivated. Please contact support.'
       });
+    }
+
+    // TENANCY: Customers must login from a valid tenant page
+    if (user.role === 'customer') {
+      if (!tenantSlug || !tenantSlug.trim()) {
+        return res.status(403).json({
+          success: false,
+          message: 'Please login from a laundry\'s page.',
+          code: 'TENANCY_REQUIRED'
+        });
+      }
+      const Tenancy = require('../models/Tenancy');
+      const tenancy = await Tenancy.findOne({
+        $or: [{ slug: tenantSlug.trim() }, { subdomain: tenantSlug.trim() }],
+        status: { $in: ['active', 'trial'] }
+      });
+      if (!tenancy) {
+        return res.status(403).json({
+          success: false,
+          message: 'Invalid laundry. Please login from a valid laundry\'s page.',
+          code: 'TENANCY_INVALID'
+        });
+      }
+      if (user.tenancy) {
+        if (user.tenancy._id.toString() !== tenancy._id.toString()) {
+          return res.status(403).json({
+            success: false,
+            message: 'This account is associated with a different laundry. Please login from that laundry\'s page.',
+            code: 'TENANCY_MISMATCH'
+          });
+        }
+      } else {
+        // First-time: associate customer with tenant
+        user.tenancy = tenancy._id;
+        await user.save({ validateBeforeSave: false });
+      }
     }
 
     // Check tenancy status for admin/branch_admin users

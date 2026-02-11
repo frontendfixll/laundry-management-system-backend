@@ -99,11 +99,11 @@ const router = express.Router();
 router.use(protectAny);
 router.use(injectTenancyFromUser);
 
-// Middleware to allow branch_admin to access admin routes
+// Middleware to allow branch_admin and tenant_admin/tenant_owner to access admin routes
 // Branch admin will have data filtered by their assigned branch
 const allowBranchAdmin = (req, res, next) => {
-  // Allow SuperAdmin, admin, and branch_admin roles
-  if (req.isSuperAdmin || req.user.role === 'admin' || req.user.role === 'branch_admin') {
+  const allowedRoles = ['admin', 'branch_admin', 'tenant_admin', 'tenant_owner'];
+  if (req.isSuperAdmin || (req.user.role && allowedRoles.includes(req.user.role))) {
     return next();
   }
   return res.status(403).json({

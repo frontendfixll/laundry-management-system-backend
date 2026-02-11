@@ -81,7 +81,12 @@ const loginValidation = Joi.object({
     .required()
     .messages({
       'string.empty': 'Password is required'
-    })
+    }),
+  
+  tenantSlug: Joi.string()
+    .trim()
+    .optional()
+    .allow('', null)
 });
 
 // Email verification validation
