@@ -73,8 +73,8 @@ router.post('/calculate-distance', async (req, res) => {
       });
     }
 
-    // Get branch with coordinates
-    const branch = await Branch.findById(branchId);
+    // Get branch with coordinates and serviceAreas
+    const branch = await Branch.findById(branchId).select('address coordinates serviceAreas name code');
     if (!branch) {
       return res.status(404).json({
         success: false,
@@ -82,8 +82,57 @@ router.post('/calculate-distance', async (req, res) => {
       });
     }
 
-    // Check if branch has coordinates
+    // Pincode-based serviceability: if branch has serviceAreas, customer pincode must match
+    const pincodeStr = typeof pickupAddress === 'object' && pickupAddress?.pincode
+      ? String(pickupAddress.pincode).trim()
+      : null;
+
+    if (pincodeStr && branch.serviceAreas && branch.serviceAreas.length > 0) {
+      const serviceablePincodes = branch.serviceAreas
+        .filter(sa => sa.isActive !== false)
+        .map(sa => String(sa.pincode || '').trim())
+        .filter(Boolean);
+      const isPincodeServiceable = serviceablePincodes.some(pin => pin === pincodeStr);
+
+      if (!isPincodeServiceable) {
+        return res.json({
+          success: true,
+          data: {
+            distance: null,
+            deliveryCharge: 0,
+            isServiceable: false,
+            isFallback: false,
+            message: 'Service not available in your area. This branch does not deliver to your pincode.',
+            branch: {
+              id: branch._id,
+              name: branch.name,
+              code: branch.code
+            }
+          }
+        });
+      }
+    }
+
+    // If branch has no coordinates but pincode matched (has serviceAreas), use service area delivery charge
     if (!branch.coordinates?.latitude || !branch.coordinates?.longitude) {
+      if (pincodeStr && branch.serviceAreas?.length > 0) {
+        const serviceArea = branch.serviceAreas.find(
+          sa => sa.isActive !== false && String(sa.pincode || '').trim() === pincodeStr
+        );
+        const charge = serviceArea?.deliveryCharge ?? 30;
+        const finalCharge = isExpress ? Math.round(charge * 1.5) : charge;
+        return res.json({
+          success: true,
+          data: {
+            distance: null,
+            deliveryCharge: finalCharge,
+            isServiceable: true,
+            isFallback: true,
+            message: 'Delivery charge from branch service area',
+            branch: { id: branch._id, name: branch.name, code: branch.code }
+          }
+        });
+      }
       return res.status(400).json({
         success: false,
         message: 'Branch coordinates not configured. Please contact support.',

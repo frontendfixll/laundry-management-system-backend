@@ -62,12 +62,12 @@ router.get('/branding/:identifier', async (req, res) => {
       });
     }
 
-    // Get active branches for this tenancy
+    // Get active branches for this tenancy (include serviceAreas for pincode-based availability)
     const branches = await Branch.find({
       tenancy: tenancy._id,
       isActive: true
     })
-      .select('_id name code address contact phone')
+      .select('_id name code address contact phone serviceAreas')
       .maxTimeMS(queryTimeout)
       .lean();
 

@@ -77,40 +77,44 @@ const createOrder = asyncHandler(async (req, res) => {
     if (!branch) {
       return sendError(res, 'BRANCH_NOT_FOUND', 'Selected branch not found or inactive', 404);
     }
+
+    // Validate pincode: if branch has serviceAreas, address pincode must match
+    const addrToCheck = needsPickupAddress ? pickupAddress : (needsDeliveryAddress ? deliveryAddress : null);
+    if (addrToCheck && branch.serviceAreas && branch.serviceAreas.length > 0) {
+      const pincode = String(addrToCheck.pincode || '').trim();
+      const serviceablePincodes = branch.serviceAreas
+        .filter(sa => sa.isActive !== false)
+        .map(sa => String(sa.pincode || '').trim())
+        .filter(Boolean);
+      if (!serviceablePincodes.some(p => p === pincode)) {
+        return sendError(res, 'AREA_NOT_SERVICEABLE', 'Service not available in your area. This branch does not deliver to your pincode.', 400);
+      }
+    }
   } else if (pickupAddress) {
-    // Find available branch for pickup pincode (or use default branch if none found)
+    // Find branch that serves this pickup pincode
+    const tenancyFilter = tenancyId || req.tenancyId ? { tenancy: tenancyId || req.tenancyId } : {};
+    const baseQuery = { ...tenancyFilter, isActive: true };
+
+    // Prefer branch that explicitly has this pincode in serviceAreas
     branch = await Branch.findOne({
-      'serviceAreas.pincode': pickupAddress.pincode,
-      isActive: true
+      ...baseQuery,
+      'serviceAreas.pincode': pickupAddress.pincode
     });
 
-    // If no branch found for pincode, get any active branch (for demo purposes)
+    // Fallback: branch with empty serviceAreas (backward compat, distance-based service)
     if (!branch) {
-      branch = await Branch.findOne({ isActive: true });
+      branch = await Branch.findOne({
+        ...baseQuery,
+        $or: [
+          { serviceAreas: { $size: 0 } },
+          { serviceAreas: { $exists: false } },
+          { serviceAreas: null }
+        ]
+      });
     }
 
-    // If still no branch, create a default one for demo
     if (!branch) {
-      branch = await Branch.create({
-        name: 'Main Branch',
-        code: 'MAIN001',
-        address: {
-          addressLine1: 'Demo Address',
-          city: pickupAddress.city,
-          state: 'India',
-          pincode: pickupAddress.pincode
-        },
-        contact: {
-          phone: '9999999999',
-          email: 'branch@demo.com'
-        },
-        serviceAreas: [{
-          pincode: pickupAddress.pincode,
-          deliveryCharge: 30,
-          isActive: true
-        }],
-        isActive: true
-      });
+      return sendError(res, 'AREA_NOT_SERVICEABLE', 'Service not available in your area. No branch delivers to your pincode.', 400);
     }
   } else {
     // No pickup address and no branch selected - get any active branch

@@ -128,11 +128,11 @@ const getBranches = asyncHandler(async (req, res) => {
   const branches = await Branch.find({ 
     isActive: true 
   })
-  .select('name code address phone coordinates serviceableRadius')
+  .select('name code address phone coordinates serviceableRadius serviceAreas')
   .sort({ name: 1 })
   .lean();
 
-  // Format branches for customer use
+  // Format branches for customer use (include serviceAreas for pincode-based availability)
   const formattedBranches = branches.map(branch => ({
     _id: branch._id,
     name: branch.name,
@@ -144,7 +144,8 @@ const getBranches = asyncHandler(async (req, res) => {
     },
     phone: branch.phone || branch.contact?.phone,
     coordinates: branch.coordinates,
-    serviceableRadius: branch.serviceableRadius
+    serviceableRadius: branch.serviceableRadius,
+    serviceAreas: branch.serviceAreas
   }));
 
   sendSuccess(res, {
