@@ -1,5 +1,5 @@
 const express = require('express');
-const { protect, requireSupport } = require('../../middlewares/auth');
+const { protectAny, protect, requireSupport } = require('../../middlewares/auth');
 const { injectTenancyFromUser } = require('../../middlewares/tenancyMiddleware');
 const ticketRoutes = require('./ticketRoutes');
 const knowledgeBaseRoutes = require('./knowledgeBaseRoutes');
@@ -7,8 +7,8 @@ const platformSupportRoutes = require('./supportRoutes');
 
 const router = express.Router();
 
-// Apply authentication and tenancy injection
-router.use(protect);
+// Use protectAny - accepts both SuperAdmin and User tokens (protect only accepts User)
+router.use(protectAny);
 router.use(requireSupport);
 router.use(injectTenancyFromUser);
 
@@ -245,21 +245,25 @@ router.get('/performance', async (req, res) => {
     const activeTickets = allAssignedTickets.filter(t => ['open', 'in_progress'].includes(t.status)).length;
     const resolutionRate = totalTickets > 0 ? (ticketsResolved / totalTickets) * 100 : 0;
 
-    // Calculate average response time (mock data for now)
-    const averageResponseTime = resolvedTickets.length > 0 ?
-      resolvedTickets.reduce((sum, ticket) => {
-        const responseTime = ticket.firstResponseAt ?
-          (new Date(ticket.firstResponseAt) - new Date(ticket.createdAt)) / (1000 * 60 * 60) : 24;
-        return sum + responseTime;
-      }, 0) / resolvedTickets.length : 12;
+    // Real average response time (hours) from firstResponseAt
+    const ticketsWithResponse = resolvedTickets.filter(t => t.sla?.firstResponseAt);
+    const averageResponseTime = ticketsWithResponse.length > 0
+      ? ticketsWithResponse.reduce((sum, ticket) => {
+          const responseTime = (new Date(ticket.sla.firstResponseAt) - new Date(ticket.createdAt)) / (1000 * 60 * 60);
+          return sum + responseTime;
+        }, 0) / ticketsWithResponse.length
+      : null;
 
-    // Mock customer satisfaction (would come from surveys)
-    const customerSatisfaction = 87.5;
+    // Real customer satisfaction from ticket feedback.rating
+    const ticketsWithFeedback = resolvedTickets.filter(t => t.feedback?.rating >= 1);
+    const customerSatisfaction = ticketsWithFeedback.length > 0
+      ? ticketsWithFeedback.reduce((sum, t) => sum + t.feedback.rating, 0) / ticketsWithFeedback.length
+      : null;
 
     const metrics = {
       ticketsResolved,
-      averageResponseTime: Math.round(averageResponseTime * 10) / 10,
-      customerSatisfaction,
+      averageResponseTime: averageResponseTime != null ? Math.round(averageResponseTime * 10) / 10 : null,
+      customerSatisfaction: customerSatisfaction != null ? Math.round(customerSatisfaction * 10) / 10 : null,
       activeTickets,
       totalTickets,
       resolutionRate: Math.round(resolutionRate * 10) / 10,

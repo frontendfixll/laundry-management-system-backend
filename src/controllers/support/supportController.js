@@ -16,15 +16,11 @@ const { TICKET_STATUS, TICKET_PRIORITY, USER_ROLES } = require('../../config/con
 const getSupportDashboard = asyncHandler(async (req, res) => {
   const user = req.user;
 
-  // Build query based on user role - all admins see all tickets
   let ticketQuery = {};
-  // Admins and Center Admins see all tickets
+  const now = new Date();
+  const startOfDayQuery = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+  const endOfDayQuery = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
 
-  const today = new Date();
-  const startOfDay = new Date(today.setHours(0, 0, 0, 0));
-  const endOfDay = new Date(today.setHours(23, 59, 59, 999));
-
-  // Get dashboard metrics
   const [
     totalTickets,
     todayTickets,
@@ -34,37 +30,43 @@ const getSupportDashboard = asyncHandler(async (req, res) => {
     escalatedTickets,
     overdueTickets,
     myAssignedTickets,
-    avgResolutionTime
+    avgResolutionResult,
+    avgResponseResult,
+    satisfactionResult
   ] = await Promise.all([
     Ticket.countDocuments(ticketQuery),
     Ticket.countDocuments({
       ...ticketQuery,
-      createdAt: { $gte: startOfDay, $lte: endOfDay }
+      createdAt: { $gte: startOfDayQuery, $lte: endOfDayQuery }
     }),
-    Ticket.countDocuments({
-      ...ticketQuery,
-      status: TICKET_STATUS.OPEN
-    }),
-    Ticket.countDocuments({
-      ...ticketQuery,
-      status: TICKET_STATUS.IN_PROGRESS
-    }),
-    Ticket.countDocuments({
-      ...ticketQuery,
-      status: TICKET_STATUS.RESOLVED
-    }),
-    Ticket.countDocuments({
-      ...ticketQuery,
-      status: TICKET_STATUS.ESCALATED
-    }),
-    Ticket.countDocuments({
-      ...ticketQuery,
-      'sla.isOverdue': true
-    }),
-    0, // myAssignedTickets - not needed anymore
-    // TODO: Calculate actual average resolution time
-    24 // Mock value in hours
+    Ticket.countDocuments({ ...ticketQuery, status: TICKET_STATUS.OPEN }),
+    Ticket.countDocuments({ ...ticketQuery, status: TICKET_STATUS.IN_PROGRESS }),
+    Ticket.countDocuments({ ...ticketQuery, status: TICKET_STATUS.RESOLVED }),
+    Ticket.countDocuments({ ...ticketQuery, status: TICKET_STATUS.ESCALATED }),
+    Ticket.countDocuments({ ...ticketQuery, 'sla.isOverdue': true }),
+    0,
+    // Real avg resolution time (hours) from resolved tickets
+    Ticket.aggregate([
+      { $match: { ...ticketQuery, status: TICKET_STATUS.RESOLVED, resolvedAt: { $exists: true, $ne: null } } },
+      { $project: { hours: { $divide: [{ $subtract: ['$resolvedAt', '$createdAt'] }, 1000 * 60 * 60] } } },
+      { $group: { _id: null, avg: { $avg: '$hours' } } }
+    ]),
+    // Real avg response time (hours) from firstResponseAt
+    Ticket.aggregate([
+      { $match: { ...ticketQuery, 'sla.firstResponseAt': { $exists: true, $ne: null } } },
+      { $project: { hours: { $divide: [{ $subtract: ['$sla.firstResponseAt', '$createdAt'] }, 1000 * 60 * 60] } } },
+      { $group: { _id: null, avg: { $avg: '$hours' } } }
+    ]),
+    // Real satisfaction from ticket feedback.rating
+    Ticket.aggregate([
+      { $match: { ...ticketQuery, 'feedback.rating': { $exists: true, $gte: 1 } } },
+      { $group: { _id: null, avg: { $avg: '$feedback.rating' }, count: { $sum: 1 } } }
+    ])
   ]);
+
+  const avgResolutionTime = avgResolutionResult[0]?.avg != null ? Math.round(avgResolutionResult[0].avg * 10) / 10 : null;
+  const avgResponseTime = avgResponseResult[0]?.avg != null ? Math.round(avgResponseResult[0].avg * 10) / 10 : null;
+  const satisfactionScore = satisfactionResult[0]?.avg != null ? Math.round(satisfactionResult[0].avg * 10) / 10 : null;
 
   // Get recent tickets
   const recentTickets = await Ticket.find(ticketQuery)
@@ -100,7 +102,9 @@ const getSupportDashboard = asyncHandler(async (req, res) => {
       escalatedTickets,
       overdueTickets,
       myAssignedTickets,
-      avgResolutionTime
+      avgResolutionTime: avgResolutionTime ?? 0,
+      avgResponseTime: avgResponseTime ?? 0,
+      satisfactionScore: satisfactionScore ?? null
     },
     recentTickets,
     categoryDistribution

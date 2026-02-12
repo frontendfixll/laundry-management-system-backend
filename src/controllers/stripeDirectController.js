@@ -484,6 +484,61 @@ async function handleCheckoutCompleted(session) {
   }
 }
 
+// Map legacy camelCase keys to canonical snake_case (used by tenancy.hasFeature, useFeatures)
+const FEATURE_KEY_ALIASES = {
+  maxOrders: 'max_orders',
+  maxStaff: 'max_staff',
+  maxCustomers: 'max_customers',
+  maxBranches: 'max_branches',
+  customDomain: 'custom_domain',
+  advancedAnalytics: 'advanced_analytics',
+  apiAccess: 'api_access',
+  whiteLabel: 'white_label',
+  prioritySupport: 'priority_support',
+  customBranding: 'custom_branding',
+  dedicatedSupport: 'dedicated_manager'
+};
+
+/**
+ * Normalize BillingPlan features to plain object for tenancy.subscription.features
+ * Handles Map conversion, legacy camelCase->snake_case, merges legacy limits
+ */
+function normalizeBillingPlanFeatures(billingPlan) {
+  const features = billingPlan.features || new Map();
+  const legacy = billingPlan.legacyFeatures || {};
+  const planFeatures = features instanceof Map ? Object.fromEntries(features) : (features || {});
+
+  const normalized = {};
+  for (const [key, value] of Object.entries(planFeatures)) {
+    const canonicalKey = FEATURE_KEY_ALIASES[key] || key;
+    normalized[canonicalKey] = value;
+  }
+
+  // Merge legacy limits if not in plan features
+  if (legacy.maxOrders !== undefined && normalized.max_orders === undefined) {
+    normalized.max_orders = legacy.maxOrders;
+  }
+  if (legacy.maxStaff !== undefined && normalized.max_staff === undefined) {
+    normalized.max_staff = legacy.maxStaff;
+  }
+  if (legacy.maxCustomers !== undefined && normalized.max_customers === undefined) {
+    normalized.max_customers = legacy.maxCustomers;
+  }
+  if (legacy.maxBranches !== undefined && normalized.max_branches === undefined) {
+    normalized.max_branches = legacy.maxBranches;
+  }
+
+  // Support: prioritySupport/priority_support, dedicatedSupport/dedicated_manager
+  if (planFeatures.prioritySupport !== undefined || legacy.prioritySupport !== undefined) {
+    normalized.priority_support = planFeatures.prioritySupport ?? legacy.prioritySupport ?? false;
+  }
+  if (planFeatures.dedicatedSupport !== undefined || planFeatures.dedicated_manager !== undefined) {
+    normalized.dedicated_manager = planFeatures.dedicated_manager ?? planFeatures.dedicatedSupport ?? false;
+  }
+
+  return normalized;
+}
+
 /**
  * Create business account with plan-based permissions
  */
@@ -545,6 +600,9 @@ async function createBusinessAccountWithPlanPermissions(customerData) {
     // Create a temporary ObjectId for owner (will be updated after user creation)
     const tempOwnerId = new mongoose.Types.ObjectId();
     
+    // Normalize plan features to plain object (tenancy needs plain object, not Map)
+    const planFeaturesForTenancy = normalizeBillingPlanFeatures(billingPlan);
+    
     // Create tenancy with plan-specific settings
     const tenancy = await Tenancy.create({
       name: businessName,
@@ -556,10 +614,11 @@ async function createBusinessAccountWithPlanPermissions(customerData) {
       subscription: {
         status: 'active',
         plan: planName,
+        planId: billingPlan._id,
         billingCycle: billingCycle || 'monthly',
         startDate: new Date(),
         nextBillingDate: calculateNextBillingDate(billingCycle),
-        features: billingPlan.features || new Map(),
+        features: planFeaturesForTenancy,
         limits: {
           maxOrders: billingPlan.legacyFeatures?.maxOrders || 1000,
           maxStaff: billingPlan.legacyFeatures?.maxStaff || 10,
@@ -637,6 +696,15 @@ async function createBusinessAccountWithPlanPermissions(customerData) {
     await tenancy.save();
 
     console.log('✅ Admin user created:', adminUser.email);
+
+    // Sync permissions from tenancy features (ensures plan features = actual permissions)
+    try {
+      const permissionSyncService = require('../services/permissionSyncService');
+      await permissionSyncService.syncTenancyPermissions(tenancy._id);
+      console.log('✅ Tenancy permissions synced from plan features');
+    } catch (syncErr) {
+      console.warn('⚠️ Permission sync failed (non-fatal):', syncErr.message);
+    }
 
     // Record payment in TenancyPayment collection
     const { TenancyPayment } = require('../models/TenancyBilling');
@@ -776,12 +844,18 @@ function mapPlanToUserPermissions(billingPlan) {
       api: planFeatures.api_access || legacy.apiAccess || false
     },
     
-    // Support and help
+    // Support and help (priority_support, dedicated_manager from FeatureDefinition)
     support: {
-      basic: true,
+      view: true,
+      create: true,
+      update: true,
+      delete: true,
+      assign: true,
+      manage: true,
+      export: true,
       priority: planFeatures.priority_support || legacy.prioritySupport || false,
       phone: planFeatures.phone_support || false,
-      dedicated: planFeatures.dedicated_support || false
+      dedicated: planFeatures.dedicated_manager || planFeatures.dedicated_support || false
     }
   };
 }
@@ -856,22 +930,23 @@ async function sendBusinessWelcomeEmail(emailData) {
  */
 async function recordDirectConversion(tenancy, metadata) {
   try {
-    // Create a lead record for sales tracking
+    // Create a lead record for sales tracking (enables sales dashboard to show direct purchases)
     const lead = await Lead.create({
       businessName: tenancy.name,
       businessType: 'laundry',
       contactPerson: {
         name: tenancy.owner?.name || 'Direct Customer',
-        email: tenancy.settings.contactEmail,
-        phone: tenancy.settings.contactPhone || ''
+        email: tenancy.settings?.contactEmail || 'N/A',
+        phone: tenancy.settings?.contactPhone || ''
       },
-      source: metadata.source || 'direct_checkout',
+      source: 'website', // Lead source enum - direct purchases come via website checkout
       status: 'converted',
-      interestedPlan: metadata.planName,
+      interestedPlan: metadata.planName || 'basic',
       estimatedRevenue: parseInt(metadata.total) || 0,
       isConverted: true,
       convertedDate: new Date(),
       tenancyId: tenancy._id,
+      tags: ['direct_purchase', 'auto_converted', 'stripe_payment'],
       paymentDetails: {
         stripeSessionId: metadata.stripeSessionId,
         amount: parseInt(metadata.total) || 0,

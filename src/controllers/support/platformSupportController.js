@@ -636,6 +636,63 @@ const getActiveChats = asyncHandler(async (req, res) => {
   }
 });
 
+// @desc    Get chat sessions list (for history page with filters)
+// @route   GET /api/support/chat/history
+// @access  Private (Platform Support)
+const getChatHistoryList = asyncHandler(async (req, res) => {
+  try {
+    const { period = '7d', status: statusFilter = 'all' } = req.query;
+
+    // Build date filter from period
+    const now = new Date();
+    let startDate;
+    if (period === '24h') {
+      startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    } else if (period === '7d') {
+      startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    } else if (period === '30d') {
+      startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    } else {
+      startDate = new Date(0); // All time
+    }
+
+    const query = { lastActivity: { $gte: startDate } };
+    if (statusFilter && statusFilter !== 'all') {
+      query.status = statusFilter;
+    }
+
+    const sessions = await ChatSession.find(query)
+      .populate('customerId', 'name email phone')
+      .populate('tenantId', 'name slug')
+      .sort({ lastActivity: -1 })
+      .limit(100);
+
+    const formatted = sessions.map(session => ({
+      _id: session._id,
+      ticketId: session._id,
+      ticketNumber: session.sessionId,
+      customer: session.customerId ? {
+        name: session.customerId.name,
+        email: session.customerId.email,
+        phone: session.customerId.phone
+      } : { name: session.customerName, email: session.customerEmail },
+      tenant: session.tenantId ? { name: session.tenantId.name, slug: session.tenantId.slug } : { name: 'Unknown', slug: 'unknown' },
+      messageCount: session.messages?.length || 0,
+      status: session.status,
+      priority: session.priority || 'medium',
+      createdAt: session.createdAt,
+      lastActivity: session.lastActivity,
+      duration: session.messages?.length ? 'Has messages' : '0m',
+      category: session.category || 'general'
+    }));
+
+    res.json({ success: true, data: formatted });
+  } catch (error) {
+    console.error('Get chat history list error:', error);
+    res.status(500).json({ success: false, message: 'Failed to get chat history' });
+  }
+});
+
 // @desc    Get chat history for a session
 // @route   GET /api/support/chat/:sessionId/history
 // @access  Private (Platform Support)
@@ -3891,6 +3948,7 @@ module.exports = {
   
   // Live Chat Support
   getActiveChats,
+  getChatHistoryList,
   getChatHistory,
   sendChatMessage,
   

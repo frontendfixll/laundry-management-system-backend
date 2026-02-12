@@ -245,9 +245,11 @@ exports.getDashboardStats = asyncHandler(async (req, res) => {
     const convertedLeads = leadStats.find(s => s._id === 'converted')?.count || 0;
     const totalRevenue = revenueStats[0]?.total || 0;
 
-    // Calculate target achievement (assuming monthly target of ₹100,000)
-    const monthlyTarget = 100000;
-    const targetAchieved = currentMonthRevenue > 0 ? parseFloat(((currentMonthRevenue / monthlyTarget) * 100).toFixed(1)) : 0;
+    // Revenue target: configurable via env (SALES_MONTHLY_REVENUE_TARGET) or default ₹100,000
+    const monthlyTarget = parseInt(process.env.SALES_MONTHLY_REVENUE_TARGET, 10) || 100000;
+    const targetAchieved = monthlyTarget > 0 && currentMonthRevenue > 0
+      ? parseFloat(((currentMonthRevenue / monthlyTarget) * 100).toFixed(1))
+      : 0;
 
     const responseData = {
       leads: {

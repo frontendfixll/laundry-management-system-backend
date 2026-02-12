@@ -265,82 +265,116 @@ const resetSupportUserPassword = asyncHandler(async (req, res) => {
 // @access  Private (Admin)
 const getSupportDashboard = asyncHandler(async (req, res) => {
   const tenancyId = req.tenancyId;
+  const ticketMatch = req.isSuperAdmin ? {} : { tenancy: tenancyId };
+  const userMatch = req.isSuperAdmin ? {} : { tenancy: tenancyId };
 
-  // Get total support users
-  const totalSupportUsers = await User.countDocuments({ 
-    role: 'support',
-    tenancy: tenancyId,
-    isActive: true
-  });
+  const now = new Date();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+  const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
 
-  // Get ticket stats
-  const ticketStats = await Ticket.aggregate([
-    { $match: req.isSuperAdmin ? {} : { tenancy: tenancyId } },
-    {
-      $group: {
-        _id: '$status',
-        count: { $sum: 1 }
-      }
-    }
-  ]);
-
-  // Get unassigned tickets
-  const unassignedTickets = await Ticket.countDocuments({
-    tenancy: tenancyId,
-    assignedTo: null,
-    status: { $in: ['open', 'in_progress'] }
-  });
-
-  // Get overdue tickets
-  const overdueTickets = await Ticket.countDocuments({
-    tenancy: tenancyId,
-    'sla.isOverdue': true,
-    status: { $in: ['open', 'in_progress'] }
-  });
-
-  // Get recent tickets
-  const recentTickets = await Ticket.find(req.isSuperAdmin ? {} : { tenancy: tenancyId })
-    .populate('raisedBy', 'name email')
-    .populate('assignedTo', 'name')
-    .select('ticketNumber title status priority createdAt assignedTo')
-    .sort({ createdAt: -1 })
-    .limit(10);
-
-  // Get support user performance
-  const supportPerformance = await User.aggregate([
-    { $match: { role: 'support', ...(req.isSuperAdmin ? {} : { tenancy: tenancyId }), isActive: true } },
-    {
-      $lookup: {
-        from: 'tickets',
-        localField: '_id',
-        foreignField: 'assignedTo',
-        as: 'tickets'
-      }
-    },
-    {
-      $project: {
-        name: 1,
-        email: 1,
-        totalTickets: { $size: '$tickets' },
-        resolvedTickets: {
-          $size: {
-            $filter: {
-              input: '$tickets',
-              cond: { $eq: ['$$this.status', 'resolved'] }
+  const [
+    totalSupportUsers,
+    ticketStats,
+    unassignedTickets,
+    overdueTickets,
+    todayTickets,
+    recentTickets,
+    supportPerformance,
+    avgResolutionResult,
+    avgResponseResult,
+    satisfactionResult
+  ] = await Promise.all([
+    User.countDocuments({ role: 'support', ...userMatch, isActive: true }),
+    Ticket.aggregate([
+      { $match: ticketMatch },
+      { $group: { _id: '$status', count: { $sum: 1 } } }
+    ]),
+    Ticket.countDocuments({
+      ...(req.isSuperAdmin ? {} : { tenancy: tenancyId }),
+      assignedTo: null,
+      status: { $in: ['open', 'in_progress'] }
+    }),
+    Ticket.countDocuments({
+      ...(req.isSuperAdmin ? {} : { tenancy: tenancyId }),
+      'sla.isOverdue': true,
+      status: { $in: ['open', 'in_progress'] }
+    }),
+    Ticket.countDocuments({
+      ...ticketMatch,
+      createdAt: { $gte: startOfDay, $lte: endOfDay }
+    }),
+    Ticket.find(ticketMatch)
+      .populate('raisedBy', 'name email')
+      .populate('assignedTo', 'name')
+      .select('ticketNumber title status priority createdAt assignedTo')
+      .sort({ createdAt: -1 })
+      .limit(10),
+    User.aggregate([
+      { $match: { role: 'support', ...userMatch, isActive: true } },
+      {
+        $lookup: {
+          from: 'tickets',
+          localField: '_id',
+          foreignField: 'assignedTo',
+          as: 'tickets'
+        }
+      },
+      {
+        $project: {
+          name: 1,
+          email: 1,
+          totalTickets: { $size: '$tickets' },
+          resolvedTickets: {
+            $size: {
+              $filter: {
+                input: '$tickets',
+                cond: { $eq: ['$$this.status', 'resolved'] }
+              }
             }
           }
         }
       }
-    }
+    ]),
+    Ticket.aggregate([
+      { $match: { ...ticketMatch, status: 'resolved', resolvedAt: { $exists: true, $ne: null } } },
+      { $project: { hours: { $divide: [{ $subtract: ['$resolvedAt', '$createdAt'] }, 1000 * 60 * 60] } } },
+      { $group: { _id: null, avg: { $avg: '$hours' } } }
+    ]),
+    Ticket.aggregate([
+      { $match: { ...ticketMatch, 'sla.firstResponseAt': { $exists: true, $ne: null } } },
+      { $project: { hours: { $divide: [{ $subtract: ['$sla.firstResponseAt', '$createdAt'] }, 1000 * 60 * 60] } } },
+      { $group: { _id: null, avg: { $avg: '$hours' } } }
+    ]),
+    Ticket.aggregate([
+      { $match: { ...ticketMatch, 'feedback.rating': { $exists: true, $gte: 1 } } },
+      { $group: { _id: null, avg: { $avg: '$feedback.rating' } } }
+    ])
   ]);
+
+  const totalTickets = ticketStats.reduce((sum, s) => sum + s.count, 0);
+  const byStatus = (status) => ticketStats.find(s => s._id === status)?.count || 0;
 
   const dashboardData = {
     totalSupportUsers,
     ticketStats: {
-      total: ticketStats.reduce((sum, stat) => sum + stat.count, 0),
+      total: totalTickets,
       byStatus: ticketStats,
       unassigned: unassignedTickets,
       overdue: overdueTickets
+    },
+    metrics: {
+      totalTickets,
+      todayTickets,
+      openTickets: byStatus('open'),
+      inProgressTickets: byStatus('in_progress'),
+      resolvedTickets: byStatus('resolved'),
+      closedTickets: byStatus('closed'),
+      escalatedTickets: byStatus('escalated'),
+      overdueTickets,
+      unassignedTickets,
+      avgResolutionTime: avgResolutionResult[0]?.avg != null ? Math.round(avgResolutionResult[0].avg * 10) / 10 : 0,
+      avgResponseTime: avgResponseResult[0]?.avg != null ? Math.round(avgResponseResult[0].avg * 10) / 10 : 0,
+      satisfactionScore: satisfactionResult[0]?.avg != null ? Math.round(satisfactionResult[0].avg * 10) / 10 : null
     },
     recentTickets,
     supportPerformance

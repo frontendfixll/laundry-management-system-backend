@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const SuperAdmin = require('../models/SuperAdmin');
+const CenterAdmin = require('../models/CenterAdmin');
 const { verifyAccessToken, verifyToken } = require('../utils/jwt');
 const { getTokenFromRequest } = require('../utils/cookieConfig');
 const { LEGACY_ROLE_MAP } = require('../config/constants');
@@ -488,28 +489,11 @@ const requireBranchAdmin = (req, res, next) => {
   next();
 };
 
-// Require support role or SuperAdmin with Platform Support RBAC role
+// Require support role or SuperAdmin (platform support portal access)
 const requireSupport = (req, res, next) => {
   if (req.isSuperAdmin) {
-    // For SuperAdmin users, check if they have Platform Support RBAC role
-    if (req.user.roles && req.user.roles.length > 0) {
-      const hasPlatformSupport = req.user.roles.some(role =>
-        role.slug === 'platform-support' || role.name === 'Platform Support'
-      );
-      if (hasPlatformSupport) {
-        return next();
-      }
-    }
-
-    // Also allow legacy SuperAdmin access for backward compatibility
-    if (req.user.role === 'superadmin') {
-      return next();
-    }
-
-    return res.status(403).json({
-      success: false,
-      message: 'Access denied. Platform Support role required.'
-    });
+    // SuperAdmins always have platform support access (support portal is part of superadmin app)
+    return next();
   }
 
   // For regular users, check support role

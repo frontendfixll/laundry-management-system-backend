@@ -70,17 +70,23 @@ const clearSuperAdminAuthCookie = (res) => {
 }
 
 // Get token from cookie or header (for backward compatibility)
+// Checks: Authorization header first (explicit), then laundry_access_token, then laundry_superadmin_token
 const getTokenFromRequest = (req) => {
-  // First check cookie
-  if (req.cookies && req.cookies[COOKIE_NAMES.ACCESS_TOKEN]) {
-    return req.cookies[COOKIE_NAMES.ACCESS_TOKEN]
-  }
-  
-  // Fallback to Authorization header (for mobile apps or API clients)
+  // Authorization header first (what frontend API client sends)
   if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
     return req.headers.authorization.split(' ')[1]
   }
-  
+
+  // User/tenant access token cookie
+  if (req.cookies && req.cookies[COOKIE_NAMES.ACCESS_TOKEN]) {
+    return req.cookies[COOKIE_NAMES.ACCESS_TOKEN]
+  }
+
+  // SuperAdmin token cookie (for support portal when cookie is sent)
+  if (req.cookies && req.cookies[COOKIE_NAMES.SUPERADMIN_TOKEN]) {
+    return req.cookies[COOKIE_NAMES.SUPERADMIN_TOKEN]
+  }
+
   return null
 }
 

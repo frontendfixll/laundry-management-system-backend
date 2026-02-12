@@ -28,12 +28,14 @@ router.get(['/stats', '/dashboard/metrics'], requirePlatformSupport, async (req,
       createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) }
     });
 
-    // Get user statistics
+    // Get user and tenancy statistics
+    const Tenancy = require('../../models/Tenancy');
     const totalUsers = await User.countDocuments();
     const activeUsers = await User.countDocuments({
       isActive: true,
-      lastLogin: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } // Active in last 30 days
+      lastLogin: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }
     });
+    const activeTenants = await Tenancy.countDocuments({ status: 'active' });
 
     // Get order statistics
     const totalOrders = await Order.countDocuments();
@@ -50,6 +52,12 @@ router.get(['/stats', '/dashboard/metrics'], requirePlatformSupport, async (req,
       status: { $nin: ['resolved', 'closed'] }
     });
 
+    // Critical issues: high/critical priority tickets that are open
+    const criticalIssues = await TenantTicket.countDocuments({
+      systemPriority: { $in: ['high', 'critical'] },
+      status: { $nin: ['resolved', 'closed'] }
+    });
+
     // Get my assigned tickets (for current support user)
     const myAssignedTickets = await TenantTicket.countDocuments({
       $or: [
@@ -59,24 +67,87 @@ router.get(['/stats', '/dashboard/metrics'], requirePlatformSupport, async (req,
       status: { $nin: ['resolved', 'closed'] }
     });
 
-    // Calculate average response time (simplified)
-    const avgResponseTime = '2.5h'; // TODO: Calculate from actual ticket response times
+    // Real avg response time: first platform message - createdAt (hours)
+    const responseTimeAgg = await TenantTicket.aggregate([
+      {
+        $match: {
+          status: 'resolved',
+          'messages.0': { $exists: true },
+          'resolution.resolvedAt': { $exists: true, $ne: null }
+        }
+      },
+      {
+        $project: {
+          createdAt: 1,
+          firstResponseAt: {
+            $min: {
+              $map: {
+                input: {
+                  $filter: {
+                    input: '$messages',
+                    as: 'm',
+                    cond: { $in: ['$$m.senderRole', ['platform_support', 'super_admin']] }
+                  }
+                },
+                as: 'msg',
+                in: '$$msg.createdAt'
+              }
+            }
+          }
+        }
+      },
+      {
+        $match: { firstResponseAt: { $exists: true, $ne: null } }
+      },
+      {
+        $project: {
+          hours: { $divide: [{ $subtract: ['$firstResponseAt', '$createdAt'] }, 1000 * 60 * 60] }
+        }
+      },
+      { $group: { _id: null, avg: { $avg: '$hours' } } }
+    ]);
+    const avgResponseTimeHours = responseTimeAgg[0]?.avg != null ? Math.round(responseTimeAgg[0].avg * 10) / 10 : null;
+
+    // Real avg resolution time: resolvedAt - createdAt
+    const resolutionTimeAgg = await TenantTicket.aggregate([
+      {
+        $match: {
+          status: 'resolved',
+          'resolution.resolvedAt': { $exists: true, $ne: null }
+        }
+      },
+      {
+        $project: {
+          hours: {
+            $divide: [
+              { $subtract: ['$resolution.resolvedAt', '$createdAt'] },
+              1000 * 60 * 60
+            ]
+          }
+        }
+      },
+      { $group: { _id: null, avg: { $avg: '$hours' } } }
+    ]);
+    const avgResolutionTimeHours = resolutionTimeAgg[0]?.avg != null ? Math.round(resolutionTimeAgg[0].avg * 10) / 10 : null;
 
     const stats = {
       totalTickets,
       openTickets,
       resolvedTickets,
-      avgResponseTime,
+      avgResponseTime: avgResponseTimeHours,
+      avgResolutionTime: avgResolutionTimeHours,
       slaBreaches,
       escalatedTickets,
       todayTickets,
       myAssignedTickets,
       totalUsers,
       activeUsers,
+      activeTenants,
       totalOrders,
       pendingOrders,
       paymentFailures,
-      systemAlerts: 0 // TODO: Implement system alerts
+      criticalIssues,
+      systemAlerts: 0
     };
 
     console.log('📊 Support stats calculated:', stats);
@@ -411,6 +482,11 @@ router.post('/users/locked-accounts/:id/approve-request', requirePlatformSupport
 // @desc    Get active chat sessions
 // @access  Private (Platform Support)
 router.get('/chat/active', requirePlatformSupport, platformSupportController.getActiveChats);
+
+// @route   GET /api/support/chat/history
+// @desc    Get chat sessions list (with period, status filters)
+// @access  Private (Platform Support)
+router.get('/chat/history', requirePlatformSupport, platformSupportController.getChatHistoryList);
 
 // @route   GET /api/support/chat/:sessionId/history
 // @desc    Get chat history for a session
