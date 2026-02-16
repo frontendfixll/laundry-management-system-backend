@@ -165,7 +165,15 @@ router.post('/settlements/:settlementId/approve',
   superAdminFinancialController.approveSettlement
 )
 
-// Financial Reports
+// Revenue report data (analytics) - must be before /reports/:reportId
+router.get('/reports/revenue',
+  query('range').optional().isIn(['7d', '30d', '90d', '6m', '1y']).withMessage('Invalid range'),
+  query('type').optional().isIn(['daily', 'weekly', 'monthly', 'quarterly', 'yearly']).withMessage('Invalid type'),
+  logAdminAction('view_revenue_report_data', 'financial'),
+  superAdminFinancialController.getRevenueReportData
+)
+
+// Financial Reports (list generated reports)
 router.get('/reports',
   query('page')
     .optional()

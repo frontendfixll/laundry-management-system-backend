@@ -192,6 +192,10 @@ class CenterAdminFinancialController {
         { $limit: 30 }
       ])
 
+      const successRate = currentStats.totalOrders > 0
+        ? Math.round((currentStats.paidOrders / currentStats.totalOrders) * 1000) / 10
+        : 0
+
       return res.json({
         success: true,
         data: {
@@ -199,8 +203,14 @@ class CenterAdminFinancialController {
             totalRevenue: currentStats.totalRevenue,
             totalTransactions: currentStats.totalOrders,
             averageOrderValue: avgOrderValue,
+            avgTransactionValue: avgOrderValue,
             totalFees: totalFees,
             revenueGrowth: Math.round(revenueGrowth * 10) / 10,
+            monthlyRevenue: currentStats.totalRevenue,
+            lastMonthRevenue: previousRevenue,
+            successfulTransactions: currentStats.paidOrders,
+            pendingRefunds: currentStats.refundedOrders,
+            successRate,
             settlementStats,
             pendingApprovals: {
               transactions: pendingTransactions.length,
@@ -209,7 +219,7 @@ class CenterAdminFinancialController {
                           pendingSettlements.reduce((sum, s) => sum + (s.netAmount || 0), 0)
             }
           },
-          revenueTrend,
+          revenueTrend: revenueTrend || [],
           timeframe
         }
       })
@@ -218,6 +228,125 @@ class CenterAdminFinancialController {
       return res.status(500).json({
         success: false,
         message: 'Failed to fetch financial overview'
+      })
+    }
+  }
+
+  // Get revenue report data for analytics (used by Revenue Reports page)
+  async getRevenueReportData(req, res) {
+    try {
+      const { range = '30d', type: reportType = 'daily', tenant: tenantFilter = 'all', includeRefunds } = req.query
+      const platformFeeRate = 0.05
+
+      const endDate = new Date()
+      const startDate = new Date()
+      switch (String(range)) {
+        case '7d': startDate.setDate(endDate.getDate() - 7); break
+        case '30d': startDate.setDate(endDate.getDate() - 30); break
+        case '90d': startDate.setDate(endDate.getDate() - 90); break
+        case '6m': startDate.setMonth(endDate.getMonth() - 6); break
+        case '1y': startDate.setFullYear(endDate.getFullYear() - 1); break
+        default: startDate.setDate(endDate.getDate() - 30)
+      }
+
+      const groupFormat = String(reportType).toLowerCase()
+      const dateFormat = groupFormat === 'weekly' || groupFormat === 'week'
+        ? { $dateToString: { format: '%Y-W%U', date: '$createdAt' } }
+        : groupFormat === 'monthly' || groupFormat === 'month'
+        ? { $dateToString: { format: '%Y-%m', date: '$createdAt' } }
+        : groupFormat === 'quarterly' || groupFormat === 'quarter'
+        ? {
+            $concat: [
+              { $toString: { $year: '$createdAt' } },
+              '-Q',
+              { $toString: { $ceil: { $divide: [{ $month: '$createdAt' }, 3] } } }
+            ]
+          }
+        : groupFormat === 'yearly' || groupFormat === 'year'
+        ? { $dateToString: { format: '%Y', date: '$createdAt' } }
+        : { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }
+
+      const matchStage = {
+        createdAt: { $gte: startDate, $lte: endDate }
+      }
+      if (includeRefunds !== 'true' && String(includeRefunds).toLowerCase() !== 'true') {
+        matchStage.paymentStatus = { $ne: 'refunded' }
+      }
+
+      const byPeriod = await Order.aggregate([
+        { $match: matchStage },
+        {
+          $group: {
+            _id: dateFormat,
+            revenue: { $sum: { $ifNull: ['$totalAmount', { $ifNull: ['$pricing.total', 0] }] } },
+            transactions: { $sum: 1 }
+          }
+        },
+        { $sort: { _id: 1 } }
+      ])
+
+      const byPeriodWithTenant = await Order.aggregate([
+        { $match: matchStage },
+        { $lookup: { from: 'tenancies', localField: 'tenancy', foreignField: '_id', as: 'tenancyDoc' } },
+        { $unwind: { path: '$tenancyDoc', preserveNullAndEmptyArrays: true } },
+        {
+          $group: {
+            _id: { period: dateFormat, tenantId: '$tenancy', tenantName: { $ifNull: ['$tenancyDoc.name', 'Unknown'] } },
+            revenue: { $sum: { $ifNull: ['$totalAmount', { $ifNull: ['$pricing.total', 0] }] } },
+            transactions: { $sum: 1 }
+          }
+        },
+        { $sort: { '_id.period': 1 } }
+      ])
+
+      const previousStart = new Date(startDate)
+      previousStart.setTime(startDate.getTime() - (endDate.getTime() - startDate.getTime()))
+      const previousStats = await Order.aggregate([
+        { $match: { createdAt: { $gte: previousStart, $lte: startDate }, ...(includeRefunds !== 'true' && String(includeRefunds).toLowerCase() !== 'true' ? { paymentStatus: { $ne: 'refunded' } } : {}) } },
+        { $group: { _id: null, revenue: { $sum: { $ifNull: ['$totalAmount', { $ifNull: ['$pricing.total', 0] }] } } } }
+      ])
+      const previousTotal = previousStats[0]?.revenue || 0
+
+      const reports = byPeriod.map((row, index) => {
+        const totalRevenue = Number(row.revenue) || 0
+        const transactionCount = Number(row.transactions) || 0
+        const platformCommission = Math.round(totalRevenue * platformFeeRate)
+        const tenantRevenue = totalRevenue - platformCommission
+        const prevRevenue = index > 0 ? (byPeriod[index - 1]?.revenue || 0) : previousTotal
+        const growth = prevRevenue > 0 ? Math.round(((totalRevenue - prevRevenue) / prevRevenue) * 1000) / 10 : (totalRevenue > 0 ? 100 : 0)
+        const tenantBreakdown = byPeriodWithTenant
+          .filter(t => t._id.period === row._id)
+          .map(t => ({
+            tenantId: t._id.tenantId?.toString(),
+            tenantName: t._id.tenantName || 'Unknown',
+            revenue: Number(t.revenue) || 0,
+            transactions: Number(t.transactions) || 0,
+            growth: 0
+          }))
+          .sort((a, b) => b.revenue - a.revenue)
+          .slice(0, tenantFilter === 'top10' ? 10 : 999)
+
+        return {
+          period: row._id,
+          totalRevenue,
+          platformCommission,
+          tenantRevenue,
+          transactionCount,
+          avgTransactionValue: transactionCount > 0 ? Math.round(totalRevenue / transactionCount) : 0,
+          growth,
+          tenantBreakdown
+        }
+      })
+
+      return res.json({
+        success: true,
+        data: { reports }
+      })
+    } catch (error) {
+      console.error('Get revenue report data error:', error)
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to fetch revenue report data'
       })
     }
   }
