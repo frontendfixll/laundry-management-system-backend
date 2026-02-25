@@ -38,6 +38,15 @@ class AutomationEngine extends EventEmitter {
   // Load active rules from database
   async loadActiveRules() {
     try {
+      // Check if MongoDB is connected
+      const mongoose = require('mongoose');
+      if (mongoose.connection.readyState !== 1) {
+        console.log('⚠️ Skipping automation rules load - MongoDB not connected yet');
+        // Retry after 5 seconds
+        setTimeout(() => this.loadActiveRules(), 5000);
+        return;
+      }
+
       const activeRules = await AutomationRule.find({ isActive: true });
 
       for (const rule of activeRules) {
@@ -47,6 +56,8 @@ class AutomationEngine extends EventEmitter {
       console.log(`📋 Loaded ${activeRules.length} active automation rules`);
     } catch (error) {
       console.error('❌ Error loading automation rules:', error);
+      // Retry after 5 seconds on error
+      setTimeout(() => this.loadActiveRules(), 5000);
     }
   }
 
