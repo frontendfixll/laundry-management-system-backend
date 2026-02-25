@@ -22,18 +22,18 @@ const connectDB = async () => {
     console.log('🚀 Platform:', isVercel ? 'Vercel Serverless' : 'Traditional Server');
     console.log('🔗 MongoDB URI exists:', !!process.env.MONGODB_URI);
 
-    // Optimized connection options for serverless with shorter timeouts
+    // Optimized connection options for serverless with longer timeouts for localhost
     const options = {
-      serverSelectionTimeoutMS: isVercel ? 5000 : 30000, // Adjusted to 5s
-      socketTimeoutMS: isVercel ? 45000 : 60000, // Keep socket open longer for operations
-      connectTimeoutMS: isVercel ? 5000 : 30000, // Adjusted to 5s
+      serverSelectionTimeoutMS: isVercel ? 5000 : 60000, // Increased to 60s for localhost
+      socketTimeoutMS: isVercel ? 45000 : 120000, // Increased to 120s for localhost
+      connectTimeoutMS: isVercel ? 5000 : 60000, // Increased to 60s for localhost
       maxPoolSize: isVercel ? 1 : 10, // Min connections for serverless
       minPoolSize: 0, // Allow 0 connections in serverless
       maxIdleTimeMS: isVercel ? 5000 : 30000,
       family: 4, // Use IPv4, skip trying IPv6
       retryWrites: true,
-      w: 'majority'
-      // Removed bufferMaxEntries as it's deprecated and not supported
+      w: 'majority',
+      bufferCommands: false // Disable buffering from start
     };
 
     const conn = await mongoose.connect(process.env.MONGODB_URI, options);

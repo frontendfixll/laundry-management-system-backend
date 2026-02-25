@@ -1,9 +1,9 @@
 const app = require('./src/app');
 const connectDB = require('./src/config/database');
-const socketIOServer = require('./src/services/socketIOServer');
+const firebaseServer = require('./src/services/firebaseServer');
 
 // Force deployment update - timestamp: 2025-01-20
-console.log('🚀 Starting Laundry Management System Backend v2.0.1 with Socket.IO Notifications');
+console.log('🚀 Starting Laundry Management System Backend v2.0.2 with Firebase Notifications');
 
 // Check if running on Vercel
 const isVercel = process.env.VERCEL || process.env.VERCEL_ENV;
@@ -16,7 +16,7 @@ if (!isVercel) {
   socketService = require('./src/services/socketService');
 }
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 
 // ============================================
 // CRON JOBS: Banner Lifecycle Management (Only for non-Vercel environments)
@@ -158,11 +158,11 @@ if (isVercel) {
       console.log(`📚 API: http://localhost:${PORT}/api`);
       console.log('='.repeat(60));
 
-      // Initialize Socket.IO Notification Engine (Primary)
-      console.log('🔄 Initializing Socket.IO Notification Engine...');
+      // Initialize Firebase Notification Engine (Primary)
+      console.log('🔄 Initializing Firebase Notification Engine...');
       try {
-        const notificationEngine = await socketIOServer.initialize(server);
-        console.log('✅ Socket.IO Notification Engine initialized successfully');
+        const notificationEngine = await firebaseServer.initialize(server);
+        console.log('✅ Firebase Notification Engine initialized successfully');
         console.log('🎉 Modern notification system ready for real-time delivery');
 
         // Make engine available globally for other services
@@ -184,10 +184,10 @@ if (isVercel) {
         global.automationTriggers = automationTriggers;
         console.log('✅ Automation Triggers initialized');
 
-      } catch (socketIOError) {
-        console.error('❌ Socket.IO Notification Engine initialization failed:', socketIOError);
+      } catch (firebaseError) {
+        console.error('❌ Firebase Notification Engine initialization failed:', firebaseError);
         console.log('⚠️ Running without real-time notifications');
-        console.log('💡 Check Socket.IO configuration and try restarting the server');
+        console.log('💡 Check Firebase configuration and try restarting the server');
       }
 
       // Initialize legacy Socket.IO (only as additional fallback)

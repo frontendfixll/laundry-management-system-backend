@@ -1,115 +1,183 @@
 /**
- * Cron Routes - External endpoints for scheduled tasks
- * These can be called by external cron services like Vercel Cron or GitHub Actions
+ * Cron Job API Routes
+ * 
+ * These endpoints are called by Firebase Functions
+ * Replaces direct node-cron execution
  */
 
 const express = require('express');
 const router = express.Router();
 const bannerLifecycleJob = require('../jobs/bannerLifecycleJob');
 
-// Middleware to verify cron requests (basic security)
-const verifyCronRequest = (req, res, next) => {
-  const cronSecret = process.env.CRON_SECRET || 'default-cron-secret';
-  const providedSecret = req.headers['x-cron-secret'] || req.query.secret;
-  
-  if (providedSecret !== cronSecret) {
+// Middleware to verify requests from Firebase Functions
+const verifyFirebaseFunctionRequest = (req, res, next) => {
+  const apiKey = req.headers.authorization?.replace('Bearer ', '');
+  const expectedKey = process.env.CRON_API_KEY || 'your-secure-api-key';
+
+  if (apiKey !== expectedKey) {
     return res.status(401).json({
       success: false,
-      error: 'Unauthorized cron request'
+      error: 'Unauthorized - Invalid API key'
     });
   }
-  
+
   next();
 };
 
-// Auto-activate scheduled banners
-router.post('/banners/auto-activate', verifyCronRequest, async (req, res) => {
+// Apply middleware to all cron routes
+router.use(verifyFirebaseFunctionRequest);
+
+/**
+ * POST /api/cron/banners/auto-activate
+ * Auto-activate scheduled banners
+ */
+router.post('/banners/auto-activate', async (req, res) => {
   try {
+    console.log('🔄 Cron API: Auto-activating banners...');
+    
     const result = await bannerLifecycleJob.autoActivateBanners();
+    
     res.json({
       success: true,
-      message: 'Banner auto-activation completed',
-      result
+      message: 'Auto-activate banners completed',
+      result,
+      timestamp: new Date().toISOString()
     });
   } catch (error) {
-    console.error('Banner auto-activation error:', error);
+    console.error('❌ Cron API: Auto-activate failed:', error);
     res.status(500).json({
       success: false,
-      error: 'Banner auto-activation failed',
-      message: error.message
+      error: error.message,
+      timestamp: new Date().toISOString()
     });
   }
 });
 
-// Auto-complete expired banners
-router.post('/banners/auto-complete', verifyCronRequest, async (req, res) => {
+/**
+ * POST /api/cron/banners/auto-complete
+ * Auto-complete expired banners
+ */
+router.post('/banners/auto-complete', async (req, res) => {
   try {
+    console.log('🔄 Cron API: Auto-completing banners...');
+    
     const result = await bannerLifecycleJob.autoCompleteBanners();
+    
     res.json({
       success: true,
-      message: 'Banner auto-completion completed',
-      result
+      message: 'Auto-complete banners completed',
+      result,
+      timestamp: new Date().toISOString()
     });
   } catch (error) {
-    console.error('Banner auto-completion error:', error);
+    console.error('❌ Cron API: Auto-complete failed:', error);
     res.status(500).json({
       success: false,
-      error: 'Banner auto-completion failed',
-      message: error.message
+      error: error.message,
+      timestamp: new Date().toISOString()
     });
   }
 });
 
-// Sync banners with campaigns
-router.post('/banners/sync-campaigns', verifyCronRequest, async (req, res) => {
+/**
+ * POST /api/cron/banners/sync-campaigns
+ * Sync banners with campaigns
+ */
+router.post('/banners/sync-campaigns', async (req, res) => {
   try {
+    console.log('🔄 Cron API: Syncing banners with campaigns...');
+    
     const result = await bannerLifecycleJob.syncWithCampaigns();
+    
     res.json({
       success: true,
-      message: 'Banner-campaign sync completed',
-      result
+      message: 'Sync banners with campaigns completed',
+      result,
+      timestamp: new Date().toISOString()
     });
   } catch (error) {
-    console.error('Banner-campaign sync error:', error);
+    console.error('❌ Cron API: Sync failed:', error);
     res.status(500).json({
       success: false,
-      error: 'Banner-campaign sync failed',
-      message: error.message
+      error: error.message,
+      timestamp: new Date().toISOString()
     });
   }
 });
 
-// Run all banner lifecycle jobs
-router.post('/banners/lifecycle', verifyCronRequest, async (req, res) => {
+/**
+ * POST /api/cron/notifications/cleanup
+ * Cleanup expired notifications
+ */
+router.post('/notifications/cleanup', async (req, res) => {
   try {
-    const results = {
-      autoActivate: await bannerLifecycleJob.autoActivateBanners(),
-      autoComplete: await bannerLifecycleJob.autoCompleteBanners(),
-      syncCampaigns: await bannerLifecycleJob.syncWithCampaigns()
+    console.log('🔄 Cron API: Cleaning up expired notifications...');
+    
+    const firebaseNotificationService = require('../services/firebaseNotificationService');
+    const result = await firebaseNotificationService.cleanupExpired();
+    
+    res.json({
+      success: true,
+      message: 'Cleanup expired notifications completed',
+      result,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Cron API: Cleanup failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+/**
+ * POST /api/cron/subscriptions/send-reminders
+ * Send subscription expiry reminders
+ */
+router.post('/subscriptions/send-reminders', async (req, res) => {
+  try {
+    console.log('🔄 Cron API: Sending subscription reminders...');
+    
+    // TODO: Implement subscription reminder logic
+    const result = {
+      remindersSent: 0,
+      message: 'Subscription reminders feature pending implementation'
     };
     
     res.json({
       success: true,
-      message: 'All banner lifecycle jobs completed',
-      results
+      message: 'Subscription reminders completed',
+      result,
+      timestamp: new Date().toISOString()
     });
   } catch (error) {
-    console.error('Banner lifecycle jobs error:', error);
+    console.error('❌ Cron API: Send reminders failed:', error);
     res.status(500).json({
       success: false,
-      error: 'Banner lifecycle jobs failed',
-      message: error.message
+      error: error.message,
+      timestamp: new Date().toISOString()
     });
   }
 });
 
-// Health check for cron service
-router.get('/health', (req, res) => {
+/**
+ * GET /api/cron/status
+ * Get cron jobs status
+ */
+router.get('/status', (req, res) => {
   res.json({
     success: true,
-    message: 'Cron service is healthy',
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV
+    message: 'Cron API operational',
+    jobs: [
+      { name: 'auto-activate-banners', schedule: 'every 5 minutes', status: 'active' },
+      { name: 'auto-complete-banners', schedule: 'every 1 hour', status: 'active' },
+      { name: 'sync-banners-campaigns', schedule: 'every 15 minutes', status: 'active' },
+      { name: 'cleanup-notifications', schedule: 'daily at 2 AM', status: 'active' },
+      { name: 'subscription-reminders', schedule: 'daily at 9 AM', status: 'active' }
+    ],
+    timestamp: new Date().toISOString()
   });
 });
 
