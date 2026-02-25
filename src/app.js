@@ -112,8 +112,12 @@ app.set('trust proxy', 1);
 // EMERGENCY CORS FIX - Allow all origins temporarily
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  console.log('🚨 EMERGENCY CORS FIX - Origin:', origin);
-  console.log('🚨 EMERGENCY CORS FIX - Method:', req.method);
+  // Reduced logging - only log once per unique origin
+  if (!global.loggedOrigins) global.loggedOrigins = new Set();
+  if (!global.loggedOrigins.has(origin)) {
+    console.log('🌐 CORS: Allowing origin:', origin);
+    global.loggedOrigins.add(origin);
+  }
 
   // Set CORS headers for all requests
   res.header('Access-Control-Allow-Origin', origin || '*');
@@ -124,7 +128,6 @@ app.use((req, res, next) => {
   res.header('Access-Control-Max-Age', '86400'); // 24 hours
 
   if (req.method === 'OPTIONS') {
-    console.log('🚨 EMERGENCY CORS - Handling OPTIONS for origin:', origin);
     return res.status(200).end();
   }
 
@@ -178,7 +181,7 @@ const allowedOrigins = [
 app.use(cors({
   origin: function (origin, callback) {
     // TEMPORARY: Allow all origins for debugging
-    console.log('🌐 CORS check for origin:', origin);
+    // Logging removed to reduce console noise
     callback(null, true);
     return;
 
@@ -221,7 +224,7 @@ app.use(cors({
 app.use((req, res, next) => {
   // TEMPORARY: Allow all origins for debugging
   const origin = req.headers.origin;
-  console.log('🌐 Additional CORS middleware for origin:', origin);
+  // Logging removed to reduce console noise
 
   res.header('Access-Control-Allow-Origin', origin || '*');
   res.header('Access-Control-Allow-Credentials', 'true');
