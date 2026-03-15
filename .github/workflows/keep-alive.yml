@@ -11,4 +11,4 @@ jobs:
       - name: Ping backend health
         run: |
           curl -s -o /dev/null -w "%{http_code}" \
-            https://laundry-management-system-backend-1.onrender.com/api/health
+            https://laundrylobbybackend.vercel.app/api/health
