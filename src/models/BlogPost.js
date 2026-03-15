@@ -10,7 +10,6 @@ const blogPostSchema = new mongoose.Schema({
   slug: {
     type: String,
     required: true,
-    unique: true,
     lowercase: true,
     trim: true
   },
@@ -83,11 +82,11 @@ const blogPostSchema = new mongoose.Schema({
     default: 0
   },
   
-  // Author info
+  // Author info (SuperAdmin posts only — tenant posts use tenantAuthor instead)
   author: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'SuperAdmin',
-    required: true
+    required: false
   },
   
   // Tenant-specific fields
@@ -118,7 +117,9 @@ const blogPostSchema = new mongoose.Schema({
 });
 
 // Indexes for better performance
-blogPostSchema.index({ slug: 1 });
+// Compound unique index: platform posts (tenantId=null) have globally unique slugs;
+// tenant posts have slugs unique within their tenant.
+blogPostSchema.index({ slug: 1, tenantId: 1 }, { unique: true });
 blogPostSchema.index({ category: 1, status: 1 });
 blogPostSchema.index({ visibility: 1, targetAudience: 1, status: 1 });
 blogPostSchema.index({ publishedAt: -1 });

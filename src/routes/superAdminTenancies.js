@@ -147,6 +147,34 @@ router.patch('/:id/owner/permissions',
   tenancyController.updateOwnerPermissions
 );
 
+// Get full overview (branches, users, orders summary) for a tenancy
+router.get('/:id/overview',
+  param('id').isMongoId().withMessage('Valid tenancy ID is required'),
+  logAdminAction('view_tenancy_overview', 'tenancies'),
+  tenancyController.getTenancyOverview
+);
+
+// Get branches of a tenancy
+router.get('/:id/branches',
+  param('id').isMongoId().withMessage('Valid tenancy ID is required'),
+  logAdminAction('view_tenancy_branches', 'tenancies'),
+  tenancyController.getTenancyBranches
+);
+
+// Get orders of a tenancy
+router.get('/:id/orders',
+  param('id').isMongoId().withMessage('Valid tenancy ID is required'),
+  logAdminAction('view_tenancy_orders', 'tenancies'),
+  tenancyController.getTenancyOrders
+);
+
+// Get users belonging to a tenancy
+router.get('/:id/users',
+  param('id').isMongoId().withMessage('Valid tenancy ID is required'),
+  logAdminAction('view_tenancy_users', 'tenancies'),
+  tenancyController.getTenancyUsers
+);
+
 // Get tenancy owner permissions
 router.get('/:id/owner/permissions',
   param('id').isMongoId().withMessage('Valid tenancy ID is required'),

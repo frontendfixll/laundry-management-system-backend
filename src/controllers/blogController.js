@@ -60,8 +60,15 @@ exports.getPost = async (req, res) => {
 // Create new blog post
 exports.createPost = async (req, res) => {
   try {
+    const {
+      title, slug, content, excerpt, category, tags,
+      visibility, targetAudience, status, metaTitle, metaDescription,
+      featuredImage, searchKeywords, relatedPosts
+    } = req.body;
     const postData = {
-      ...req.body,
+      title, slug, content, excerpt, category, tags,
+      visibility, targetAudience, status, metaTitle, metaDescription,
+      featuredImage, searchKeywords, relatedPosts,
       author: req.user.id
     };
     

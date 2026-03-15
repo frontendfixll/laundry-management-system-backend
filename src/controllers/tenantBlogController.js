@@ -66,13 +66,19 @@ exports.getTenantPost = async (req, res) => {
 exports.createTenantPost = async (req, res) => {
   try {
     const tenantId = req.user.tenancy;
+    const {
+      title, slug, content, excerpt, category, tags,
+      targetAudience, status, metaTitle, metaDescription,
+      featuredImage, searchKeywords, relatedPosts
+    } = req.body;
     const postData = {
-      ...req.body,
+      title, slug, content, excerpt, category, tags,
+      metaTitle, metaDescription, featuredImage, searchKeywords, relatedPosts,
       tenantId,
       tenantAuthor: req.user.id,
-      author: req.user.id, // For compatibility
       visibility: 'tenant', // Force tenant visibility
-      targetAudience: req.body.targetAudience || 'customer'
+      targetAudience: targetAudience || 'customer',
+      status: status || 'draft'
     };
     
     const post = new BlogPost(postData);

@@ -1,5 +1,7 @@
 const Tenancy = require('../models/Tenancy');
 const User = require('../models/User');
+const Branch = require('../models/Branch');
+const Order = require('../models/Order');
 const bcrypt = require('bcryptjs');
 const { sendEmail, emailTemplates } = require('../config/email');
 const { validationResult } = require('express-validator');
@@ -762,6 +764,238 @@ const tenancyController = {
         success: false,
         message: 'Failed to get owner permissions'
       });
+    }
+  },
+
+  // Get full overview of a tenancy (branches, user counts, order stats)
+  getTenancyOverview: async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const tenancy = await Tenancy.findById(id).populate('owner', 'name email phone').lean();
+      if (!tenancy) {
+        return res.status(404).json({ success: false, message: 'Tenancy not found' });
+      }
+
+      const mongoose = require('mongoose');
+      const tenancyObjId = new mongoose.Types.ObjectId(id);
+
+      const [
+        userRoleCounts,
+        branchStats,
+        orderStats,
+        recentOrders
+      ] = await Promise.all([
+        // Users grouped by role
+        User.aggregate([
+          { $match: { tenancy: tenancyObjId } },
+          { $group: { _id: '$role', count: { $sum: 1 }, active: { $sum: { $cond: ['$isActive', 1, 0] } } } }
+        ]),
+        // Branch summary
+        Branch.aggregate([
+          { $match: { tenancy: tenancyObjId } },
+          { $group: {
+            _id: null,
+            total: { $sum: 1 },
+            active: { $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] } },
+            inactive: { $sum: { $cond: [{ $ne: ['$status', 'active'] }, 1, 0] } }
+          }}
+        ]),
+        // Order stats
+        Order.aggregate([
+          { $match: { tenancy: tenancyObjId } },
+          { $group: {
+            _id: null,
+            total: { $sum: 1 },
+            completed: { $sum: { $cond: [{ $in: ['$status', ['delivered', 'completed']] }, 1, 0] } },
+            pending: { $sum: { $cond: [{ $in: ['$status', ['placed', 'confirmed', 'processing', 'ready_for_pickup', 'out_for_delivery']] }, 1, 0] } },
+            cancelled: { $sum: { $cond: [{ $eq: ['$isCancelled', true] }, 1, 0] } },
+            revenue: { $sum: { $ifNull: ['$pricing.total', 0] } }
+          }}
+        ]),
+        // 5 most recent orders
+        Order.find({ tenancy: tenancyObjId })
+          .populate('customer', 'name phone')
+          .populate('branch', 'name')
+          .select('orderNumber status pricing.total createdAt customer branch')
+          .sort({ createdAt: -1 })
+          .limit(5)
+          .lean()
+      ]);
+
+      const roleMap = userRoleCounts.reduce((acc, r) => { acc[r._id] = r; return acc; }, {});
+      const branches = branchStats[0] || { total: 0, active: 0, inactive: 0 };
+      const orders = orderStats[0] || { total: 0, completed: 0, pending: 0, cancelled: 0, revenue: 0 };
+
+      res.json({
+        success: true,
+        data: {
+          tenancy,
+          summary: {
+            branches,
+            users: {
+              total: userRoleCounts.reduce((s, r) => s + r.count, 0),
+              customers: roleMap.customer || { count: 0, active: 0 },
+              admins: roleMap.admin || { count: 0, active: 0 },
+              branchAdmins: roleMap.branch_admin || { count: 0, active: 0 },
+              staff: roleMap.staff || { count: 0, active: 0 },
+              support: roleMap.support || { count: 0, active: 0 }
+            },
+            orders
+          },
+          recentOrders
+        }
+      });
+    } catch (error) {
+      console.error('Get tenancy overview error:', error);
+      res.status(500).json({ success: false, message: 'Failed to fetch tenancy overview' });
+    }
+  },
+
+  // Get branches of a tenancy
+  getTenancyBranches: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { page = 1, limit = 20, status, search } = req.query;
+
+      const tenancy = await Tenancy.findById(id).lean();
+      if (!tenancy) return res.status(404).json({ success: false, message: 'Tenancy not found' });
+
+      const query = { tenancy: id };
+      if (status) query.status = status;
+      if (search) {
+        query.$or = [
+          { name: { $regex: search, $options: 'i' } },
+          { code: { $regex: search, $options: 'i' } },
+          { 'address.city': { $regex: search, $options: 'i' } }
+        ];
+      }
+
+      const [branches, total] = await Promise.all([
+        Branch.find(query)
+          .populate('manager', 'name email phone')
+          .select('name code status address contact manager metrics.totalOrders metrics.totalRevenue metrics.customerCount createdAt')
+          .sort({ createdAt: -1 })
+          .skip((page - 1) * limit)
+          .limit(parseInt(limit))
+          .lean(),
+        Branch.countDocuments(query)
+      ]);
+
+      res.json({
+        success: true,
+        data: {
+          branches,
+          pagination: { current: parseInt(page), pages: Math.ceil(total / limit), total, limit: parseInt(limit) }
+        }
+      });
+    } catch (error) {
+      console.error('Get tenancy branches error:', error);
+      res.status(500).json({ success: false, message: 'Failed to fetch branches' });
+    }
+  },
+
+  // Get orders of a tenancy
+  getTenancyOrders: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { page = 1, limit = 20, status, search } = req.query;
+
+      const tenancy = await Tenancy.findById(id).lean();
+      if (!tenancy) return res.status(404).json({ success: false, message: 'Tenancy not found' });
+
+      const query = { tenancy: id };
+      if (status && status !== 'all') query.status = status;
+      if (search) {
+        query.$or = [
+          { orderNumber: { $regex: search, $options: 'i' } }
+        ];
+      }
+
+      const [orders, total] = await Promise.all([
+        Order.find(query)
+          .populate('customer', 'name phone email')
+          .populate('branch', 'name code')
+          .select('orderNumber status isCancelled pricing.total paymentStatus serviceType createdAt customer branch')
+          .sort({ createdAt: -1 })
+          .skip((page - 1) * limit)
+          .limit(parseInt(limit))
+          .lean(),
+        Order.countDocuments(query)
+      ]);
+
+      res.json({
+        success: true,
+        data: {
+          orders,
+          pagination: { current: parseInt(page), pages: Math.ceil(total / limit), total, limit: parseInt(limit) }
+        }
+      });
+    } catch (error) {
+      console.error('Get tenancy orders error:', error);
+      res.status(500).json({ success: false, message: 'Failed to fetch orders' });
+    }
+  },
+
+  // Get users belonging to a specific tenancy
+  getTenancyUsers: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { page = 1, limit = 20, role, status, search } = req.query;
+
+      const tenancy = await Tenancy.findById(id).lean();
+      if (!tenancy) {
+        return res.status(404).json({ success: false, message: 'Tenancy not found' });
+      }
+
+      const query = { tenancy: id };
+      if (role) query.role = role;
+      if (status === 'active') query.isActive = true;
+      if (status === 'inactive') query.isActive = false;
+      if (search) {
+        query.$or = [
+          { name: { $regex: search, $options: 'i' } },
+          { email: { $regex: search, $options: 'i' } },
+          { phone: { $regex: search, $options: 'i' } }
+        ];
+      }
+
+      const [users, total, roleCounts] = await Promise.all([
+        User.find(query)
+          .select('name email phone role isActive isVIP totalOrders createdAt')
+          .sort({ createdAt: -1 })
+          .skip((page - 1) * limit)
+          .limit(parseInt(limit))
+          .lean(),
+        User.countDocuments(query),
+        User.aggregate([
+          { $match: { tenancy: tenancy._id } },
+          { $group: { _id: '$role', count: { $sum: 1 } } }
+        ])
+      ]);
+
+      const roleCountMap = roleCounts.reduce((acc, r) => {
+        acc[r._id] = r.count;
+        return acc;
+      }, {});
+
+      res.json({
+        success: true,
+        data: {
+          tenancyName: tenancy.name,
+          users,
+          roleSummary: roleCountMap,
+          pagination: {
+            current: parseInt(page),
+            pages: Math.ceil(total / limit),
+            total,
+            limit: parseInt(limit)
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Get tenancy users error:', error);
+      res.status(500).json({ success: false, message: 'Failed to fetch tenancy users' });
     }
   },
 
