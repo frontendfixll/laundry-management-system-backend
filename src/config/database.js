@@ -27,9 +27,9 @@ const connectDB = async () => {
       serverSelectionTimeoutMS: isVercel ? 5000 : 60000, // Increased to 60s for localhost
       socketTimeoutMS: isVercel ? 45000 : 120000, // Increased to 120s for localhost
       connectTimeoutMS: isVercel ? 5000 : 60000, // Increased to 60s for localhost
-      maxPoolSize: isVercel ? 1 : 10, // Min connections for serverless
+      maxPoolSize: isVercel ? 5 : 10, // Keep connections warm in serverless
       minPoolSize: 0, // Allow 0 connections in serverless
-      maxIdleTimeMS: isVercel ? 5000 : 30000,
+      maxIdleTimeMS: isVercel ? 30000 : 60000,
       family: 4, // Use IPv4, skip trying IPv6
       retryWrites: true,
       w: 'majority',

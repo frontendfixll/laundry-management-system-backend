@@ -1,9 +1,9 @@
 const bcrypt = require('bcryptjs');
 
-// Hash password with bcrypt (12 rounds for security)
+// Hash password with bcrypt (10 rounds - balanced security/performance)
 const hashPassword = async (password) => {
   try {
-    const saltRounds = 12;
+    const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
     return hashedPassword;
   } catch (error) {

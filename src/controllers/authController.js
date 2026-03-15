@@ -4,6 +4,7 @@ const { hashPassword, comparePassword } = require('../utils/password');
 const { generateAccessToken, generateEmailVerificationToken, verifyEmailVerificationToken } = require('../utils/jwt');
 const { sendEmail, emailTemplates } = require('../config/email');
 const { setAuthCookie, clearAuthCookie } = require('../utils/cookieConfig');
+const { trackFailedAttempt, clearFailedAttempts } = require('../middlewares/auth');
 const crypto = require('crypto');
 
 // Register new user
@@ -269,7 +270,6 @@ const login = async (req, res) => {
     if (!user) {
       // Track failed attempt (safe version)
       try {
-        const { trackFailedAttempt } = require('../middlewares/auth');
         await trackFailedAttempt(email, 'user');
       } catch (error) {
         console.log('Failed attempt tracking failed, but continuing login');
@@ -287,7 +287,6 @@ const login = async (req, res) => {
     if (!isPasswordValid) {
       // Track failed attempt (safe version)
       try {
-        const { trackFailedAttempt } = require('../middlewares/auth');
         await trackFailedAttempt(email, 'user');
       } catch (error) {
         console.log('Failed attempt tracking failed, but continuing login');
@@ -301,7 +300,6 @@ const login = async (req, res) => {
 
     // Clear failed attempts on successful login (safe version)
     try {
-      const { clearFailedAttempts } = require('../middlewares/auth');
       clearFailedAttempts(email, 'user');
     } catch (error) {
       console.log('Clear failed attempts failed, but continuing login');
