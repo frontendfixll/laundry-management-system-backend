@@ -1,5 +1,11 @@
 const mongoose = require('mongoose');
 
+// Global cache for Vercel serverless — reuse connection across warm invocations
+let cached = global.mongooseCache;
+if (!cached) {
+  cached = global.mongooseCache = { conn: null, promise: null };
+}
+
 const connectDB = async () => {
   try {
     // Check if MongoDB URI is available
@@ -10,10 +16,22 @@ const connectDB = async () => {
     // For Vercel serverless, use more aggressive timeouts
     const isVercel = process.env.VERCEL || process.env.VERCEL_ENV || process.env.NODE_ENV === 'production';
 
-    // Check if already connected
+    // Return cached connection if available (critical for Vercel warm instances)
+    if (cached.conn) {
+      return cached.conn;
+    }
+
+    // Check if already connected via mongoose state
     if (mongoose.connection.readyState === 1) {
       console.log('✅ MongoDB already connected');
+      cached.conn = mongoose.connection;
       return mongoose.connection;
+    }
+
+    // If a connection is already in progress, wait for it
+    if (cached.promise) {
+      cached.conn = await cached.promise;
+      return cached.conn;
     }
 
     // Don't disable buffering initially - let connection establish first
@@ -36,7 +54,10 @@ const connectDB = async () => {
       bufferCommands: false // Disable buffering from start
     };
 
-    const conn = await mongoose.connect(process.env.MONGODB_URI, options);
+    // Cache the promise so parallel calls don't create multiple connections
+    cached.promise = mongoose.connect(process.env.MONGODB_URI, options);
+    const conn = await cached.promise;
+    cached.conn = conn;
 
     console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
     console.log(`📊 Database: ${conn.connection.name}`);
@@ -75,6 +96,10 @@ const connectDB = async () => {
 
     return conn;
   } catch (error) {
+    // Reset cache on error so next request tries fresh
+    cached.promise = null;
+    cached.conn = null;
+
     console.error(`❌ MongoDB Connection Error: ${error.message}`);
 
     // More detailed error logging for cluster connections
