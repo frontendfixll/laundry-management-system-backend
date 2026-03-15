@@ -310,7 +310,10 @@ app.get('/api/health', (req, res) => {
       mongodb_uri: !!process.env.MONGODB_URI,
       jwt_secret: !!process.env.JWT_SECRET,
       frontend_url: !!process.env.FRONTEND_URL,
-      vercel: !!process.env.VERCEL
+      vercel: !!process.env.VERCEL,
+      brevo_api_key: !!process.env.BREVO_API_KEY,
+      email_user: !!process.env.EMAIL_USER,
+      email_app_password: !!process.env.EMAIL_APP_PASSWORD
     }
   });
 });

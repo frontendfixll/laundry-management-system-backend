@@ -1,4 +1,5 @@
 const SuperAdmin = require('../../models/SuperAdmin');
+const AuditLog = require('../../models/AuditLog');
 // We might eventually want a real Policy model, but for now we'll mock the data
 // or use a simple in-memory store if DB schema isn't ready.
 // Given the error, we just need the endpoints to exist.
@@ -130,6 +131,47 @@ const initializeCorePolicy = async (req, res) => {
     }
 };
 
+const getAuditLogs = async (req, res) => {
+    try {
+        const { page = 1, limit = 50, action, severity, startDate, endDate } = req.query;
+
+        const query = { category: 'security' };
+
+        if (action) query.action = { $regex: action, $options: 'i' };
+        if (severity) query.riskLevel = severity;
+        if (startDate || endDate) {
+            query.timestamp = {};
+            if (startDate) query.timestamp.$gte = new Date(startDate);
+            if (endDate) query.timestamp.$lte = new Date(endDate);
+        }
+
+        const [logs, total] = await Promise.all([
+            AuditLog.find(query)
+                .sort({ timestamp: -1 })
+                .limit(parseInt(limit))
+                .skip((parseInt(page) - 1) * parseInt(limit))
+                .lean(),
+            AuditLog.countDocuments(query)
+        ]);
+
+        res.json({
+            success: true,
+            data: {
+                logs,
+                pagination: {
+                    current: parseInt(page),
+                    pages: Math.ceil(total / parseInt(limit)),
+                    total,
+                    limit: parseInt(limit)
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Get ABAC audit logs error:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch audit logs' });
+    }
+};
+
 module.exports = {
     getPolicies,
     createPolicy,
@@ -137,5 +179,6 @@ module.exports = {
     deletePolicy,
     getStatistics,
     refreshCache,
-    initializeCorePolicy
+    initializeCorePolicy,
+    getAuditLogs
 };

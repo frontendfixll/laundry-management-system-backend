@@ -1,5 +1,5 @@
 const Service = require('../../models/Service')
-const Order = require('../../models/Order')
+const OrderItem = require('../../models/OrderItem')
 const { sendSuccess, sendError, asyncHandler } = require('../../utils/helpers')
 
 // @desc    Get all services
@@ -123,13 +123,11 @@ const deleteService = asyncHandler(async (req, res) => {
     return sendError(res, 'NOT_FOUND', 'Service not found', 404)
   }
 
-  // Check if service is being used in any orders
-  const ordersUsingService = await Order.countDocuments({ 
-    'items.service': service.code 
-  })
+  // Check if service is referenced in any order items
+  const ordersUsingService = await OrderItem.countDocuments({ service: service.code })
 
   if (ordersUsingService > 0) {
-    return sendError(res, 'IN_USE', 'Cannot delete service that is being used in orders', 400)
+    return sendError(res, 'IN_USE', `Cannot delete service "${service.displayName}" — it is used in ${ordersUsingService} order item(s)`, 400)
   }
 
   await service.deleteOne()

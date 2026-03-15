@@ -190,29 +190,39 @@ router.get('/', async (req, res) => {
       query.isActive = isActive === 'true'
     }
 
-    // Execute query with pagination
-    const users = await SuperAdmin.find(query)
-      .populate('roles', 'name slug description color')
-      .select('-password -sessions -resetPasswordToken')
-      .sort({ createdAt: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit)
-      .lean()
-
-    const total = await SuperAdmin.countDocuments(query)
-
-    // Filter by role if specified
-    let filteredUsers = users
+    // If filtering by role slug, resolve to role _id first so pagination is correct
     if (roleFilter) {
-      filteredUsers = users.filter(user =>
-        user.roles.some(role => role.slug === roleFilter)
-      )
+      const matchedRole = await SuperAdminRole.findOne({ slug: roleFilter }).select('_id').lean()
+      if (matchedRole) {
+        query.roles = matchedRole._id
+      } else {
+        // No role found with that slug — return empty result
+        return res.json({
+          success: true,
+          data: {
+            users: [],
+            pagination: { current: parseInt(page), pages: 0, total: 0, limit: parseInt(limit) }
+          }
+        })
+      }
     }
+
+    // Execute query with pagination (role filter is now part of DB query)
+    const [users, total] = await Promise.all([
+      SuperAdmin.find(query)
+        .populate('roles', 'name slug description color')
+        .select('-password -sessions -resetPasswordToken')
+        .sort({ createdAt: -1 })
+        .limit(limit * 1)
+        .skip((page - 1) * limit)
+        .lean(),
+      SuperAdmin.countDocuments(query)
+    ])
 
     return res.json({
       success: true,
       data: {
-        users: filteredUsers,
+        users,
         pagination: {
           current: parseInt(page),
           pages: Math.ceil(total / limit),
