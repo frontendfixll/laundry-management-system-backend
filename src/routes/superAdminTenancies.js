@@ -175,6 +175,18 @@ router.get('/:id/users',
   tenancyController.getTenancyUsers
 );
 
+// Create user within a tenancy
+router.post('/:id/users',
+  param('id').isMongoId().withMessage('Valid tenancy ID is required'),
+  body('name').trim().isLength({ min: 2, max: 50 }).withMessage('Name must be 2-50 characters'),
+  body('email').trim().isEmail().normalizeEmail().withMessage('Valid email is required'),
+  body('phone').trim().matches(/^[6-9]\d{9}$/).withMessage('Valid 10-digit phone number required'),
+  body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+  body('role').isIn(['admin', 'branch_admin', 'staff', 'customer', 'support']).withMessage('Invalid role'),
+  logAdminAction('create_tenancy_user', 'tenancies'),
+  tenancyController.createTenancyUser
+);
+
 // Get tenancy owner permissions
 router.get('/:id/owner/permissions',
   param('id').isMongoId().withMessage('Valid tenancy ID is required'),

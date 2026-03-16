@@ -999,6 +999,73 @@ const tenancyController = {
     }
   },
 
+  // Create user within a tenancy
+  createTenancyUser: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name, email, phone, password, role } = req.body;
+
+      // Validate required fields
+      if (!name || !email || !phone || !password || !role) {
+        return res.status(400).json({ success: false, message: 'Name, email, phone, password and role are required' });
+      }
+
+      // Validate role
+      const allowedRoles = ['admin', 'branch_admin', 'staff', 'customer', 'support'];
+      if (!allowedRoles.includes(role)) {
+        return res.status(400).json({ success: false, message: 'Invalid role. Allowed: ' + allowedRoles.join(', ') });
+      }
+
+      // Check tenancy exists
+      const tenancy = await Tenancy.findById(id);
+      if (!tenancy) {
+        return res.status(404).json({ success: false, message: 'Tenancy not found' });
+      }
+
+      // Check if email already exists in this tenancy
+      const existingUser = await User.findOne({ email, tenancy: id });
+      if (existingUser) {
+        return res.status(400).json({ success: false, message: 'A user with this email already exists in this tenancy' });
+      }
+
+      // Hash password
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(password, salt);
+
+      // Create user
+      const user = await User.create({
+        name,
+        email,
+        phone,
+        password: hashedPassword,
+        role,
+        tenancy: id,
+        isActive: true,
+        isEmailVerified: true
+      });
+
+      res.status(201).json({
+        success: true,
+        message: `${role.replace('_', ' ')} created successfully`,
+        data: {
+          _id: user._id,
+          name: user.name,
+          email: user.email,
+          phone: user.phone,
+          role: user.role,
+          isActive: user.isActive,
+          createdAt: user.createdAt
+        }
+      });
+    } catch (error) {
+      console.error('Create tenancy user error:', error);
+      if (error.code === 11000) {
+        return res.status(400).json({ success: false, message: 'A user with this email or phone already exists' });
+      }
+      res.status(500).json({ success: false, message: 'Failed to create user' });
+    }
+  },
+
   // Get tenancy stats
   getTenancyStats: async (req, res) => {
     try {
