@@ -1,7 +1,7 @@
 const express = require('express');
 const { protect } = require('../middlewares/auth');
 const User = require('../models/User');
-const socketService = require('../services/socketService');
+const relayService = require('../services/relayService');
 
 const router = express.Router();
 
@@ -24,8 +24,8 @@ router.post('/refresh-permissions', protect, async (req, res) => {
     }
     
     // Emit socket event to update permissions in real-time
-    if (socketService && socketService.emitToUser) {
-      socketService.emitToUser(req.user._id, 'permissionsUpdated', {
+    if (relayService && relayService.emitToUser) {
+      relayService.emitToUser(req.user._id, 'permissionsUpdated', {
         permissions: freshUser.permissions,
         role: freshUser.role,
         message: 'Your permissions have been updated'

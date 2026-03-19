@@ -351,6 +351,52 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
 });
 
 // @desc    Get all customers
+// @desc    Create a new customer
+// @route   POST /api/admin/customers
+// @access  Private (Admin)
+const createCustomer = asyncHandler(async (req, res) => {
+  const { name, email, phone, password } = req.body;
+  const tenancyId = req.tenancyId || req.user?.tenancy;
+
+  if (!name || !email || !phone || !password) {
+    return sendError(res, 'MISSING_DATA', 'Name, email, phone, and password are required', 400);
+  }
+
+  if (password.length < 6) {
+    return sendError(res, 'WEAK_PASSWORD', 'Password must be at least 6 characters', 400);
+  }
+
+  // Check if email already exists in this tenancy
+  const existingUser = await User.findOne({ email: email.toLowerCase(), tenancy: tenancyId });
+  if (existingUser) {
+    return sendError(res, 'EMAIL_EXISTS', 'A customer with this email already exists', 400);
+  }
+
+  // Check if phone already exists in this tenancy
+  const existingPhone = await User.findOne({ phone, tenancy: tenancyId, role: 'customer' });
+  if (existingPhone) {
+    return sendError(res, 'PHONE_EXISTS', 'A customer with this phone number already exists', 400);
+  }
+
+  const customer = new User({
+    name,
+    email: email.toLowerCase(),
+    phone,
+    password,
+    role: 'customer',
+    tenancy: tenancyId,
+    isActive: true,
+    isEmailVerified: true,
+    createdBy: req.user._id
+  });
+
+  await customer.save();
+
+  const createdCustomer = await User.findById(customer._id).select('-password');
+
+  sendSuccess(res, { customer: createdCustomer }, 'Customer created successfully', 201);
+});
+
 // @route   GET /api/admin/customers
 // @access  Private (Admin/Center Admin)
 const getCustomers = asyncHandler(async (req, res) => {
@@ -1981,6 +2027,7 @@ module.exports = {
   updateOrderStatus,
   updatePaymentStatus,
   fixDeliveredPayments,
+  createCustomer,
   getCustomers,
   getCustomerDetails,
   toggleCustomerStatus,

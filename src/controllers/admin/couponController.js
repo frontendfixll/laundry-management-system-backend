@@ -96,9 +96,8 @@ const createCoupon = async (req, res) => {
     // Send real-time notification to customers if coupon is active
     if (coupon.isActive) {
       try {
-        const socketService = require('../../services/socketService');
-        socketService.sendToTenancyRecipients(tenancyId, 'customer', {
-          type: 'couponActivated',
+        const relayService = require('../../services/relayService');
+        relayService.emitToTenantRole(tenancyId, 'customer', 'couponActivated', {
           couponId: coupon._id,
           code: coupon.code,
           name: coupon.name,

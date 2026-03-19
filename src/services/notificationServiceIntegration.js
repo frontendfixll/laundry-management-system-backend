@@ -1,30 +1,27 @@
 /**
  * Notification Service Integration
- * Bridges the existing notification service with the new Socket.IO engine
+ * Bridges the existing notification service with the Socket Relay Server
  */
 
-const socketIOServer = require('./socketIOServer');
+const relayService = require('./relayService');
 const Notification = require('../models/Notification');
 
 class NotificationServiceIntegration {
   constructor() {
-    this.useSocketIO = true; // Feature flag to switch between systems
+    this.useRelay = true; // Feature flag
   }
 
   /**
-   * Create and send notification through appropriate system
+   * Create and send notification through relay server
    */
   async createNotification(notificationData) {
     try {
-      // Normalize data for Socket.IO format
-      const socketIOData = this.normalizeNotificationData(notificationData);
+      const normalizedData = this.normalizeNotificationData(notificationData);
 
-      if (this.useSocketIO && socketIOServer.isInitialized) {
-        // Use new Socket.IO system
-        console.log('📡 Using Socket.IO notification system');
-        return await socketIOServer.processNotification(socketIOData);
+      if (this.useRelay) {
+        console.log('📡 Sending notification via Relay Server');
+        return await relayService.processNotification(normalizedData);
       } else {
-        // Fallback to legacy system
         console.log('📡 Using legacy notification system');
         return await this.createLegacyNotification(notificationData);
       }
@@ -164,81 +161,42 @@ class NotificationServiceIntegration {
    * Emit real-time notification to user
    */
   async emitToUser(userId, event, data) {
-    console.log(`📡 notificationServiceIntegration.emitToUser: userId=${userId}, event=${event}`);
-    if (this.useSocketIO && socketIOServer.isInitialized) {
-      console.log('➡️ Calling socketIOServer.emitToUser');
-      return await socketIOServer.emitToUser(userId, event, data);
-    }
-
-    // No legacy fallback - just log
-    console.log('📡 Socket.IO not available, notification not sent in real-time');
-    return false;
+    console.log(`📡 Relay emitToUser: userId=${userId}, event=${event}`);
+    return await relayService.emitToUser(userId, event, data);
   }
 
   /**
    * Emit real-time notification to specific role within a tenant
    */
   async emitToTenantRole(tenantId, role, event, data) {
-    if (this.useSocketIO && socketIOServer.isInitialized) {
-      return await socketIOServer.emitToTenantRole(tenantId, role, event, data);
-    }
-
-    // No legacy fallback - just log
-    console.log('📡 Socket.IO not available, tenant role notification not sent in real-time');
-    return false;
+    return await relayService.emitToTenantRole(tenantId, role, event, data);
   }
 
   /**
    * Get notification system statistics
    */
   async getStatistics() {
-    if (this.useSocketIO && socketIOServer.isInitialized) {
-      return await socketIOServer.getStatistics();
-    }
-
-    return {
-      system: 'legacy',
-      socketIO: false,
-      message: 'Using legacy notification system'
-    };
+    return await relayService.getStatistics();
   }
 
   /**
-   * Switch between Socket.IO and legacy systems
+   * Switch relay on/off
    */
-  setUseSocketIO(enabled) {
-    this.useSocketIO = enabled;
-    console.log(`🔄 Notification system switched to: ${enabled ? 'Socket.IO' : 'Legacy'}`);
+  setUseRelay(enabled) {
+    this.useRelay = enabled;
+    console.log(`🔄 Notification system: ${enabled ? 'Relay' : 'Legacy'}`);
   }
 
   /**
    * Health check
    */
   async healthCheck() {
-    const health = {
-      socketIO: {
-        available: socketIOServer.isInitialized,
-        status: socketIOServer.isInitialized ? 'healthy' : 'unavailable'
-      },
-      legacy: {
-        available: true,
-        status: 'healthy'
-      },
-      currentSystem: this.useSocketIO && socketIOServer.isInitialized ? 'socketIO' : 'legacy'
+    const relayHealth = await relayService.healthCheck();
+    return {
+      relay: relayHealth,
+      legacy: { available: true, status: 'healthy' },
+      currentSystem: this.useRelay ? 'relay' : 'legacy'
     };
-
-    if (this.useSocketIO && socketIOServer.isInitialized) {
-      try {
-        const stats = await socketIOServer.getStatistics();
-        health.socketIO.connections = stats.connections?.activeConnections || 0;
-        health.socketIO.metrics = stats.engine?.metrics;
-      } catch (error) {
-        health.socketIO.status = 'error';
-        health.socketIO.error = error.message;
-      }
-    }
-
-    return health;
   }
 }
 

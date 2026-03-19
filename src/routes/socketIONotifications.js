@@ -5,7 +5,7 @@
 
 const express = require('express');
 const router = express.Router();
-const socketIOServer = require('../services/socketIOServer');
+const relayService = require('../services/relayService');
 const notificationServiceIntegration = require('../services/notificationServiceIntegration');
 const { protect } = require('../middlewares/auth');
 

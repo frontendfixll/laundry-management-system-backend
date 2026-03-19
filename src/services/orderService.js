@@ -2,7 +2,7 @@ const Order = require('../models/Order');
 const User = require('../models/User');
 const Branch = require('../models/Branch');
 const NotificationService = require('./notificationService');
-const socketService = require('./socketService');
+const relayService = require('./relayService');
 const { ORDER_STATUS, NOTIFICATION_TYPES } = require('../config/constants');
 
 class OrderService {
@@ -44,7 +44,7 @@ class OrderService {
       console.log(`🔔 Sending real-time notifications for order ${order.orderNumber}: ${oldStatus} → ${newStatus}`);
 
       // Notify customer
-      socketService.sendEventToUser(order.customer._id.toString(), 'orderStatusUpdated', {
+      relayService.emitToUser(order.customer._id.toString(), 'orderStatusUpdated', {
         orderId: order._id,
         orderNumber: order.orderNumber,
         oldStatus: oldStatus,
@@ -55,8 +55,7 @@ class OrderService {
 
       // Notify all admins in tenancy
       if (order.tenancy) {
-        socketService.sendToTenancyRecipients(order.tenancy, 'admin', {
-          type: 'orderStatusUpdated',
+        relayService.emitToTenantRole(order.tenancy, 'admin', 'orderStatusUpdated', {
           orderId: order._id,
           orderNumber: order.orderNumber,
           oldStatus: oldStatus,

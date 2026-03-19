@@ -11,6 +11,7 @@ const {
   updateOrderStatus,
   updatePaymentStatus,
   fixDeliveredPayments,
+  createCustomer,
   getCustomers,
   getCustomerDetails,
   toggleCustomerStatus,
@@ -157,6 +158,7 @@ router.put('/orders/:orderId/payment-status', updatePaymentStatus);
 router.post('/fix-delivered-payments', fixDeliveredPayments);
 
 // Customer management routes
+router.post('/customers', requirePermission('customers', 'create'), createCustomer);
 router.get('/customers', getCustomers);
 router.get('/customers/:customerId/details', getCustomerDetails);
 router.put('/customers/:customerId/toggle-status', toggleCustomerStatus);

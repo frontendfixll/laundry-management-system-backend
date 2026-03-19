@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Notification = require('../models/Notification');
 const sseService = require('../services/sseService');
-const socketIOServer = require('../services/socketIOServer');
+const relayService = require('../services/relayService');
 const { authenticateSuperAdmin } = require('../middlewares/superAdminAuth');
 
 /**
@@ -101,12 +101,6 @@ router.put('/read-all', authenticateSuperAdmin, async (req, res) => {
  */
 router.post('/test-alert', authenticateSuperAdmin, async (req, res) => {
   try {
-    if (!socketIOServer.isInitialized) {
-      return res.status(503).json({
-        success: false,
-        message: 'Socket.IO notification server not available'
-      });
-    }
     const { title = 'Test platform alert', message = 'This is a test. Live notifications are working.', priority = 'P2' } = req.body;
     const payload = {
       userId: req.admin._id,
@@ -123,7 +117,7 @@ router.post('/test-alert', authenticateSuperAdmin, async (req, res) => {
         timestamp: new Date()
       }
     };
-    await socketIOServer.processNotification(payload, { requestingUserRole: 'superadmin' });
+    await relayService.processNotification(payload, { requestingUserRole: 'superadmin' });
     res.json({ success: true, message: 'Test alert sent to all SuperAdmins' });
   } catch (error) {
     console.error('Test alert error:', error);

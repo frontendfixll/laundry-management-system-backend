@@ -213,8 +213,8 @@ const TENANT_ROLES = {
       // Staff Management (Limited)
       staff: { view: true, create: false, update: true, delete: false, assignShift: true, manageAttendance: true },
 
-      // Customer Management (Limited)
-      customers: { view: true, create: false, update: true, delete: false },
+      // Customer Management
+      customers: { view: true, create: true, update: true, delete: false },
 
       // Tenant Coupons (Limited)
       coupons: { view: true, create: false, update: true, delete: false },

@@ -3,7 +3,7 @@
  * Handles real-time permission updates via Socket.IO
  */
 
-const socketIOServer = require('./socketIOServer');
+const relayService = require('./relayService');
 const { NotificationAuditLogger } = require('./notifications/NotificationAuditLogger');
 const User = require('../models/User');
 const Tenancy = require('../models/Tenancy');
@@ -145,7 +145,7 @@ class PermissionSyncService {
       };
 
       // Emit to specific user
-      const emitted = await socketIOServer.emitToUser(userId, 'permission_sync', syncPayload);
+      const emitted = await relayService.emitToUser(userId, 'permission_sync', syncPayload);
 
       // Log the sync event
       await this.auditLogger.log({
@@ -200,7 +200,7 @@ class PermissionSyncService {
         timestamp: new Date()
       };
 
-      const emitted = await socketIOServer.emitToUser(userId, 'force_token_refresh', refreshPayload);
+      const emitted = await relayService.emitToUser(userId, 'force_token_refresh', refreshPayload);
 
       await this.auditLogger.log({
         action: 'force_token_refresh',
@@ -228,7 +228,7 @@ class PermissionSyncService {
         timestamp: new Date()
       };
 
-      const emitted = await socketIOServer.emitToUser(userId, 'session_revoked', revokePayload);
+      const emitted = await relayService.emitToUser(userId, 'session_revoked', revokePayload);
 
       await this.auditLogger.log({
         action: 'session_revoked',

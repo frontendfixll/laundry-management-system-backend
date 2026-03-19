@@ -564,7 +564,7 @@ const createOrder = asyncHandler(async (req, res) => {
   // Notify all admins in this tenancy about new order
   try {
     const User = require('../../models/User');
-    const socketService = require('../../services/socketService');
+    const relayService = require('../../services/relayService');
 
     const admins = await User.find({
       tenancy: orderTenancy,
@@ -578,8 +578,7 @@ const createOrder = asyncHandler(async (req, res) => {
     console.log(`📢 Notified ${admins.length} admin(s) about new order`);
 
     // Send real-time WebSocket notification to all admins
-    socketService.sendToTenancyRecipients(orderTenancy, 'admin', {
-      type: 'newOrder',
+    relayService.emitToTenantRole(orderTenancy, 'admin', 'newOrder', {
       orderId: order._id,
       orderNumber: order.orderNumber,
       customerName: customer.name,

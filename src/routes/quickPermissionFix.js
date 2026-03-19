@@ -137,9 +137,9 @@ router.post('/quick-permission-fix', async (req, res) => {
     
     // Send WebSocket notification if available
     try {
-      const socketService = require('../services/socketService');
-      if (socketService) {
-        socketService.sendEventToUser(user._id.toString(), 'permissionsUpdated', {
+      const relayService = require('../services/relayService');
+      if (relayService) {
+        relayService.emitToUser(user._id.toString(), 'permissionsUpdated', {
           message: 'Your permissions have been updated',
           updates: {
             permissions: basicPermissions,
@@ -151,7 +151,7 @@ router.post('/quick-permission-fix', async (req, res) => {
     } catch (socketError) {
       console.log('⚠️ WebSocket notification failed:', socketError.message);
     }
-    
+
     res.json({
       success: true,
       message: `Basic permissions granted to ${userEmail}`,
@@ -164,7 +164,7 @@ router.post('/quick-permission-fix', async (req, res) => {
         permissions: basicPermissions
       }
     });
-    
+
   } catch (error) {
     console.error('Quick permission fix error:', error);
     res.status(500).json({
@@ -183,7 +183,7 @@ router.post('/quick-permission-fix', async (req, res) => {
 router.post('/revoke-all-permissions', async (req, res) => {
   try {
     const { userEmail, secretKey } = req.body;
-    
+
     // Simple security check
     if (secretKey !== 'fix-permissions-2024') {
       return res.status(403).json({
@@ -191,14 +191,14 @@ router.post('/revoke-all-permissions', async (req, res) => {
         message: 'Invalid secret key'
       });
     }
-    
+
     if (!userEmail) {
       return res.status(400).json({
         success: false,
         message: 'User email is required'
       });
     }
-    
+
     // Find user
     const user = await User.findOne({ email: userEmail });
     if (!user) {
@@ -207,7 +207,7 @@ router.post('/revoke-all-permissions', async (req, res) => {
         message: 'User not found'
       });
     }
-    
+
     // Create empty permissions (all false)
     const emptyPermissions = {
       orders: {
@@ -254,18 +254,18 @@ router.post('/revoke-all-permissions', async (req, res) => {
         view: false, create: false, update: false, delete: false
       }
     };
-    
+
     // Update user permissions
     user.permissions = emptyPermissions;
     await user.save();
-    
+
     console.log(`🚫 Revoked ALL permissions from user: ${userEmail}`);
-    
+
     // Send WebSocket notification if available
     try {
-      const socketService = require('../services/socketService');
-      if (socketService) {
-        socketService.sendEventToUser(user._id.toString(), 'permissionsUpdated', {
+      const relayService = require('../services/relayService');
+      if (relayService) {
+        relayService.emitToUser(user._id.toString(), 'permissionsUpdated', {
           message: 'Your permissions have been revoked by an administrator',
           updates: {
             permissions: emptyPermissions,

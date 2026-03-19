@@ -1,10 +1,10 @@
-const firebaseServer = require('./firebaseServer');
+const relayService = require('./relayService');
 const NotificationService = require('./notificationService');
 
 /**
  * RBAC Real-Time Notification Service
  * Handles real-time notifications for role and permission changes
- * Now powered by Firebase Realtime Database
+ * Now powered by Socket Relay Server
  */
 class RBACNotificationService {
   constructor() {
@@ -14,9 +14,8 @@ class RBACNotificationService {
 
   init() {
     try {
-      // firebaseServer will be initialized by server.js
-      this.io = firebaseServer;
-      console.log('🔔 RBAC Notification Service configured with Firebase');
+      this.io = relayService;
+      console.log('🔔 RBAC Notification Service configured with Relay Server');
     } catch (error) {
       console.error('❌ Failed to initialize RBAC Notification Service:', error);
     }

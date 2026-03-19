@@ -3,7 +3,7 @@ const TenantAddOn = require('../models/TenantAddOn');
 const AddOnTransaction = require('../models/AddOnTransaction');
 const Tenancy = require('../models/Tenancy');
 const addOnStripeService = require('../services/addOnStripeService');
-const socketService = require('../services/socketService');
+const relayService = require('../services/relayService');
 const { validationResult } = require('express-validator');
 
 /**
@@ -490,7 +490,7 @@ const purchaseAddOn = async (req, res) => {
         await addOn.recordPurchase(total);
 
         // Emit real-time update
-        socketService.sendToTenancy(tenantId, {
+        relayService.emitToTenant(tenantId, 'notification', {
           type: 'addOnPurchased',
           data: {
             addOn: {
@@ -514,7 +514,7 @@ const purchaseAddOn = async (req, res) => {
         });
 
         // Trigger feature update event for real-time UI updates
-        socketService.sendToRoom(`tenant:${tenantId}`, 'featuresUpdated', {
+        relayService.emitToTenant(tenantId, 'featuresUpdated', {
           source: 'addon_purchase',
           addOn: addOn.name,
           features: addOn.config?.features || []
@@ -722,7 +722,7 @@ const cancelAddOn = async (req, res) => {
     );
 
     // Emit real-time update
-    socketService.emitToTenant(tenantId, 'addOnCancelled', {
+    relayService.emitToTenant(tenantId, 'addOnCancelled', {
       addOn: {
         id: tenantAddOn.addOn._id,
         name: tenantAddOn.addOn.name,
@@ -736,7 +736,7 @@ const cancelAddOn = async (req, res) => {
     });
 
     // Trigger feature update event
-    socketService.emitToTenant(tenantId, 'featuresUpdated', {
+    relayService.emitToTenant(tenantId, 'featuresUpdated', {
       source: 'addon_cancelled',
       addOn: tenantAddOn.addOn.name,
       features: tenantAddOn.addOn.config?.features || []

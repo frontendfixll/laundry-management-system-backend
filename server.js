@@ -4,6 +4,7 @@ require('dotenv').config();
 const app = require('./src/app');
 const connectDB = require('./src/config/database');
 const firebaseServer = require('./src/services/firebaseServer');
+const relayService = require('./src/services/relayService');
 
 // Force deployment update - timestamp: 2025-01-20
 console.log('🚀 Starting Laundry Management System Backend v2.0.2 with Firebase Notifications');
@@ -11,13 +12,15 @@ console.log('🚀 Starting Laundry Management System Backend v2.0.2 with Firebas
 // Check if running on Vercel
 const isVercel = process.env.VERCEL || process.env.VERCEL_ENV;
 
-// Only import cron and socket services if not on Vercel
-let cron, bannerLifecycleJob, socketService;
+// Only import cron jobs if not on Vercel
+let cron, bannerLifecycleJob;
 if (!isVercel) {
   cron = require('node-cron');
   bannerLifecycleJob = require('./src/jobs/bannerLifecycleJob');
-  socketService = require('./src/services/socketService');
 }
+
+// Initialize relay service (works on both Vercel and local)
+relayService.initialize();
 
 const PORT = process.env.PORT || 5001;
 
@@ -193,12 +196,9 @@ if (isVercel) {
         console.log('💡 Check Firebase configuration and try restarting the server');
       }
 
-      // Initialize legacy Socket.IO (only as additional fallback)
-      // DISABLED: Using new Socket.IO Notification Engine instead
-      // if (socketService) {
-      //   socketService.initialize(server);
-      //   console.log('🔌 Legacy WebSocket service initialized as additional fallback');
-      // }
+      // Real-time notifications now go through the Socket Relay Server
+      // Backend sends HTTP POST → Relay Server → WebSocket to clients
+      console.log('📡 Relay Service ready → ' + (process.env.SOCKET_RELAY_URL || 'http://localhost:3001'));
 
       // Setup cron jobs only after server is fully started
       if (dbConnected) {

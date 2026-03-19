@@ -3,7 +3,7 @@ const TenantAddOn = require('../../models/TenantAddOn');
 const AddOnTransaction = require('../../models/AddOnTransaction');
 const Tenancy = require('../../models/Tenancy');
 const { validationResult } = require('express-validator');
-const socketService = require('../../services/socketService');
+const relayService = require('../../services/relayService');
 const permissionSyncService = require('../../services/permissionSyncService');
 
 /**
@@ -748,7 +748,7 @@ const assignAddOnToTenant = async (req, res) => {
     await tenantAddOn.save();
 
     // Emit real-time update to tenant
-    socketService.emitToTenant(tenantId, 'addOnAssigned', {
+    relayService.emitToTenant(tenantId, 'addOnAssigned', {
       addOn: {
         id: addOn._id,
         name: addOn.name,
@@ -766,7 +766,7 @@ const assignAddOnToTenant = async (req, res) => {
     });
 
     // Trigger feature update event
-    socketService.emitToTenant(tenantId, 'featuresUpdated', {
+    relayService.emitToTenant(tenantId, 'featuresUpdated', {
       source: 'addon_assigned',
       addOn: addOn.name,
       features: addOn.config?.features || []

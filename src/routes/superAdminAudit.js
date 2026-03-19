@@ -21,8 +21,8 @@ router.get('/logs/auth', auditController.getAuditLogs) // Filter by auth events
 // Cross-Tenant Visibility
 router.get('/tenants', auditController.getCrossTenantOverview)
 router.get('/tenants/financials', auditController.getCrossTenantOverview)
-router.get('/tenants/patterns', auditController.getCrossTenantOverview)
-router.get('/tenants/anomalies', auditController.getCrossTenantOverview)
+router.get('/tenants/patterns', auditController.getTenantPatterns)
+router.get('/tenants/anomalies', auditController.getTenantAnomalies)
 
 // Financial Transparency
 router.get('/financial/payments', (req, res, next) => {
@@ -60,11 +60,11 @@ router.get('/security/exports', (req, res, next) => {
   auditController.getSecurityAudit(req, res, next)
 })
 
-// Support & Ticket Oversight
-router.get('/support/tickets', auditController.getAuditLogs) // All support tickets
-router.get('/support/sla', auditController.getAuditLogs) // SLA compliance
-router.get('/support/escalations', auditController.getAuditLogs) // Escalation history
-router.get('/support/impersonation', auditController.getAuditLogs) // Impersonation logs
+// Support & Ticket Oversight - Dedicated controllers
+router.get('/support/tickets', auditController.getSupportTicketsAudit)
+router.get('/support/sla', auditController.getSLAComplianceAudit)
+router.get('/support/escalations', auditController.getEscalationHistory)
+router.get('/support/impersonation', auditController.getImpersonationLogs)
 
 // RBAC Audit
 router.get('/rbac/roles', (req, res, next) => {
@@ -84,15 +84,15 @@ router.get('/rbac/cross-tenant', (req, res, next) => {
   auditController.getRBACaudit(req, res, next)
 })
 
-// Compliance & Reports
+// Compliance & Reports - Dedicated controllers
 router.get('/compliance/dashboard', auditController.getComplianceDashboard)
 router.get('/reports/financial', (req, res, next) => {
   req.query.type = 'financial'
   auditController.getFinancialAudit(req, res, next)
 })
-router.get('/reports/refund-abuse', auditController.getAuditLogs)
-router.get('/reports/tenant-behavior', auditController.getCrossTenantOverview)
-router.get('/reports/sla-support', auditController.getAuditLogs)
+router.get('/reports/refund-abuse', auditController.getRefundAbuseReport)
+router.get('/reports/tenant-behavior', auditController.getTenantBehaviorAnalysis)
+router.get('/reports/sla-support', auditController.getSLASupportReport)
 router.get('/reports/security', (req, res, next) => {
   req.query.type = 'suspicious'
   auditController.getSecurityAudit(req, res, next)
@@ -111,6 +111,6 @@ router.post('/export/excel', (req, res, next) => {
   req.query.format = 'excel'
   auditController.exportAuditData(req, res, next)
 })
-router.get('/export/history', auditController.getAuditLogs) // Export history
+router.get('/export/history', auditController.getExportHistory)
 
 module.exports = router

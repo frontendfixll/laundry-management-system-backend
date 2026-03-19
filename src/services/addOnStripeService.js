@@ -308,8 +308,8 @@ const handlePaymentIntentSucceeded = async (paymentIntent) => {
         await tenantAddOn.save();
 
         // Emit real-time update
-        const socketService = require('./socketService');
-        socketService.emitToTenant(tenantAddOn.tenant, 'addOnActivated', {
+        const relayService = require('./relayService');
+        relayService.emitToTenant(tenantAddOn.tenant, 'addOnActivated', {
           tenantAddOnId: tenantAddOn._id,
           status: 'active'
         });
@@ -441,8 +441,8 @@ const handleInvoicePaymentFailed = async (invoice) => {
       );
 
       // Emit real-time update
-      const socketService = require('./socketService');
-      socketService.emitToTenant(tenantAddOn.tenant, 'addOnSuspended', {
+      const relayService = require('./relayService');
+      relayService.emitToTenant(tenantAddOn.tenant, 'addOnSuspended', {
         tenantAddOnId: tenantAddOn._id,
         reason: 'payment_failed'
       });
