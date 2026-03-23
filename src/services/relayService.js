@@ -86,7 +86,7 @@ class RelayService {
   }
 
   /**
-   * Process notification — same API as socketIOServer / firebaseServer
+   * Process notification — relay-based delivery
    * Used by notificationServiceIntegration
    */
   async processNotification(notificationData, context = {}) {
@@ -107,17 +107,15 @@ class RelayService {
     // Build batch events for all relevant targets
     const events = [];
 
-    // Direct user
+    // Direct user (preferred for user-specific notifications)
     if (notificationData.userId) {
       events.push({
         target: { userId: notificationData.userId.toString() },
         event,
         data
       });
-    }
-
-    // Tenant + role
-    if (notificationData.tenantId && notificationData.metadata?.recipientType) {
+    } else if (notificationData.tenantId && notificationData.metadata?.recipientType) {
+      // Tenant + role broadcast (only when no specific userId — avoids duplicate delivery)
       events.push({
         target: {
           tenantId: notificationData.tenantId.toString(),

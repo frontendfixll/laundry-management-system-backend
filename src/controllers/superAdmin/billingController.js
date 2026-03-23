@@ -278,6 +278,18 @@ const billingController = {
 
       await invoice.populate('tenancy', 'name subdomain');
 
+      // Notify tenancy admin about invoice
+      try {
+        const NotificationService = require('../../services/notificationService');
+        const User = require('../../models/User');
+        const admins = await User.find({ tenancy: tenancyId, role: 'admin', isActive: true }).select('_id');
+        for (const admin of admins) {
+          await NotificationService.notifyInvoiceGenerated(admin._id, { _id: invoice._id, invoiceNumber: invoice._id.toString().slice(-8).toUpperCase(), amount: invoice.amount.total }, tenancy);
+        }
+      } catch (err) {
+        console.log('Failed to send invoice notification:', err.message);
+      }
+
       res.status(201).json({
         success: true,
         message: 'Invoice generated successfully',

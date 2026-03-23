@@ -546,7 +546,13 @@ const resetUserPassword = asyncHandler(async (req, res) => {
       userAgent: req.get('User-Agent')
     });
 
-    // TODO: Send temporary password via secure channel
+    // Notify user about password change
+    try {
+      const NotificationService = require('../../services/notificationService');
+      await NotificationService.notifyPasswordChanged(user._id, user.tenancy);
+    } catch (err) {
+      console.log('Failed to send password change notification:', err.message);
+    }
 
     res.json({
       success: true,
@@ -3299,6 +3305,35 @@ const resolveTicket = asyncHandler(async (req, res) => {
       ipAddress: req.ip,
       userAgent: req.get('User-Agent')
     });
+
+    // Notify tenant admin about ticket resolution
+    if (ticket.tenancy) {
+      try {
+        const NotificationService = require('../../services/notificationService');
+        const User = require('../../models/User');
+        const admins = await User.find({ tenancy: ticket.tenancy, role: 'admin', isActive: true }).select('_id');
+        for (const admin of admins) {
+          await NotificationService.createNotification({
+            recipientId: admin._id,
+            recipientType: 'admin',
+            tenancy: ticket.tenancy,
+            type: 'ticket_resolved',
+            title: 'Support Ticket Resolved',
+            message: `Ticket #${ticket.ticketNumber} has been resolved by platform support.`,
+            icon: 'check-circle',
+            severity: 'success',
+            data: {
+              ticketId: ticket._id,
+              ticketNumber: ticket.ticketNumber,
+              resolution,
+              link: `/admin/tickets/${ticket._id}`
+            }
+          });
+        }
+      } catch (err) {
+        console.log('Failed to send ticket resolved notification:', err.message);
+      }
+    }
 
     res.json({
       success: true,

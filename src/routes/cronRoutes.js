@@ -113,8 +113,8 @@ router.post('/notifications/cleanup', async (req, res) => {
   try {
     console.log('🔄 Cron API: Cleaning up expired notifications...');
     
-    const firebaseNotificationService = require('../services/firebaseNotificationService');
-    const result = await firebaseNotificationService.cleanupExpired();
+    const Notification = require('../models/Notification');
+    const result = await Notification.deleteMany({ expiresAt: { $lt: new Date() } });
     
     res.json({
       success: true,
@@ -139,13 +139,65 @@ router.post('/notifications/cleanup', async (req, res) => {
 router.post('/subscriptions/send-reminders', async (req, res) => {
   try {
     console.log('🔄 Cron API: Sending subscription reminders...');
-    
-    // TODO: Implement subscription reminder logic
+
+    const Tenancy = require('../models/Tenancy');
+    const User = require('../models/User');
+    const NotificationService = require('../services/notificationService');
+
+    const now = new Date();
+    let remindersSent = 0;
+    let expiredCount = 0;
+
+    // Find tenancies expiring in 1, 3, 7 days
+    const reminderDays = [1, 3, 7];
+    for (const days of reminderDays) {
+      const targetDate = new Date(now);
+      targetDate.setDate(targetDate.getDate() + days);
+      const startOfDay = new Date(targetDate.setHours(0, 0, 0, 0));
+      const endOfDay = new Date(targetDate.setHours(23, 59, 59, 999));
+
+      const expiringTenancies = await Tenancy.find({
+        'subscription.endDate': { $gte: startOfDay, $lte: endOfDay },
+        'subscription.status': 'active',
+        isActive: true
+      });
+
+      for (const tenancy of expiringTenancies) {
+        const admins = await User.find({ tenancy: tenancy._id, role: 'admin', isActive: true }).select('_id');
+        for (const admin of admins) {
+          await NotificationService.notifySubscriptionExpiring(admin._id, tenancy, days);
+        }
+        // Also notify SuperAdmins
+        await NotificationService.notifySuperAdminSubscriptionExpiring(null, tenancy, days);
+        remindersSent++;
+      }
+    }
+
+    // Find already expired tenancies (expired today)
+    const startOfToday = new Date(now.setHours(0, 0, 0, 0));
+    const endOfToday = new Date(now.setHours(23, 59, 59, 999));
+    const expiredTenancies = await Tenancy.find({
+      'subscription.endDate': { $gte: startOfToday, $lte: endOfToday },
+      'subscription.status': 'active',
+      isActive: true
+    });
+
+    for (const tenancy of expiredTenancies) {
+      const admins = await User.find({ tenancy: tenancy._id, role: 'admin', isActive: true }).select('_id');
+      for (const admin of admins) {
+        await NotificationService.notifySubscriptionExpired(admin._id, tenancy);
+      }
+      expiredCount++;
+    }
+
     const result = {
-      remindersSent: 0,
-      message: 'Subscription reminders feature pending implementation'
+      remindersSent,
+      expiredCount,
+      message: `Sent ${remindersSent} reminders, ${expiredCount} expiry notices`
     };
-    
+
+    console.log('✅ Subscription reminders completed:', result);
+
     res.json({
       success: true,
       message: 'Subscription reminders completed',
@@ -154,6 +206,67 @@ router.post('/subscriptions/send-reminders', async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Cron API: Send reminders failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+/**
+ * POST /api/cron/coupons/expiry-reminders
+ * Send coupon expiry reminders to customers (coupons expiring in 1-3 days)
+ */
+router.post('/coupons/expiry-reminders', async (req, res) => {
+  try {
+    console.log('🔄 Cron API: Sending coupon expiry reminders...');
+
+    const Coupon = require('../models/Coupon');
+    const User = require('../models/User');
+    const NotificationService = require('../services/notificationService');
+
+    const now = new Date();
+    const threeDaysLater = new Date(now);
+    threeDaysLater.setDate(threeDaysLater.getDate() + 3);
+
+    // Find coupons expiring within 3 days
+    const expiringCoupons = await Coupon.find({
+      endDate: { $gte: now, $lte: threeDaysLater },
+      isActive: true
+    });
+
+    let remindersSent = 0;
+
+    for (const coupon of expiringCoupons) {
+      // Find customers in the coupon's tenancy
+      const customers = await User.find({
+        tenancy: coupon.tenancy,
+        role: 'customer',
+        isActive: true
+      }).select('_id').limit(200);
+
+      for (const customer of customers) {
+        await NotificationService.notifyCouponExpiring(customer._id, {
+          _id: coupon._id,
+          code: coupon.code,
+          discount: coupon.discountValue || coupon.discount,
+          expiryDate: coupon.endDate
+        }, coupon.tenancy);
+        remindersSent++;
+      }
+    }
+
+    console.log(`✅ Coupon expiry reminders sent: ${remindersSent}`);
+
+    res.json({
+      success: true,
+      message: 'Coupon expiry reminders completed',
+      result: { remindersSent, couponsExpiring: expiringCoupons.length },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Cron API: Coupon reminders failed:', error);
     res.status(500).json({
       success: false,
       error: error.message,

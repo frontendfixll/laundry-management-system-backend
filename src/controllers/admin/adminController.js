@@ -1024,6 +1024,17 @@ const createRefundRequest = asyncHandler(async (req, res) => {
     .populate('order', 'orderNumber')
     .populate('customer', 'name email');
 
+  // Notify all admins in tenancy about refund request
+  try {
+    const NotificationService = require('../../services/notificationService');
+    const admins = await User.find({ tenancy: tenancyId, role: 'admin', isActive: true, _id: { $ne: req.user._id } }).select('_id');
+    for (const admin of admins) {
+      await NotificationService.notifyRefundRequest(admin._id, order, amount, tenancyId);
+    }
+  } catch (error) {
+    console.log('Failed to send refund request notification:', error.message);
+  }
+
   sendSuccess(res, { refund: populatedRefund }, 'Refund request created successfully');
 });
 
@@ -1764,6 +1775,14 @@ const createStaff = asyncHandler(async (req, res) => {
     .select('-password')
     .populate('assignedBranch', 'name code');
 
+  // Notify tenancy admin about new staff
+  try {
+    const NotificationService = require('../../services/notificationService');
+    await NotificationService.notifyNewStaffAdded(req.user._id, createdStaff, tenancyId);
+  } catch (error) {
+    console.log('Failed to send new staff notification:', error.message);
+  }
+
   sendSuccess(res, { staff: createdStaff }, 'Staff member created successfully', 201);
 });
 
@@ -1831,6 +1850,14 @@ const deleteStaff = asyncHandler(async (req, res) => {
   // Soft delete - deactivate instead of removing
   staff.isActive = false;
   await staff.save();
+
+  // Notify tenancy admin about staff removal
+  try {
+    const NotificationService = require('../../services/notificationService');
+    await NotificationService.notifyStaffRemoved(req.user._id, staff, tenancyId);
+  } catch (error) {
+    console.log('Failed to send staff removed notification:', error.message);
+  }
 
   sendSuccess(res, { staff: { _id: staff._id, name: staff.name } }, 'Staff member deactivated successfully');
 });
@@ -1996,6 +2023,17 @@ const updatePaymentStatus = asyncHandler(async (req, res) => {
   const updatedOrder = await Order.findById(orderId)
     .populate('customer', 'name phone')
     .populate('branch', 'name code');
+
+  // Notify admin about payment received
+  if (paymentStatus === 'paid') {
+    try {
+      const NotificationService = require('../../services/notificationService');
+      const tenancyId = req.tenancyId || req.user?.tenancy;
+      await NotificationService.notifyPaymentReceived(req.user._id, updatedOrder, updatedOrder.pricing?.total, tenancyId);
+    } catch (error) {
+      console.log('Failed to send payment received notification:', error.message);
+    }
+  }
 
   sendSuccess(res, { order: updatedOrder }, 'Payment status updated successfully');
 });

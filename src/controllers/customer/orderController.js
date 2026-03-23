@@ -16,7 +16,7 @@ const {
   getPagination,
   formatPaginationResponse
 } = require('../../utils/helpers');
-const { ORDER_STATUS } = require('../../config/constants');
+const { ORDER_STATUS, NOTIFICATION_TYPES } = require('../../config/constants');
 
 // @desc    Create new order
 // @route   POST /api/customer/orders
@@ -535,10 +535,20 @@ const createOrder = asyncHandler(async (req, res) => {
 
   // Update customer stats
   customer.totalOrders += 1;
-  if (customer.isVIP) {
-    customer.rewardPoints += Math.floor(pricing.total / 100); // 1 point per ₹100
+  const pointsEarned = customer.isVIP ? Math.floor(pricing.total / 100) : 0;
+  if (pointsEarned > 0) {
+    customer.rewardPoints += pointsEarned;
   }
   await customer.save();
+
+  // Notify customer about reward points earned
+  if (pointsEarned > 0) {
+    try {
+      await NotificationService.notifyRewardPoints(req.user._id, pointsEarned, `Earned on order ${order.orderNumber}`, orderTenancy);
+    } catch (error) {
+      console.log('Failed to send reward points notification:', error.message);
+    }
+  }
 
   // Populate order for response
   const populatedOrder = await Order.findById(order._id)
@@ -576,19 +586,6 @@ const createOrder = asyncHandler(async (req, res) => {
       await NotificationService.notifyAdminNewOrder(admin._id, populatedOrder, orderTenancy);
     }
     console.log(`📢 Notified ${admins.length} admin(s) about new order`);
-
-    // Send real-time WebSocket notification to all admins
-    relayService.emitToTenantRole(orderTenancy, 'admin', 'newOrder', {
-      orderId: order._id,
-      orderNumber: order.orderNumber,
-      customerName: customer.name,
-      amount: pricing.total,
-      items: createdItems.length,
-      isExpress: isExpress || false,
-      serviceType: serviceType || 'full_service',
-      timestamp: new Date()
-    });
-    console.log(`🔔 Real-time notification sent to admins for new order ${order.orderNumber}`);
   } catch (error) {
     console.log('Failed to notify admins:', error.message);
   }
@@ -611,6 +608,29 @@ const createOrder = asyncHandler(async (req, res) => {
     } catch (error) {
       console.log('Failed to notify branch admins:', error.message);
     }
+  }
+
+  // Notify all SuperAdmins about new order (P4 - informational)
+  try {
+    await NotificationService.notifyAllSuperAdmins({
+      type: NOTIFICATION_TYPES.ORDER_PLACED,
+      title: 'New Order Placed',
+      message: `New order ${order.orderNumber} placed in ${populatedOrder.branch?.name || 'tenant'}`,
+      icon: 'shopping-bag',
+      severity: 'info',
+      priority: 'P4',
+      data: {
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+        customerName: customer.name,
+        totalAmount: pricing.total,
+        tenancyId: orderTenancy,
+        link: `/tenancies/${orderTenancy}`
+      }
+    });
+    console.log('📢 Notified SuperAdmins about new order');
+  } catch (error) {
+    console.log('Failed to notify superadmins:', error.message);
   }
 
   // Send order confirmation email to customer (ASYNC - non-blocking)

@@ -658,6 +658,28 @@ const updateInventoryStock = asyncHandler(async (req, res) => {
   // Fetch fresh item after save
   const updatedItem = await Inventory.findById(itemId);
 
+  // Check low stock and notify admin
+  if (updatedItem.isLowStock) {
+    try {
+      const NotificationService = require('../../services/notificationService');
+      const tenancyId = user.tenancy;
+      const User = require('../../models/User');
+      const admins = await User.find({ tenancy: tenancyId, role: 'admin', isActive: true }).select('_id');
+      for (const admin of admins) {
+        await NotificationService.notifyLowInventory(admin._id, {
+          _id: updatedItem._id,
+          name: updatedItem.itemName,
+          currentStock: updatedItem.currentStock,
+          reorderLevel: updatedItem.minThreshold,
+          unit: updatedItem.unit,
+          branch: { name: branch.name }
+        }, tenancyId);
+      }
+    } catch (err) {
+      console.log('Failed to send low inventory notification:', err.message);
+    }
+  }
+
   sendSuccess(res, { item: updatedItem }, 'Stock updated successfully');
 });
 

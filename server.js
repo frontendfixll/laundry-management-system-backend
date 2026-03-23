@@ -3,11 +3,9 @@ require('dotenv').config();
 
 const app = require('./src/app');
 const connectDB = require('./src/config/database');
-const firebaseServer = require('./src/services/firebaseServer');
 const relayService = require('./src/services/relayService');
 
-// Force deployment update - timestamp: 2025-01-20
-console.log('🚀 Starting Laundry Management System Backend v2.0.2 with Firebase Notifications');
+console.log('🚀 Starting Laundry Management System Backend v2.0.2');
 
 // Check if running on Vercel
 const isVercel = process.env.VERCEL || process.env.VERCEL_ENV;
@@ -164,23 +162,12 @@ if (isVercel) {
       console.log(`📚 API: http://localhost:${PORT}/api`);
       console.log('='.repeat(60));
 
-      // Initialize Firebase Notification Engine (Primary)
-      console.log('🔄 Initializing Firebase Notification Engine...');
+      // Initialize Automation Engine
       try {
-        const notificationEngine = await firebaseServer.initialize(server);
-        console.log('✅ Firebase Notification Engine initialized successfully');
-        console.log('🎉 Modern notification system ready for real-time delivery');
-
-        // Make engine available globally for other services
-        global.notificationEngine = notificationEngine;
-
-        // Initialize Automation Engine with notification system
         console.log('🤖 Initializing Automation Engine...');
         const automationEngine = require('./src/services/automationEngine');
-        automationEngine.initialize(notificationEngine);
-        console.log('✅ Automation Engine initialized and connected to notifications');
-
-        // Make automation engine available globally
+        automationEngine.initialize();
+        console.log('✅ Automation Engine initialized');
         global.automationEngine = automationEngine;
 
         // Initialize Automation Triggers
@@ -189,11 +176,8 @@ if (isVercel) {
         automationTriggers.initialize();
         global.automationTriggers = automationTriggers;
         console.log('✅ Automation Triggers initialized');
-
-      } catch (firebaseError) {
-        console.error('❌ Firebase Notification Engine initialization failed:', firebaseError);
-        console.log('⚠️ Running without real-time notifications');
-        console.log('💡 Check Firebase configuration and try restarting the server');
+      } catch (automationError) {
+        console.error('❌ Automation Engine initialization failed:', automationError.message);
       }
 
       // Real-time notifications now go through the Socket Relay Server

@@ -292,6 +292,17 @@ exports.upgradeSubscription = asyncHandler(async (req, res) => {
     console.error('Failed to notify SuperAdmins of upgrade:', error.message);
   }
 
+  // Notify tenancy admins about plan upgrade
+  try {
+    const User = require('../models/User');
+    const admins = await User.find({ tenancy: tenancy._id, role: 'admin', isActive: true }).select('_id');
+    for (const admin of admins) {
+      await NotificationService.notifyPlanUpgraded(admin._id, tenancy, currentPlan?.name || 'Unknown', newPlan.name);
+    }
+  } catch (error) {
+    console.log('Failed to send upgrade notification to admins:', error.message);
+  }
+
   // Calculate upgrade amount (difference between plans)
   const upgradeAmount = newPrice - currentPrice;
 
@@ -360,6 +371,20 @@ exports.downgradeSubscription = asyncHandler(async (req, res) => {
     : newPlan.features;
 
   await tenancy.save();
+
+  // Notify tenancy admin about plan downgrade
+  try {
+    const NotificationService = require('../services/notificationService');
+    const User = require('../models/User');
+    const admins = await User.find({ tenancy: tenancy._id, role: 'admin', isActive: true }).select('_id');
+    for (const admin of admins) {
+      await NotificationService.notifyPlanDowngraded(admin._id, tenancy, currentPlan?.name || 'Unknown', newPlan.name);
+    }
+    // Also notify SuperAdmins
+    await NotificationService.notifySuperAdminSubscriptionUpdate(null, tenancy, 'Downgraded', `${currentPlan?.name} → ${newPlan.name}`);
+  } catch (error) {
+    console.log('Failed to send downgrade notification:', error.message);
+  }
 
   // Create payment record for downgrade (usually a credit/refund)
   if (currentPrice > newPrice) {

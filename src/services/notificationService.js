@@ -1,5 +1,5 @@
 const Notification = require('../models/Notification');
-const { NOTIFICATION_TYPES, RECIPIENT_TYPES } = require('../config/constants');
+const { NOTIFICATION_TYPES, RECIPIENT_TYPES, PLATFORM_ROLES, NOTIFICATION_ROLE_MAP } = require('../config/constants');
 
 // Use new Socket.IO notification system instead of legacy event bus
 const notificationServiceIntegration = require('./notificationServiceIntegration');
@@ -93,7 +93,16 @@ class NotificationService {
       message: `Your order ${order.orderNumber} has been placed successfully.`,
       icon: 'shopping-bag',
       severity: 'success',
-      data: { orderId: order._id, link: `/orders/${order._id}` }
+      data: {
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+        totalAmount: order.totalAmount || order.pricing?.total,
+        itemCount: order.items?.length,
+        serviceType: order.serviceType,
+        status: order.status,
+        branchName: order.branch?.name,
+        link: `/customer/orders/${order._id}`
+      }
     });
   }
 
@@ -107,7 +116,13 @@ class NotificationService {
       message: `Your order ${order.orderNumber} has been picked up.`,
       icon: 'truck',
       severity: 'info',
-      data: { orderId: order._id, link: `/orders/${order._id}` }
+      data: {
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+        status: 'picked',
+        branchName: order.branch?.name,
+        link: `/customer/orders/${order._id}`
+      }
     });
   }
 
@@ -121,7 +136,13 @@ class NotificationService {
       message: `Your order ${order.orderNumber} is ready for delivery.`,
       icon: 'check-circle',
       severity: 'success',
-      data: { orderId: order._id, link: `/orders/${order._id}` }
+      data: {
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+        status: 'ready',
+        branchName: order.branch?.name,
+        link: `/customer/orders/${order._id}`
+      }
     });
   }
 
@@ -135,7 +156,12 @@ class NotificationService {
       message: `Your order ${order.orderNumber} is out for delivery.`,
       icon: 'truck',
       severity: 'info',
-      data: { orderId: order._id, link: `/orders/${order._id}` }
+      data: {
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+        status: 'out_for_delivery',
+        link: `/customer/orders/${order._id}`
+      }
     });
   }
 
@@ -149,7 +175,13 @@ class NotificationService {
       message: `Your order ${order.orderNumber} has been delivered. Thank you!`,
       icon: 'package-check',
       severity: 'success',
-      data: { orderId: order._id, link: `/orders/${order._id}` }
+      data: {
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+        totalAmount: order.totalAmount || order.pricing?.total,
+        status: 'delivered',
+        link: `/customer/orders/${order._id}`
+      }
     });
   }
 
@@ -181,6 +213,26 @@ class NotificationService {
     });
   }
 
+  static async notifyCouponExpiring(customerId, coupon, tenancy) {
+    return this.createNotification({
+      recipientId: customerId,
+      recipientType: RECIPIENT_TYPES.CUSTOMER,
+      tenancy,
+      type: NOTIFICATION_TYPES.COUPON_EXPIRING,
+      title: 'Coupon Expiring Soon!',
+      message: `Your coupon "${coupon.code}" expires on ${new Date(coupon.expiryDate).toLocaleDateString('en-IN')}. Use it before it's gone!`,
+      icon: 'tag',
+      severity: 'warning',
+      data: {
+        couponId: coupon._id,
+        couponCode: coupon.code,
+        discount: coupon.discount,
+        expiryDate: coupon.expiryDate,
+        link: '/customer/coupons'
+      }
+    });
+  }
+
   // ==================== ADMIN NOTIFICATIONS ====================
 
   static async notifyAdminNewOrder(adminId, order, tenancy) {
@@ -193,7 +245,19 @@ class NotificationService {
       message: `New order ${order.orderNumber} from ${order.customer?.name || 'Customer'}`,
       icon: 'shopping-bag',
       severity: 'info',
-      data: { orderId: order._id, link: `/admin/orders?id=${order._id}` }
+      data: {
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+        customerName: order.customer?.name,
+        customerPhone: order.customer?.phone,
+        totalAmount: order.totalAmount || order.pricing?.total,
+        itemCount: order.items?.length,
+        serviceType: order.serviceType,
+        status: order.status,
+        branchName: order.branch?.name,
+        isExpress: order.isExpress,
+        link: `/admin/orders?id=${order._id}`
+      }
     });
   }
 
@@ -207,7 +271,15 @@ class NotificationService {
       message: `${item.name} is running low. Current stock: ${item.currentStock}`,
       icon: 'alert-triangle',
       severity: 'warning',
-      data: { itemId: item._id, link: '/admin/inventory' }
+      data: {
+        itemId: item._id,
+        itemName: item.name,
+        currentStock: item.currentStock,
+        reorderLevel: item.reorderLevel || item.minStock,
+        branchName: item.branch?.name,
+        unit: item.unit,
+        link: '/admin/inventory'
+      }
     });
   }
 
@@ -221,7 +293,17 @@ class NotificationService {
       message: `Ticket #${ticket.ticketNumber}: ${ticket.subject}`,
       icon: 'message-square',
       severity: 'warning',
-      data: { ticketId: ticket._id, link: `/admin/tickets/${ticket._id}` }
+      data: {
+        ticketId: ticket._id,
+        ticketNumber: ticket.ticketNumber,
+        subject: ticket.subject,
+        category: ticket.category,
+        ticketPriority: ticket.priority,
+        customerName: ticket.customer?.name,
+        customerPhone: ticket.customer?.phone,
+        status: ticket.status,
+        link: `/admin/tickets/${ticket._id}`
+      }
     });
   }
 
@@ -235,7 +317,14 @@ class NotificationService {
       message: `Refund of ₹${amount} requested for order ${order.orderNumber}`,
       icon: 'credit-card',
       severity: 'warning',
-      data: { orderId: order._id, amount, link: `/admin/refunds` }
+      data: {
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+        amount,
+        customerName: order.customer?.name,
+        paymentMethod: order.paymentMethod,
+        link: '/admin/refunds'
+      }
     });
   }
 
@@ -249,7 +338,15 @@ class NotificationService {
       message: `₹${amount} received for order ${order.orderNumber}`,
       icon: 'check-circle',
       severity: 'success',
-      data: { orderId: order._id, amount, link: `/admin/payments` }
+      data: {
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+        amount,
+        paymentMethod: order.paymentMethod,
+        customerName: order.customer?.name,
+        transactionId: order.transactionId || order.paymentId,
+        link: '/admin/payments'
+      }
     });
   }
 
@@ -343,7 +440,16 @@ class NotificationService {
       message: `Order ${order.orderNumber} assigned to your branch`,
       icon: 'shopping-bag',
       severity: 'info',
-      data: { orderId: order._id, link: `/branch/orders?id=${order._id}` }
+      data: {
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+        customerName: order.customer?.name,
+        totalAmount: order.totalAmount || order.pricing?.total,
+        itemCount: order.items?.length,
+        serviceType: order.serviceType,
+        isExpress: order.isExpress,
+        link: `/branch/orders?id=${order._id}`
+      }
     });
   }
 
@@ -394,10 +500,65 @@ class NotificationService {
   // ==================== BULK NOTIFICATIONS ====================
 
   static async notifyAllSuperAdmins(notificationData) {
+    // Use role-based routing if notification type is mapped
+    const notificationType = notificationData.type;
+    if (notificationType && NOTIFICATION_ROLE_MAP[notificationType]) {
+      return this.notifyByPlatformRole(notificationData);
+    }
+
+    // Fallback: send to all SuperAdmins (for unmapped types)
     const SuperAdmin = require('../models/SuperAdmin');
     const superAdmins = await SuperAdmin.find({ isActive: true }).select('_id');
 
     console.log(`📡 Broadcasting notification "${notificationData.title}" to ${superAdmins.length} SuperAdmins`);
+
+    const notifications = await Promise.all(
+      superAdmins.map(sa => this.createNotification({
+        ...notificationData,
+        recipientId: sa._id,
+        recipientModel: 'SuperAdmin',
+        recipientType: RECIPIENT_TYPES.SUPERADMIN
+      }))
+    );
+
+    return notifications;
+  }
+
+  /**
+   * Role-based notification routing for platform roles.
+   * Only sends notifications to SuperAdmins whose role matches the NOTIFICATION_ROLE_MAP.
+   * e.g. payment notifications → superadmin + finance + auditor (not sales/support)
+   */
+  static async notifyByPlatformRole(notificationData) {
+    const SuperAdmin = require('../models/SuperAdmin');
+    const notificationType = notificationData.type;
+    const allowedRoles = NOTIFICATION_ROLE_MAP[notificationType];
+
+    if (!allowedRoles || allowedRoles.length === 0) {
+      console.log(`⚠️ No role mapping for notification type: ${notificationType}, sending to all`);
+      const superAdmins = await SuperAdmin.find({ isActive: true }).select('_id');
+      return Promise.all(
+        superAdmins.map(sa => this.createNotification({
+          ...notificationData,
+          recipientId: sa._id,
+          recipientModel: 'SuperAdmin',
+          recipientType: RECIPIENT_TYPES.SUPERADMIN
+        }))
+      );
+    }
+
+    // Find SuperAdmins whose role matches any of the allowed roles
+    const superAdmins = await SuperAdmin.find({
+      isActive: true,
+      role: { $in: allowedRoles }
+    }).select('_id role');
+
+    if (superAdmins.length === 0) {
+      console.log(`⚠️ No SuperAdmins found for roles: ${allowedRoles.join(', ')}`);
+      return [];
+    }
+
+    console.log(`📡 Role-based notification "${notificationData.title}" → ${allowedRoles.join(', ')} (${superAdmins.length} recipients)`);
 
     const notifications = await Promise.all(
       superAdmins.map(sa => this.createNotification({
@@ -873,6 +1034,256 @@ class NotificationService {
         error: error.message,
         timestamp: new Date(),
         link: '/admin/support'
+      }
+    });
+  }
+
+  // ==================== MISSING IMPLEMENTATIONS ====================
+
+  static async notifyOrderInProcess(customerId, order, tenancy) {
+    return this.createNotification({
+      recipientId: customerId,
+      recipientType: RECIPIENT_TYPES.CUSTOMER,
+      tenancy,
+      type: NOTIFICATION_TYPES.ORDER_IN_PROCESS,
+      title: 'Order Processing',
+      message: `Your order ${order.orderNumber} is now being processed.`,
+      icon: 'package',
+      severity: 'info',
+      data: {
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+        status: 'in_process',
+        branchName: order.branch?.name,
+        link: `/customer/orders/${order._id}`
+      }
+    });
+  }
+
+  static async notifyOrderCancelled(customerId, order, tenancy) {
+    return this.createNotification({
+      recipientId: customerId,
+      recipientType: RECIPIENT_TYPES.CUSTOMER,
+      tenancy,
+      type: NOTIFICATION_TYPES.ORDER_CANCELLED,
+      title: 'Order Cancelled',
+      message: `Your order ${order.orderNumber} has been cancelled.`,
+      icon: 'x-circle',
+      severity: 'error',
+      data: {
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+        totalAmount: order.totalAmount || order.pricing?.total,
+        status: 'cancelled',
+        reason: order.cancellationReason,
+        link: `/customer/orders/${order._id}`
+      }
+    });
+  }
+
+  static async notifyAdminOrderCancelled(adminId, order, tenancy) {
+    return this.createNotification({
+      recipientId: adminId,
+      recipientType: RECIPIENT_TYPES.ADMIN,
+      tenancy,
+      type: NOTIFICATION_TYPES.ORDER_CANCELLED,
+      title: 'Order Cancelled',
+      message: `Order ${order.orderNumber} from ${order.customer?.name || 'Customer'} has been cancelled`,
+      icon: 'x-circle',
+      severity: 'warning',
+      data: {
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+        customerName: order.customer?.name,
+        totalAmount: order.totalAmount || order.pricing?.total,
+        reason: order.cancellationReason,
+        link: `/admin/orders?id=${order._id}`
+      }
+    });
+  }
+
+  static async notifyNewStaffAdded(adminId, staff, tenancy) {
+    return this.createNotification({
+      recipientId: adminId,
+      recipientType: RECIPIENT_TYPES.ADMIN,
+      tenancy,
+      type: NOTIFICATION_TYPES.NEW_STAFF_ADDED,
+      title: 'New Staff Member Added',
+      message: `${staff.name} has been added as ${staff.role}`,
+      icon: 'user-plus',
+      severity: 'info',
+      data: {
+        staffName: staff.name,
+        role: staff.role,
+        email: staff.email,
+        branchName: staff.branch?.name,
+        link: '/admin/staff'
+      }
+    });
+  }
+
+  static async notifyStaffRemoved(adminId, staff, tenancy) {
+    return this.createNotification({
+      recipientId: adminId,
+      recipientType: RECIPIENT_TYPES.ADMIN,
+      tenancy,
+      type: NOTIFICATION_TYPES.STAFF_REMOVED,
+      title: 'Staff Member Removed',
+      message: `${staff.name} has been removed from the team`,
+      icon: 'user-minus',
+      severity: 'warning',
+      data: {
+        staffName: staff.name,
+        role: staff.role,
+        link: '/admin/staff'
+      }
+    });
+  }
+
+  static async notifyNewBranchCreated(adminId, branch, tenancy) {
+    return this.createNotification({
+      recipientId: adminId,
+      recipientType: RECIPIENT_TYPES.ADMIN,
+      tenancy,
+      type: NOTIFICATION_TYPES.NEW_BRANCH_CREATED,
+      title: 'New Branch Created',
+      message: `Branch "${branch.name}" has been created`,
+      icon: 'building',
+      severity: 'success',
+      data: {
+        branchName: branch.name,
+        branchCode: branch.code,
+        city: branch.city,
+        link: '/admin/branches'
+      }
+    });
+  }
+
+  static async notifyBranchAdminAssigned(branchAdminId, branch, tenancy) {
+    return this.createNotification({
+      recipientId: branchAdminId,
+      recipientType: RECIPIENT_TYPES.BRANCH_ADMIN,
+      tenancy,
+      type: NOTIFICATION_TYPES.BRANCH_ADMIN_ASSIGNED,
+      title: 'Branch Admin Assigned',
+      message: `You have been assigned as admin for branch "${branch.name}"`,
+      icon: 'user-check',
+      severity: 'success',
+      data: {
+        branchName: branch.name,
+        branchId: branch._id,
+        link: '/admin/branches'
+      }
+    });
+  }
+
+  static async notifyAccountLocked(userId, reason, tenancy) {
+    return this.createNotification({
+      recipientId: userId,
+      recipientType: RECIPIENT_TYPES.ADMIN,
+      tenancy,
+      type: NOTIFICATION_TYPES.ACCOUNT_LOCKED,
+      title: 'Account Locked',
+      message: `Your account has been locked. ${reason || 'Contact support for assistance.'}`,
+      icon: 'shield-alert',
+      severity: 'error',
+      priority: 'P0',
+      data: {
+        reason,
+        timestamp: new Date(),
+        link: '/admin/security'
+      }
+    });
+  }
+
+  static async notifyPlanDowngraded(adminId, tenancy, oldPlan, newPlan) {
+    return this.createNotification({
+      recipientId: adminId,
+      recipientType: RECIPIENT_TYPES.ADMIN,
+      tenancy: tenancy._id,
+      type: NOTIFICATION_TYPES.PLAN_DOWNGRADED,
+      title: 'Plan Downgraded',
+      message: `Your plan has been downgraded from ${oldPlan} to ${newPlan}`,
+      icon: 'trending-down',
+      severity: 'warning',
+      data: {
+        oldPlan,
+        newPlan,
+        link: '/admin/billing'
+      }
+    });
+  }
+
+  static async notifyMilestoneAchieved(customerId, milestone, tenancy) {
+    return this.createNotification({
+      recipientId: customerId,
+      recipientType: RECIPIENT_TYPES.CUSTOMER,
+      tenancy,
+      type: NOTIFICATION_TYPES.MILESTONE_ACHIEVED,
+      title: 'Milestone Achieved!',
+      message: `Congratulations! You've reached ${milestone.name}`,
+      icon: 'trophy',
+      severity: 'success',
+      data: {
+        milestoneName: milestone.name,
+        reward: milestone.reward,
+        points: milestone.points,
+        link: '/customer/rewards'
+      }
+    });
+  }
+
+  static async notifyVipUpgrade(customerId, tenancy) {
+    return this.createNotification({
+      recipientId: customerId,
+      recipientType: RECIPIENT_TYPES.CUSTOMER,
+      tenancy,
+      type: NOTIFICATION_TYPES.VIP_UPGRADE,
+      title: 'VIP Status Unlocked!',
+      message: 'Congratulations! You have been upgraded to VIP status with exclusive benefits.',
+      icon: 'crown',
+      severity: 'success',
+      data: {
+        tier: 'VIP',
+        link: '/customer/rewards'
+      }
+    });
+  }
+
+  static async notifyInvoiceGenerated(adminId, invoice, tenancy) {
+    return this.createNotification({
+      recipientId: adminId,
+      recipientType: RECIPIENT_TYPES.ADMIN,
+      tenancy: tenancy._id || tenancy,
+      type: NOTIFICATION_TYPES.INVOICE_GENERATED,
+      title: 'Invoice Generated',
+      message: `Invoice #${invoice.invoiceNumber || invoice._id} for ₹${invoice.amount} has been generated`,
+      icon: 'file-text',
+      severity: 'info',
+      data: {
+        invoiceId: invoice._id,
+        invoiceNumber: invoice.invoiceNumber,
+        amount: invoice.amount,
+        link: '/admin/billing'
+      }
+    });
+  }
+
+  static async notifySuperAdminLeadConverted(superAdminId, lead) {
+    return this.createNotification({
+      recipientId: superAdminId,
+      recipientModel: 'SuperAdmin',
+      recipientType: RECIPIENT_TYPES.SUPERADMIN,
+      type: NOTIFICATION_TYPES.LEAD_CONVERTED,
+      title: 'Lead Converted',
+      message: `Lead "${lead.businessName || lead.name}" has been converted to a tenant`,
+      icon: 'check-circle',
+      severity: 'success',
+      data: {
+        leadId: lead._id,
+        businessName: lead.businessName || lead.name,
+        email: lead.email,
+        link: '/leads'
       }
     });
   }

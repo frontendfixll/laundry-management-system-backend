@@ -321,6 +321,26 @@ exports.convertLead = asyncHandler(async (req, res) => {
 
   await lead.convertToCustomer(tenancyId);
 
+  // Notify SuperAdmins about lead conversion
+  try {
+    const NotificationService = require('../services/notificationService');
+    await NotificationService.notifyAllSuperAdmins({
+      type: 'lead_converted',
+      title: 'Lead Converted',
+      message: `Lead "${lead.businessName || lead.name}" has been converted to a tenant`,
+      icon: 'check-circle',
+      severity: 'success',
+      data: {
+        leadId: lead._id,
+        businessName: lead.businessName || lead.name,
+        email: lead.email,
+        link: '/leads'
+      }
+    });
+  } catch (error) {
+    console.log('Failed to send lead conversion notification:', error.message);
+  }
+
   // Update sales user performance (only for sales users)
   if (req.salesUser) {
     await req.salesUser.updatePerformance({

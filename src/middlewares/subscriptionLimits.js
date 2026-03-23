@@ -79,6 +79,25 @@ const checkLimit = (limitKey, Model, queryBuilder) => {
         remaining: limit - currentCount
       };
 
+      // Notify admin when usage reaches 80% of limit
+      const usagePercent = (currentCount / limit) * 100;
+      if (usagePercent >= 80 && usagePercent < 100) {
+        try {
+          const NotificationService = require('../services/notificationService');
+          const limitNames = { max_orders: 'Orders', max_branches: 'Branches', max_staff: 'Staff', max_customers: 'Customers' };
+          const resourceName = limitNames[limitKey] || limitKey.replace('max_', '');
+          await NotificationService.notifyUsageLimitReached(
+            req.user._id,
+            { _id: tenancyId },
+            resourceName,
+            currentCount,
+            limit
+          );
+        } catch (err) {
+          // Non-blocking
+        }
+      }
+
       next();
     } catch (error) {
       console.error('Subscription limit check error:', error);

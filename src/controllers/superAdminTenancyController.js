@@ -346,6 +346,18 @@ const tenancyController = {
         });
       }
 
+      // Notify tenancy admins about status change
+      try {
+        const NotificationService = require('../services/notificationService');
+        const User = require('../models/User');
+        const admins = await User.find({ tenancy: id, role: 'admin', isActive: true }).select('_id');
+        for (const admin of admins) {
+          await NotificationService.notifyTenancySettingsUpdated(admin._id, `Status changed to ${status}`, id);
+        }
+      } catch (err) {
+        console.log('Failed to send tenancy status notification:', err.message);
+      }
+
       res.json({
         success: true,
         message: `Tenancy ${status}`,

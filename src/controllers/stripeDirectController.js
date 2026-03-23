@@ -1140,7 +1140,7 @@ async function handlePaymentFailed(paymentIntent) {
   try {
     // Create a support ticket for failed payment
     const Ticket = require('../models/Ticket');
-    
+
     await Ticket.create({
       title: `Payment Failed - ${paymentIntent.id}`,
       description: `Payment of ₹${paymentIntent.amount ? (paymentIntent.amount / 100).toLocaleString() : 'N/A'} failed. Reason: ${paymentIntent.last_payment_error?.message || 'Unknown error'}`,
@@ -1155,9 +1155,23 @@ async function handlePaymentFailed(paymentIntent) {
         customerEmail: paymentIntent.receipt_email
       }
     });
-    
+
     console.log('🎫 Support ticket created for failed payment');
-    
+
+    // Notify admins about payment failure
+    const NotificationService = require('../services/notificationService');
+    const Order = require('../models/Order');
+    const User = require('../models/User');
+
+    // Try to find the order associated with this payment
+    const order = await Order.findOne({ 'paymentDetails.paymentIntentId': paymentIntent.id }).populate('customer', 'name');
+    if (order && order.tenancy) {
+      const admins = await User.find({ tenancy: order.tenancy, role: 'admin', isActive: true }).select('_id');
+      for (const admin of admins) {
+        await NotificationService.notifyPaymentFailed(admin._id, { _id: order.tenancy }, paymentIntent.amount ? paymentIntent.amount / 100 : 0, paymentIntent.last_payment_error?.message || 'Unknown');
+      }
+    }
+
   } catch (error) {
     console.error('❌ Failed to create support ticket for failed payment:', error.message);
   }

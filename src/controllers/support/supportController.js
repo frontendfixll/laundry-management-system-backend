@@ -399,6 +399,32 @@ const resolveTicket = asyncHandler(async (req, res) => {
   const updatedTicket = await Ticket.findById(ticketId)
     .populate('resolvedBy', 'name');
 
+  // Notify customer that their ticket is resolved
+  if (ticket.raisedBy) {
+    try {
+      const NotificationService = require('../../services/notificationService');
+      await NotificationService.createNotification({
+        recipientId: ticket.raisedBy,
+        recipientType: 'customer',
+        tenancy: ticket.tenancy,
+        type: 'ticket_resolved',
+        title: 'Ticket Resolved',
+        message: `Your support ticket "${ticket.title}" has been resolved.`,
+        icon: 'check-circle',
+        severity: 'success',
+        data: {
+          ticketId: ticket._id,
+          ticketNumber: ticket._id.toString().slice(-6).toUpperCase(),
+          subject: ticket.title,
+          resolution,
+          link: `/customer/tickets/${ticket._id}`
+        }
+      });
+    } catch (error) {
+      console.log('Failed to send ticket resolved notification:', error.message);
+    }
+  }
+
   sendSuccess(res, { ticket: updatedTicket }, 'Ticket resolved successfully');
 });
 

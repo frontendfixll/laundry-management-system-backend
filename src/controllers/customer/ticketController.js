@@ -59,6 +59,28 @@ const createTicket = asyncHandler(async (req, res) => {
     .populate('raisedBy', 'name email')
     .populate('relatedOrder', 'orderNumber status');
 
+  // Notify tenancy admins about new complaint
+  if (tenancyId) {
+    try {
+      const NotificationService = require('../../services/notificationService');
+      const User = require('../../models/User');
+      const admins = await User.find({ tenancy: tenancyId, role: { $in: ['admin', 'support'] }, isActive: true }).select('_id');
+      for (const admin of admins) {
+        await NotificationService.notifyNewComplaint(admin._id, {
+          _id: ticket._id,
+          ticketNumber: ticket._id.toString().slice(-6).toUpperCase(),
+          subject: title,
+          category,
+          priority: 'medium',
+          status: 'open',
+          customer: { name: req.user.name, phone: req.user.phone }
+        }, tenancyId);
+      }
+    } catch (error) {
+      console.log('Failed to send new complaint notification:', error.message);
+    }
+  }
+
   sendSuccess(res, { ticket: populatedTicket }, 'Ticket created successfully', 201);
 });
 

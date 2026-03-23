@@ -142,6 +142,14 @@ class AdminBranchController {
 
       console.log('✅ Branch created successfully:', branch._id)
 
+      // Notify admin about new branch
+      try {
+        const NotificationService = require('../../services/notificationService');
+        await NotificationService.notifyNewBranchCreated(req.user._id, branch, tenancyId);
+      } catch (err) {
+        console.log('Failed to send branch creation notification:', err.message);
+      }
+
       return res.status(201).json({
         success: true,
         message: 'Branch created successfully',

@@ -36,12 +36,13 @@ router.get('/stream', authenticateSuperAdmin, (req, res) => {
  */
 router.get('/', authenticateSuperAdmin, async (req, res) => {
   try {
-    const { page = 1, limit = 20, unreadOnly = false } = req.query;
-    
+    const { page = 1, limit = 20, unreadOnly = false, priority = null } = req.query;
+
     const result = await Notification.getForUser(req.admin._id, {
       page: parseInt(page),
       limit: parseInt(limit),
-      unreadOnly: unreadOnly === 'true'
+      unreadOnly: unreadOnly === 'true',
+      priority: priority || null
     });
 
     res.json({ success: true, data: result });

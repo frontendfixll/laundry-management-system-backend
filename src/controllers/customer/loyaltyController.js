@@ -251,6 +251,14 @@ const enrollInLoyalty = async (req, res) => {
           if (!user.wallet) user.wallet = { balance: 0 };
           user.wallet.balance += program.welcomeBonus.credit;
           await user.save();
+
+          // Notify customer about wallet credit
+          try {
+            const NotificationService = require('../../services/notificationService');
+            await NotificationService.notifyWalletCredited(userId, program.welcomeBonus.credit, 'Welcome bonus for joining loyalty program', tenancyId);
+          } catch (err) {
+            console.log('Failed to send wallet credit notification:', err.message);
+          }
         }
       }
     }
@@ -336,11 +344,19 @@ const redeemPoints = async (req, res) => {
           });
           
           await user.save();
-          
+
           console.log(`✅ Added ₹${value} to wallet for user ${userId} (${points} points redeemed)`);
+
+          // Notify customer about wallet credit from redemption
+          try {
+            const NotificationService = require('../../services/notificationService');
+            await NotificationService.notifyWalletCredited(userId, value, `Redeemed ${points} loyalty points`, tenancyId);
+          } catch (err) {
+            console.log('Failed to send wallet credit notification:', err.message);
+          }
         }
       }
-      
+
       res.json({
         success: true,
         message: 'Points redeemed successfully',

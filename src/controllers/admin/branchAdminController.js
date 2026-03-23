@@ -126,6 +126,14 @@ const createBranchAdmin = asyncHandler(async (req, res) => {
     .select('-password')
     .populate('assignedBranch', 'name code address');
 
+  // Notify the branch admin about their assignment
+  try {
+    const NotificationService = require('../../services/notificationService');
+    await NotificationService.notifyBranchAdminAssigned(branchAdmin._id, branch, tenancyId);
+  } catch (error) {
+    console.log('Failed to send branch admin assignment notification:', error.message);
+  }
+
   sendSuccess(res, { branchAdmin: createdAdmin }, 'Branch admin created successfully', 201);
 });
 

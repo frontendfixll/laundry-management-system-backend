@@ -142,13 +142,7 @@ class OrderService {
           break;
 
         case ORDER_STATUS.IN_PROCESS:
-          await NotificationService.createNotification({
-            recipientId: customerId,
-            type: NOTIFICATION_TYPES.ORDER_IN_PROCESS,
-            title: 'Order Being Processed',
-            message: `Your order ${order.orderNumber} is now being processed at our facility.`,
-            data: { orderId: order._id }
-          });
+          await NotificationService.notifyOrderInProcess(customerId, order, order.tenancy);
           break;
 
         case ORDER_STATUS.READY:
@@ -167,13 +161,15 @@ class OrderService {
           break;
 
         case ORDER_STATUS.CANCELLED:
-          await NotificationService.createNotification({
-            recipientId: customerId,
-            type: NOTIFICATION_TYPES.ORDER_CANCELLED,
-            title: 'Order Cancelled',
-            message: `Your order ${order.orderNumber} has been cancelled.`,
-            data: { orderId: order._id }
-          });
+          await NotificationService.notifyOrderCancelled(customerId, order, order.tenancy);
+          // Also notify admins about cancellation
+          if (order.tenancy) {
+            const User = require('../models/User');
+            const admins = await User.find({ tenancy: order.tenancy, role: 'admin', isActive: true }).select('_id');
+            for (const admin of admins) {
+              await NotificationService.notifyAdminOrderCancelled(admin._id, order, order.tenancy);
+            }
+          }
           break;
       }
     } catch (error) {
@@ -333,25 +329,16 @@ class OrderService {
     const milestones = [5, 10, 25, 50, 100];
 
     if (milestones.includes(customer.totalOrders)) {
-      await NotificationService.createNotification({
-        recipientId: customer._id,
-        type: NOTIFICATION_TYPES.MILESTONE_ACHIEVED,
-        title: 'Milestone Achieved!',
-        message: `Congratulations! You've completed ${customer.totalOrders} orders with us. Thank you for your loyalty!`,
-        data: { milestone: customer.totalOrders }
-      });
+      await NotificationService.notifyMilestoneAchieved(customer._id, {
+        name: `${customer.totalOrders} Orders`,
+        reward: 'Loyalty rewards',
+        points: customer.totalOrders * 10
+      }, customer.tenancy);
 
       // Auto-upgrade to VIP after 25 orders
       if (customer.totalOrders >= 25 && !customer.isVIP) {
         customer.isVIP = true;
-
-        await NotificationService.createNotification({
-          recipientId: customer._id,
-          type: NOTIFICATION_TYPES.VIP_UPGRADE,
-          title: 'Welcome to VIP!',
-          message: 'You are now a VIP customer! Enjoy priority processing, special discounts, and reward points on every order.',
-          data: { upgradedAt: new Date() }
-        });
+        await NotificationService.notifyVipUpgrade(customer._id, customer.tenancy);
       }
     }
   }

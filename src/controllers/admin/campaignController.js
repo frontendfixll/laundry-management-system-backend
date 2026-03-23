@@ -198,10 +198,42 @@ const updateTenantCampaign = async (req, res) => {
     if (budget !== undefined) campaign.budget = { ...campaign.budget, ...budget };
     if (limits !== undefined) campaign.limits = { ...campaign.limits, ...limits };
     if (stacking !== undefined) campaign.stacking = { ...campaign.stacking, ...stacking };
+    const previousStatus = campaign.status;
     if (status !== undefined) campaign.status = status;
-    
+
     await campaign.save();
-    
+
+    // Notify customers when campaign goes ACTIVE
+    if (status === 'ACTIVE' && previousStatus !== 'ACTIVE') {
+      try {
+        const NotificationService = require('../../services/notificationService');
+        const User = require('../../models/User');
+        const customers = await User.find({ tenancy: tenancyId, role: 'customer', isActive: true }).select('_id').limit(500);
+        for (const customer of customers) {
+          await NotificationService.createNotification({
+            recipientId: customer._id,
+            recipientType: 'customer',
+            tenancy: tenancyId,
+            type: 'new_campaign',
+            title: `New Offer: ${campaign.name}`,
+            message: campaign.description || `Check out our latest promotion!`,
+            icon: 'tag',
+            severity: 'info',
+            data: {
+              campaignId: campaign._id,
+              campaignName: campaign.name,
+              startDate: campaign.startDate,
+              endDate: campaign.endDate,
+              link: '/customer/promotions'
+            }
+          });
+        }
+        console.log(`📢 Campaign notification sent to ${customers.length} customers`);
+      } catch (err) {
+        console.log('Failed to send campaign notification:', err.message);
+      }
+    }
+
     // Update linked banner
     try {
       await updatePromotionBanner(campaign._id, 'Campaign', {
