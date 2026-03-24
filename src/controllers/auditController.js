@@ -703,7 +703,21 @@ const getRBACaudit = asyncHandler(async (req, res) => {
 
       case 'permissions':
         const SuperAdminRole = mongoose.model('SuperAdminRole')
-        data = await SuperAdminRole.find({}, 'name slug permissions isActive createdAt')
+        data = await SuperAdminRole.find({}, 'name slug description color permissions isActive createdAt updatedAt').lean()
+        // Enrich with enabled permissions count and list
+        data = data.map(role => {
+          const enabledPermissions = []
+          const CODES = { r: 'view', c: 'create', u: 'update', d: 'delete', e: 'export' }
+          if (role.permissions && typeof role.permissions === 'object') {
+            Object.entries(role.permissions).forEach(([module, permStr]) => {
+              if (typeof permStr === 'string' && permStr.length > 0 && module !== '$init') {
+                const actions = permStr.split('').map(c => CODES[c] || c).join(', ')
+                enabledPermissions.push(`${module}: ${actions}`)
+              }
+            })
+          }
+          return { ...role, enabledPermissions, permissionCount: enabledPermissions.length }
+        })
         break
 
       case 'assignments':
