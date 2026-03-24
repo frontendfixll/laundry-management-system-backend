@@ -566,57 +566,103 @@ const getFinancialAudit = asyncHandler(async (req, res) => {
 // Get security audit data
 const getSecurityAudit = asyncHandler(async (req, res) => {
   try {
-    const { type = 'failed-logins', hours = 24 } = req.query
+    const { type = 'failed-logins', page = 1, limit = 50, status, search, dateRange } = req.query
 
-    let data = {}
+    // Calculate time filter from dateRange
+    let hoursMap = { '1h': 1, '24h': 24, '7d': 168, '30d': 720 }
+    let hours = hoursMap[dateRange] || 720 // default 30 days to show more data
+    const timeFilter = { $gte: new Date(Date.now() - hours * 60 * 60 * 1000) }
+
+    const pageNum = parseInt(page) || 1
+    const limitNum = parseInt(limit) || 50
+    const skip = (pageNum - 1) * limitNum
+
+    let data = []
+    let total = 0
 
     switch (type) {
-      case 'failed-logins':
-        data = await SecurityEvent.find({
+      case 'failed-logins': {
+        const query = {
           eventType: { $in: ['LOGIN_FAILED', 'LOGIN_BRUTE_FORCE'] },
-          timestamp: { $gte: new Date(Date.now() - hours * 60 * 60 * 1000) }
-        })
-        .sort({ timestamp: -1 })
-        .limit(100)
-        .lean()
+          timestamp: timeFilter
+        }
+
+        // Status filter
+        if (status === 'blocked') {
+          query.eventType = 'LOGIN_BRUTE_FORCE'
+        } else if (status === 'active') {
+          query.resolved = { $ne: true }
+        }
+
+        // Search filter (email or IP)
+        if (search) {
+          query.$or = [
+            { userEmail: { $regex: search, $options: 'i' } },
+            { username: { $regex: search, $options: 'i' } },
+            { sourceIp: { $regex: search, $options: 'i' } }
+          ]
+        }
+
+        total = await SecurityEvent.countDocuments(query)
+        data = await SecurityEvent.find(query)
+          .sort({ timestamp: -1 })
+          .skip(skip)
+          .limit(limitNum)
+          .lean()
         break
+      }
 
       case 'permissions':
         data = await SecurityEvent.find({
           eventType: 'PERMISSION_DENIED',
-          timestamp: { $gte: new Date(Date.now() - hours * 60 * 60 * 1000) }
+          timestamp: timeFilter
         })
         .sort({ timestamp: -1 })
-        .limit(100)
+        .skip(skip)
+        .limit(limitNum)
         .lean()
+        total = await SecurityEvent.countDocuments({ eventType: 'PERMISSION_DENIED', timestamp: timeFilter })
         break
 
       case 'suspicious':
         data = await SecurityEvent.find({
           eventType: { $in: ['SUSPICIOUS_ACTIVITY', 'UNUSUAL_BEHAVIOR'] },
-          timestamp: { $gte: new Date(Date.now() - hours * 60 * 60 * 1000) }
+          timestamp: timeFilter
         })
         .sort({ riskScore: -1, timestamp: -1 })
-        .limit(100)
+        .skip(skip)
+        .limit(limitNum)
         .lean()
+        total = await SecurityEvent.countDocuments({ eventType: { $in: ['SUSPICIOUS_ACTIVITY', 'UNUSUAL_BEHAVIOR'] }, timestamp: timeFilter })
         break
 
       case 'exports':
         data = await AuditLog.find({
           action: 'DATA_EXPORT',
-          timestamp: { $gte: new Date(Date.now() - hours * 60 * 60 * 1000) }
+          timestamp: timeFilter
         })
         .populate('tenantId', 'businessName')
         .sort({ timestamp: -1 })
-        .limit(100)
+        .skip(skip)
+        .limit(limitNum)
         .lean()
+        total = await AuditLog.countDocuments({ action: 'DATA_EXPORT', timestamp: timeFilter })
         break
 
       default:
         return sendError(res, 'INVALID_TYPE', 'Invalid security audit type', 400)
     }
 
-    sendSuccess(res, { data, type }, 'Security audit data retrieved successfully')
+    sendSuccess(res, {
+      data,
+      type,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum)
+      }
+    }, 'Security audit data retrieved successfully')
 
   } catch (error) {
     console.error('Error fetching security audit data:', error)
