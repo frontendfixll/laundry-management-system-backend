@@ -703,9 +703,18 @@ const getRBACaudit = asyncHandler(async (req, res) => {
 
       case 'permissions':
         const SuperAdminRole = mongoose.model('SuperAdminRole')
-        data = await SuperAdminRole.find({}, 'name slug description color permissions isActive createdAt updatedAt').lean()
-        // Enrich with enabled permissions count and list
-        data = data.map(role => {
+        const allRoles = await SuperAdminRole.find({}, 'name slug description color permissions isActive createdAt updatedAt').lean()
+
+        // Count users per role
+        const userCounts = await SuperAdmin.aggregate([
+          { $unwind: { path: '$roles', preserveNullAndEmptyArrays: false } },
+          { $group: { _id: '$roles', count: { $sum: 1 } } }
+        ])
+        const userCountMap = {}
+        userCounts.forEach(uc => { userCountMap[uc._id.toString()] = uc.count })
+
+        // Enrich with enabled permissions count, list, and user count
+        data = allRoles.map(role => {
           const enabledPermissions = []
           const CODES = { r: 'view', c: 'create', u: 'update', d: 'delete', e: 'export' }
           if (role.permissions && typeof role.permissions === 'object') {
@@ -716,7 +725,12 @@ const getRBACaudit = asyncHandler(async (req, res) => {
               }
             })
           }
-          return { ...role, enabledPermissions, permissionCount: enabledPermissions.length }
+          return {
+            ...role,
+            enabledPermissions,
+            permissionCount: enabledPermissions.length,
+            userCount: userCountMap[role._id.toString()] || 0
+          }
         })
         break
 
