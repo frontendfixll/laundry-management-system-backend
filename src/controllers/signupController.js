@@ -154,6 +154,26 @@ const signupController = {
         if (salesUser) {
           await SalesUser.findByIdAndUpdate(salesUser._id, { $inc: { 'performance.leadsAssigned': 1 } });
         }
+        // Notify superadmins + sales user about new signup lead
+        const NotificationService = require('../services/notificationService');
+        const relayService = require('../services/relayService');
+        await NotificationService.notifyAllSuperAdmins({
+          type: 'new_lead',
+          title: 'New Signup Lead! 🚀',
+          message: `${businessName} (${ownerName}) signing up for ${plan.displayName} plan`,
+          icon: 'user-plus',
+          severity: plan.name === 'enterprise' ? 'warning' : 'info',
+          data: { leadId: lead._id, link: `/leads/${lead._id}` }
+        });
+        if (salesUser) {
+          await relayService.emitToUser(salesUser._id.toString(), 'notification', {
+            title: 'New Signup Lead Assigned! 🚀',
+            message: `${businessName} (${ownerName}) - ${plan.displayName} plan`,
+            type: 'lead',
+            priority: lead.priority,
+            data: { leadId: lead._id }
+          });
+        }
       } catch (leadErr) {
         console.log('Lead creation during signup (non-critical):', leadErr.message);
       }
@@ -311,6 +331,14 @@ const signupController = {
         });
         if (salesUser) {
           await SalesUser.findByIdAndUpdate(salesUser._id, { $inc: { 'performance.leadsAssigned': 1 } });
+          // Notify assigned sales user
+          const relayService = require('../services/relayService');
+          await relayService.emitToUser(salesUser._id.toString(), 'notification', {
+            title: 'New Free Signup Lead! 🎉',
+            message: `${businessName} (${ownerName}) - Free plan`,
+            type: 'lead',
+            priority: 'medium'
+          });
         }
       } catch (leadErr) {
         console.log('Lead creation during free signup (non-critical):', leadErr.message);
