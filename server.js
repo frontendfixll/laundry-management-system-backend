@@ -5,7 +5,7 @@ const app = require('./src/app');
 const connectDB = require('./src/config/database');
 const relayService = require('./src/services/relayService');
 
-console.log('🚀 Starting Laundry Management System Backend v2.0.2');
+console.log('🚀 Starting Laundry Management System Backend v1.0.10');
 
 // Check if running on Vercel
 const isVercel = process.env.VERCEL || process.env.VERCEL_ENV;

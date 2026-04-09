@@ -270,7 +270,7 @@ const login = async (req, res) => {
     if (!user) {
       // Track failed attempt (safe version)
       try {
-        await trackFailedAttempt(email, 'user');
+        await trackFailedAttempt(email, 'user', req);
       } catch (error) {
         console.log('Failed attempt tracking failed, but continuing login');
       }
@@ -287,7 +287,7 @@ const login = async (req, res) => {
     if (!isPasswordValid) {
       // Track failed attempt (safe version)
       try {
-        await trackFailedAttempt(email, 'user');
+        await trackFailedAttempt(email, 'user', req);
       } catch (error) {
         console.log('Failed attempt tracking failed, but continuing login');
       }

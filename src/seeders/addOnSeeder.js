@@ -29,7 +29,7 @@ const sampleAddOns = [
       }
     },
     eligibility: {
-      plans: ['basic', 'standard', 'premium'],
+      plans: ['free', 'basic', 'standard', 'premium'],
       requiredFeatures: ['multi_branch']
     },
     icon: 'building',
@@ -84,7 +84,7 @@ const sampleAddOns = [
       }
     },
     eligibility: {
-      plans: ['standard', 'premium', 'enterprise']
+      plans: ['free', 'standard', 'premium', 'enterprise']
     },
     icon: 'users',
     color: '#10B981',
@@ -129,7 +129,7 @@ const sampleAddOns = [
       ]
     },
     eligibility: {
-      plans: ['standard', 'premium', 'enterprise'],
+      plans: ['free', 'standard', 'premium', 'enterprise'],
       minUsage: {
         feature: 'total_customers',
         threshold: 50
@@ -193,7 +193,7 @@ const sampleAddOns = [
       ]
     },
     eligibility: {
-      plans: ['basic', 'standard', 'premium', 'enterprise']
+      plans: ['free', 'basic', 'standard', 'premium', 'enterprise']
     },
     icon: 'star',
     color: '#8B5CF6',
@@ -239,7 +239,7 @@ const sampleAddOns = [
       }
     },
     eligibility: {
-      plans: ['basic', 'standard', 'premium', 'enterprise']
+      plans: ['free', 'basic', 'standard', 'premium', 'enterprise']
     },
     icon: 'message-square',
     color: '#06B6D4',
@@ -288,7 +288,7 @@ const sampleAddOns = [
       ]
     },
     eligibility: {
-      plans: ['standard', 'premium', 'enterprise']
+      plans: ['free', 'standard', 'premium', 'enterprise']
     },
     icon: 'message-circle',
     color: '#25D366',
@@ -397,7 +397,7 @@ const sampleAddOns = [
       ]
     },
     eligibility: {
-      plans: ['premium', 'enterprise']
+      plans: ['basic', 'premium', 'enterprise']
     },
     icon: 'globe',
     color: '#EC4899',
@@ -447,7 +447,7 @@ const sampleAddOns = [
       ]
     },
     eligibility: {
-      plans: ['premium', 'enterprise']
+      plans: ['basic', 'premium', 'enterprise']
     },
     icon: 'headphones',
     color: '#F97316',

@@ -49,6 +49,10 @@ class CenterAdminAuthController {
       if (!admin) {
         // Log failed attempt
         try {
+          const SecurityEvent = require('../models/SecurityEvent');
+          const ipAddress = req.ip || req.connection.remoteAddress || '127.0.0.1';
+          const userAgent = req.get('User-Agent') || 'Unknown';
+
           await AuditLog.logAction({
             who: email,
             whoId: new (require('mongoose').Types.ObjectId)(),
@@ -57,10 +61,22 @@ class CenterAdminAuthController {
             action: 'failed_login',
             category: 'auth',
             description: 'Login attempt with non-existent email',
-            ipAddress: req.ip || req.connection.remoteAddress || '127.0.0.1',
-            userAgent: req.get('User-Agent') || 'Unknown',
+            ipAddress,
+            userAgent,
             status: 'failure',
             riskLevel: 'medium'
+          });
+
+          // Create SecurityEvent for audit dashboard
+          await SecurityEvent.createEvent({
+            eventType: 'LOGIN_FAILED',
+            severity: 'medium',
+            sourceIp: ipAddress,
+            userEmail: email,
+            username: email,
+            userAgent,
+            description: `SuperAdmin login attempt with non-existent email: ${email}`,
+            details: { userType: 'superadmin', reason: 'email_not_found' }
           });
 
           // TRIGGER REAL-TIME NOTIFICATION
@@ -96,6 +112,10 @@ class CenterAdminAuthController {
       if (!isValidPassword) {
         // Log failed attempt
         try {
+          const SecurityEvent = require('../models/SecurityEvent');
+          const ipAddress = req.ip || req.connection.remoteAddress || '127.0.0.1';
+          const userAgent = req.get('User-Agent') || 'Unknown';
+
           await AuditLog.logAction({
             userId: admin._id,
             userType: adminType,
@@ -103,10 +123,24 @@ class CenterAdminAuthController {
             action: 'failed_login',
             category: 'auth',
             description: 'Login attempt with invalid password',
-            ipAddress: req.ip || req.connection.remoteAddress || '127.0.0.1',
-            userAgent: req.get('User-Agent') || 'Unknown',
+            ipAddress,
+            userAgent,
             status: 'failure',
             riskLevel: 'high'
+          });
+
+          // Create SecurityEvent for audit dashboard
+          await SecurityEvent.createEvent({
+            eventType: 'LOGIN_FAILED',
+            severity: 'high',
+            sourceIp: ipAddress,
+            userEmail: admin.email,
+            username: admin.email,
+            userAgent,
+            userId: admin._id,
+            userRole: adminType === 'superadmin' ? 'Super Admin' : 'Center Admin',
+            description: `Failed ${adminType} login attempt (wrong password): ${admin.email}`,
+            details: { userType: adminType, reason: 'invalid_password' }
           });
 
           // TRIGGER REAL-TIME NOTIFICATION
