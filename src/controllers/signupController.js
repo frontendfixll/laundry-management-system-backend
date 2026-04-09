@@ -4,6 +4,16 @@ const { BillingPlan } = require('../models/TenancyBilling');
 const Tenancy = require('../models/Tenancy');
 const User = require('../models/User');
 const FeatureDefinition = require('../models/FeatureDefinition');
+const Lead = require('../models/Lead');
+const SalesUser = require('../models/SalesUser');
+
+// Helper: find least-loaded active sales user
+async function findAvailableSalesUser() {
+  try {
+    const salesUsers = await SalesUser.find({ isActive: true }).sort({ 'performance.leadsAssigned': 1 });
+    return salesUsers.length > 0 ? salesUsers[0] : null;
+  } catch (e) { return null; }
+}
 
 // Initialize Stripe
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
@@ -121,6 +131,52 @@ const signupController = {
         ipAddress: req.ip,
         userAgent: req.get('User-Agent')
       });
+
+      // Create lead for sales tracking (non-blocking)
+      try {
+        const salesUser = await findAvailableSalesUser();
+        const lead = await Lead.create({
+          businessName,
+          businessType: 'small_laundry',
+          contactPerson: { name: ownerName, email: email.toLowerCase(), phone },
+          address: address || {},
+          status: 'new',
+          source: 'website',
+          interestedPlan: plan.name,
+          estimatedRevenue: price * 12,
+          requirements: { numberOfBranches: 1 },
+          priority: plan.name === 'enterprise' ? 'urgent' : plan.name === 'pro' ? 'high' : 'medium',
+          score: plan.name === 'enterprise' ? 80 : plan.name === 'pro' ? 70 : 60,
+          tags: ['self_service_signup', 'direct_checkout'],
+          assignedTo: salesUser?._id || null,
+          assignedDate: salesUser ? new Date() : null
+        });
+        if (salesUser) {
+          await SalesUser.findByIdAndUpdate(salesUser._id, { $inc: { 'performance.leadsAssigned': 1 } });
+        }
+        // Notify superadmins + sales user about new signup lead
+        const NotificationService = require('../services/notificationService');
+        const relayService = require('../services/relayService');
+        await NotificationService.notifyAllSuperAdmins({
+          type: 'new_lead',
+          title: 'New Signup Lead! 🚀',
+          message: `${businessName} (${ownerName}) signing up for ${plan.displayName} plan`,
+          icon: 'user-plus',
+          severity: plan.name === 'enterprise' ? 'warning' : 'info',
+          data: { leadId: lead._id, link: `/leads/${lead._id}` }
+        });
+        if (salesUser) {
+          await relayService.emitToUser(salesUser._id.toString(), 'notification', {
+            title: 'New Signup Lead Assigned! 🚀',
+            message: `${businessName} (${ownerName}) - ${plan.displayName} plan`,
+            type: 'lead',
+            priority: lead.priority,
+            data: { leadId: lead._id }
+          });
+        }
+      } catch (leadErr) {
+        console.log('Lead creation during signup (non-critical):', leadErr.message);
+      }
 
       // Create Stripe checkout session
       const marketingUrl = process.env.MARKETING_URL || 'http://localhost:3004';
@@ -253,6 +309,41 @@ const signupController = {
       user.tenancy = tenancy._id;
       await user.save();
 
+      // Create lead for sales tracking (non-blocking)
+      try {
+        const salesUser = await findAvailableSalesUser();
+        await Lead.create({
+          businessName,
+          businessType: 'small_laundry',
+          contactPerson: { name: ownerName, email: email.toLowerCase(), phone },
+          address: address || {},
+          status: 'new',
+          source: 'website',
+          interestedPlan: plan.name,
+          estimatedRevenue: 0,
+          requirements: { numberOfBranches: 1 },
+          priority: 'medium',
+          score: 55,
+          tags: ['self_service_signup', 'free_plan'],
+          tenancyId: tenancy._id,
+          assignedTo: salesUser?._id || null,
+          assignedDate: salesUser ? new Date() : null
+        });
+        if (salesUser) {
+          await SalesUser.findByIdAndUpdate(salesUser._id, { $inc: { 'performance.leadsAssigned': 1 } });
+          // Notify assigned sales user
+          const relayService = require('../services/relayService');
+          await relayService.emitToUser(salesUser._id.toString(), 'notification', {
+            title: 'New Free Signup Lead! 🎉',
+            message: `${businessName} (${ownerName}) - Free plan`,
+            type: 'lead',
+            priority: 'medium'
+          });
+        }
+      } catch (leadErr) {
+        console.log('Lead creation during free signup (non-critical):', leadErr.message);
+      }
+
       // Notify all superadmins about new free signup
       try {
         const NotificationService = require('../services/notificationService');
@@ -285,7 +376,7 @@ const signupController = {
             email: user.email,
             name: user.name
           },
-          loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/login`
+          loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:3005'}/auth/login`
         }
       });
 
@@ -329,7 +420,7 @@ const signupController = {
           message: 'Account already created',
           data: {
             tenancy: pendingSignup.tenancy,
-            loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/login`
+            loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:3005'}/auth/login`
           }
         });
       }
@@ -389,7 +480,7 @@ const signupController = {
             email: pendingSignup.email,
             name: pendingSignup.ownerName
           },
-          loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/login`
+          loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:3005'}/auth/login`
         };
       }
     }
@@ -415,7 +506,7 @@ const signupController = {
               email: user.email,
               name: user.name
             },
-            loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/login`
+            loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:3005'}/auth/login`
           };
         }
       }
@@ -534,7 +625,7 @@ const signupController = {
         email: user.email,
         name: user.name
       },
-      loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/login`
+      loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:3005'}/auth/login`
     };
   },
 

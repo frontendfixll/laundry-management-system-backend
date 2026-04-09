@@ -1,6 +1,8 @@
 const Lead = require('../models/Lead');
 const SalesUser = require('../models/SalesUser');
 const { sendSuccess, sendError } = require('../utils/helpers');
+const NotificationService = require('../services/notificationService');
+const relayService = require('../services/relayService');
 
 /**
  * @route   POST /api/public/leads
@@ -16,6 +18,7 @@ exports.createPublicLead = async (req, res) => {
       businessName,
       businessType,
       interestedPlan,
+      interestedAddOn,
       expectedMonthlyOrders,
       currentBranches,
       address,
@@ -44,6 +47,7 @@ exports.createPublicLead = async (req, res) => {
     else if (currentBranches > 2) score += 5;
 
     if (address && address.city) score += 5;
+    if (interestedAddOn) score += 10; // Add-on interest shows higher purchase intent
 
     // Auto-assign to available sales user (round-robin or least loaded)
     const salesUser = await findAvailableSalesUser();
@@ -61,6 +65,7 @@ exports.createPublicLead = async (req, res) => {
       status: 'new',
       source: source || 'website',
       interestedPlan: interestedPlan || 'undecided',
+      interestedAddOn: interestedAddOn || null,
       estimatedRevenue: calculateEstimatedRevenue(interestedPlan, expectedMonthlyOrders),
       requirements: {
         numberOfBranches: currentBranches || 1,
@@ -95,7 +100,32 @@ exports.createPublicLead = async (req, res) => {
       });
     }
 
-    // 5. Generate direct purchase link if a paid plan is selected
+    // 5. Send real-time notification to superadmins + assigned sales user
+    try {
+      await NotificationService.notifyAllSuperAdmins({
+        type: 'new_lead',
+        title: 'New Lead! 🎯',
+        message: `${businessName} (${name}) interested in ${interestedPlan || 'undecided'} plan${interestedAddOn ? ` + ${interestedAddOn} add-on` : ''}`,
+        icon: 'user-plus',
+        severity: lead.priority === 'urgent' || lead.priority === 'high' ? 'warning' : 'info',
+        data: { leadId: lead._id, link: `/leads/${lead._id}` }
+      });
+
+      // Notify assigned sales user via relay
+      if (salesUser) {
+        await relayService.emitToUser(salesUser._id.toString(), 'notification', {
+          title: 'New Lead Assigned! 🎯',
+          message: `${businessName} (${name}) - ${interestedPlan || 'undecided'} plan`,
+          type: 'lead',
+          priority: lead.priority,
+          data: { leadId: lead._id }
+        });
+      }
+    } catch (notifyErr) {
+      console.log('Lead notification (non-critical):', notifyErr.message);
+    }
+
+    // 6. Generate direct purchase link if a paid plan is selected
     let checkoutUrl = null;
     if (interestedPlan && !['free', 'undecided'].includes(interestedPlan)) {
       try {

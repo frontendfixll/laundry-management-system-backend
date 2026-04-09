@@ -12,7 +12,7 @@ const FAILED_ATTEMPT_LIMIT = 5;
 const FAILED_ATTEMPT_WINDOW = 15 * 60 * 1000; // 15 minutes
 
 // Helper function to track failed attempts
-const trackFailedAttempt = async (identifier, userType = 'user') => {
+const trackFailedAttempt = async (identifier, userType = 'user', req = null) => {
   const key = `${userType}:${identifier}`;
   const now = Date.now();
 
@@ -26,47 +26,71 @@ const trackFailedAttempt = async (identifier, userType = 'user') => {
   recentAttempts.push(now);
   failedAttempts.set(key, recentAttempts);
 
-  // Send notification if threshold reached
-  if (recentAttempts.length >= FAILED_ATTEMPT_LIMIT) {
-    try {
-      const NotificationService = require('../services/notificationService');
-      const AuditLog = require('../models/AuditLog');
+  // Extract IP and user agent from request if available
+  const ipAddress = req ? (req.ip || req.connection?.remoteAddress || '127.0.0.1') : 'unknown';
+  const userAgent = req ? (req.get?.('User-Agent') || 'Unknown') : 'Unknown';
 
-      // Find user to get their ID and tenancy
-      let user = null;
-      let tenancyId = null;
+  try {
+    const NotificationService = require('../services/notificationService');
+    const AuditLog = require('../models/AuditLog');
+    const SecurityEvent = require('../models/SecurityEvent');
 
-      if (userType === 'user') {
-        user = await User.findOne({ email: identifier }).select('_id tenancy');
-        tenancyId = user?.tenancy;
-      } else if (userType === 'superadmin') {
-        user = await SuperAdmin.findOne({ email: identifier }).select('_id');
-      }
+    // Find user to get their ID and tenancy
+    let user = null;
+    let tenancyId = null;
 
-      // LOG TO AUDIT TRAIL
-      await AuditLog.logAction({
-        userId: user ? user._id : null,
-        userType: userType === 'superadmin' ? 'center_admin' : 'user',
-        userEmail: identifier,
-        action: 'failed_login',
-        category: 'auth',
-        description: `Failed login attempt (${recentAttempts.length} recent)`,
-        ipAddress: 'tracked-middleware', // We don't have req here easily
-        status: 'failure',
-        riskLevel: recentAttempts.length >= FAILED_ATTEMPT_LIMIT ? 'high' : 'low'
-      });
-
-      if (user && recentAttempts.length >= FAILED_ATTEMPT_LIMIT) {
-        await NotificationService.notifyMultipleLoginAttempts(
-          user._id,
-          recentAttempts.length,
-          tenancyId
-        );
-        console.log(`🚨 Security alert sent for ${recentAttempts.length} failed attempts on ${identifier}`);
-      }
-    } catch (error) {
-      console.error('Failed to send security notification/log:', error);
+    if (userType === 'user') {
+      user = await User.findOne({ email: identifier }).select('_id tenancy');
+      tenancyId = user?.tenancy;
+    } else if (userType === 'superadmin') {
+      user = await SuperAdmin.findOne({ email: identifier }).select('_id');
     }
+
+    // Always create SecurityEvent for every failed login
+    const isBruteForce = recentAttempts.length >= FAILED_ATTEMPT_LIMIT;
+    await SecurityEvent.createEvent({
+      eventType: isBruteForce ? 'LOGIN_BRUTE_FORCE' : 'LOGIN_FAILED',
+      severity: isBruteForce ? 'critical' : recentAttempts.length >= 3 ? 'high' : 'medium',
+      sourceIp: ipAddress,
+      userEmail: identifier,
+      username: identifier,
+      userAgent: userAgent,
+      userId: user?._id || null,
+      tenantId: tenancyId || null,
+      description: isBruteForce
+        ? `Brute force detected: ${recentAttempts.length} failed attempts in ${FAILED_ATTEMPT_WINDOW / 60000} minutes`
+        : `Failed login attempt for ${identifier}`,
+      details: {
+        attemptCount: recentAttempts.length,
+        userType,
+        window: `${FAILED_ATTEMPT_WINDOW / 60000} minutes`
+      }
+    });
+
+    // LOG TO AUDIT TRAIL
+    await AuditLog.logAction({
+      userId: user ? user._id : null,
+      userType: userType === 'superadmin' ? 'center_admin' : 'user',
+      userEmail: identifier,
+      action: 'failed_login',
+      category: 'auth',
+      description: `Failed login attempt (${recentAttempts.length} recent)`,
+      ipAddress: ipAddress,
+      status: 'failure',
+      riskLevel: recentAttempts.length >= FAILED_ATTEMPT_LIMIT ? 'high' : 'low'
+    });
+
+    // Send notification if threshold reached
+    if (user && recentAttempts.length >= FAILED_ATTEMPT_LIMIT) {
+      await NotificationService.notifyMultipleLoginAttempts(
+        user._id,
+        recentAttempts.length,
+        tenancyId
+      );
+      console.log(`🚨 Security alert sent for ${recentAttempts.length} failed attempts on ${identifier}`);
+    }
+  } catch (error) {
+    console.error('Failed to send security notification/log:', error);
   }
 
   return recentAttempts.length;
