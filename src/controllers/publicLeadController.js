@@ -16,6 +16,7 @@ exports.createPublicLead = async (req, res) => {
       businessName,
       businessType,
       interestedPlan,
+      interestedAddOn,
       expectedMonthlyOrders,
       currentBranches,
       address,
@@ -44,6 +45,7 @@ exports.createPublicLead = async (req, res) => {
     else if (currentBranches > 2) score += 5;
 
     if (address && address.city) score += 5;
+    if (interestedAddOn) score += 10; // Add-on interest shows higher purchase intent
 
     // Auto-assign to available sales user (round-robin or least loaded)
     const salesUser = await findAvailableSalesUser();
@@ -61,6 +63,7 @@ exports.createPublicLead = async (req, res) => {
       status: 'new',
       source: source || 'website',
       interestedPlan: interestedPlan || 'undecided',
+      interestedAddOn: interestedAddOn || null,
       estimatedRevenue: calculateEstimatedRevenue(interestedPlan, expectedMonthlyOrders),
       requirements: {
         numberOfBranches: currentBranches || 1,

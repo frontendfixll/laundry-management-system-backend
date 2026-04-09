@@ -61,6 +61,10 @@ const leadSchema = new mongoose.Schema({
     enum: ['free', 'basic', 'pro', 'enterprise', 'custom', 'undecided'],
     default: 'undecided'
   },
+  interestedAddOn: {
+    type: String,
+    default: null
+  },
   estimatedRevenue: { type: Number, default: 0 },
   
   // Requirements

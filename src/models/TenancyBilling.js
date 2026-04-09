@@ -44,7 +44,7 @@ const billingPlanSchema = new mongoose.Schema({
   },
   
   // Trial settings
-  trialDays: { type: Number, default: 60 }, // 2 months trial
+  trialDays: { type: Number, default: 5 }, // 5 days trial for free plan
   
   // Highlight this plan on pricing page
   isPopular: { type: Boolean, default: false },

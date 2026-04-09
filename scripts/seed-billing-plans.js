@@ -7,17 +7,24 @@ const plans = [
     name: 'free',
     displayName: 'Free',
     price: { monthly: 0, yearly: 0 },
+    trialDays: 5,
     features: {
-      maxOrders: 50,
-      maxStaff: 2,
-      maxCustomers: 100,
+      maxOrders: 10,
+      maxStaff: 1,
+      maxCustomers: 2,
       maxBranches: 1,
+      wash_fold: true,
+      dry_cleaning: true,
+      ironing: true,
       customDomain: false,
       advancedAnalytics: false,
       apiAccess: false,
       whiteLabel: false,
       prioritySupport: false,
-      customBranding: true
+      customBranding: false,
+      campaigns: false,
+      loyalty_points: false,
+      sms_notifications: false
     }
   },
   {
