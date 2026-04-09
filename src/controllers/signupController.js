@@ -376,7 +376,7 @@ const signupController = {
             email: user.email,
             name: user.name
           },
-          loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:3005'}/auth/login`
+          loginUrl: `${process.env.FRONTEND_URL || 'https://tenacy.laundrylobby.com'}/auth/login`
         }
       });
 
@@ -420,7 +420,7 @@ const signupController = {
           message: 'Account already created',
           data: {
             tenancy: pendingSignup.tenancy,
-            loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:3005'}/auth/login`
+            loginUrl: `${process.env.FRONTEND_URL || 'https://tenacy.laundrylobby.com'}/auth/login`
           }
         });
       }
@@ -480,7 +480,7 @@ const signupController = {
             email: pendingSignup.email,
             name: pendingSignup.ownerName
           },
-          loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:3005'}/auth/login`
+          loginUrl: `${process.env.FRONTEND_URL || 'https://tenacy.laundrylobby.com'}/auth/login`
         };
       }
     }
@@ -506,7 +506,7 @@ const signupController = {
               email: user.email,
               name: user.name
             },
-            loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:3005'}/auth/login`
+            loginUrl: `${process.env.FRONTEND_URL || 'https://tenacy.laundrylobby.com'}/auth/login`
           };
         }
       }
@@ -625,7 +625,7 @@ const signupController = {
         email: user.email,
         name: user.name
       },
-      loginUrl: `${process.env.FRONTEND_URL || 'http://localhost:3005'}/auth/login`
+      loginUrl: `${process.env.FRONTEND_URL || 'https://tenacy.laundrylobby.com'}/auth/login`
     };
   },
 
