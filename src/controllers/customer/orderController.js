@@ -40,14 +40,12 @@ const createOrder = asyncHandler(async (req, res) => {
 
   const customer = await User.findById(req.user._id);
 
-  // Determine which addresses are needed based on service type
   const needsPickupAddress = serviceType === 'full_service' || serviceType === 'home_pickup_self_pickup' || !serviceType;
   const needsDeliveryAddress = serviceType === 'full_service' || serviceType === 'self_drop_home_delivery' || !serviceType;
 
   let pickupAddress = null;
   let deliveryAddress = null;
 
-  // Get pickup address if needed
   if (needsPickupAddress) {
     if (!pickupAddressId) {
       return sendError(res, 'ADDRESS_REQUIRED', 'Pickup address is required for this service type', 400);
@@ -58,7 +56,6 @@ const createOrder = asyncHandler(async (req, res) => {
     }
   }
 
-  // Get delivery address if needed
   if (needsDeliveryAddress) {
     if (!deliveryAddressId) {
       return sendError(res, 'ADDRESS_REQUIRED', 'Delivery address is required for this service type', 400);
@@ -71,14 +68,13 @@ const createOrder = asyncHandler(async (req, res) => {
 
   let branch;
 
-  // If customer selected a branch, use that
   if (branchId) {
     branch = await Branch.findOne({ _id: branchId, isActive: true });
     if (!branch) {
       return sendError(res, 'BRANCH_NOT_FOUND', 'Selected branch not found or inactive', 404);
     }
 
-    // Validate pincode: if branch has serviceAreas, address pincode must match
+    // If branch has serviceAreas, address pincode must match
     const addrToCheck = needsPickupAddress ? pickupAddress : (needsDeliveryAddress ? deliveryAddress : null);
     if (addrToCheck && branch.serviceAreas && branch.serviceAreas.length > 0) {
       const pincode = String(addrToCheck.pincode || '').trim();
@@ -91,17 +87,16 @@ const createOrder = asyncHandler(async (req, res) => {
       }
     }
   } else if (pickupAddress) {
-    // Find branch that serves this pickup pincode
     const tenancyFilter = tenancyId || req.tenancyId ? { tenancy: tenancyId || req.tenancyId } : {};
     const baseQuery = { ...tenancyFilter, isActive: true };
 
-    // Prefer branch that explicitly has this pincode in serviceAreas
+    // Prefer branch with this pincode in serviceAreas
     branch = await Branch.findOne({
       ...baseQuery,
       'serviceAreas.pincode': pickupAddress.pincode
     });
 
-    // Fallback: branch with empty serviceAreas (backward compat, distance-based service)
+    // Fallback: branch with no configured serviceAreas (distance-based)
     if (!branch) {
       branch = await Branch.findOne({
         ...baseQuery,
@@ -117,14 +112,13 @@ const createOrder = asyncHandler(async (req, res) => {
       return sendError(res, 'AREA_NOT_SERVICEABLE', 'Service not available in your area. No branch delivers to your pincode.', 400);
     }
   } else {
-    // No pickup address and no branch selected - get any active branch
+    // Self-drop with no branch selected — pick any active branch
     branch = await Branch.findOne({ isActive: true });
     if (!branch) {
       return sendError(res, 'BRANCH_NOT_FOUND', 'No active branch available', 404);
     }
   }
 
-  // Calculate pricing for each item
   const orderItems = [];
   let totalAmount = 0;
 
@@ -148,11 +142,9 @@ const createOrder = asyncHandler(async (req, res) => {
     });
   }
 
-  // Calculate order total
-  // Use delivery charge from distance calculation if available, otherwise use branch service area charge
-  let deliveryCharge = 0; // default - no delivery charge for self service
+  // Delivery charge: prefer distance-based calculation, fall back to branch serviceArea charge
+  let deliveryCharge = 0;
 
-  // Only charge delivery if home delivery is involved
   if (needsDeliveryAddress || needsPickupAddress) {
     deliveryCharge = 30; // default delivery charge
     if (deliveryDetails && typeof deliveryDetails.deliveryCharge === 'number') {
@@ -165,7 +157,6 @@ const createOrder = asyncHandler(async (req, res) => {
     }
   }
 
-  // Apply service type discount
   let serviceTypeDiscount = 0;
   if (serviceType === 'self_drop_self_pickup') {
     serviceTypeDiscount = Math.min(50, deliveryCharge); // Save up to ₹50
@@ -175,7 +166,6 @@ const createOrder = asyncHandler(async (req, res) => {
     deliveryCharge = Math.max(0, deliveryCharge - serviceTypeDiscount);
   }
 
-  // Apply automatic discounts first
   const Discount = require('../../models/Discount');
   let automaticDiscount = 0;
   let appliedDiscounts = [];
@@ -188,7 +178,6 @@ const createOrder = asyncHandler(async (req, res) => {
   console.log('========================================');
 
   if (orderTenancy) {
-    // Get all active discounts for tenancy
     const discounts = await Discount.find({
       tenancy: orderTenancy,
       isActive: true
@@ -209,7 +198,6 @@ const createOrder = asyncHandler(async (req, res) => {
       });
     }
 
-    // Create temporary order object for discount evaluation
     const tempOrder = {
       totalAmount,
       items: orderItems,
