@@ -2,6 +2,18 @@
 
 A comprehensive backend system for managing laundry services with role-based access control, order management, and multi-branch operations.
 
+## 📚 Documentation
+
+Detailed docs live in [`docs/`](./docs):
+
+- [API Reference](./docs/API.md) — all endpoints, request/response shapes
+- [API Testing Guide](./docs/API_TESTING_GUIDE.md) — example requests
+- [Email Setup Guide](./docs/EMAIL_SETUP_GUIDE.md) — Gmail SMTP setup
+- [MongoDB Atlas Setup](./docs/MONGODB_ATLAS_SETUP.md) — database setup
+- [SuperAdmin Roles](./docs/SUPERADMIN_ROLES_DOCUMENTATION.md) — role & permission model
+
+Deployment configs (nginx) live in [`deploy/`](./deploy).
+
 ## 🚀 Features
 
 ### User Roles & Permissions
