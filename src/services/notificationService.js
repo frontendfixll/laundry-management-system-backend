@@ -81,8 +81,6 @@ class NotificationService {
     }
   }
 
-  // ==================== CUSTOMER NOTIFICATIONS ====================
-
   static async notifyOrderPlaced(customerId, order, tenancy) {
     return this.createNotification({
       recipientId: customerId,
@@ -233,8 +231,6 @@ class NotificationService {
     });
   }
 
-  // ==================== ADMIN NOTIFICATIONS ====================
-
   static async notifyAdminNewOrder(adminId, order, tenancy) {
     return this.createNotification({
       recipientId: adminId,
@@ -350,8 +346,6 @@ class NotificationService {
     });
   }
 
-  // ==================== SUPER ADMIN NOTIFICATIONS ====================
-
   static async notifySuperAdminNewTenancy(superAdminId, tenancy) {
     return this.createNotification({
       recipientId: superAdminId,
@@ -428,7 +422,6 @@ class NotificationService {
     );
   }
 
-  // ==================== BRANCH ADMIN NOTIFICATIONS ====================
 
   static async notifyBranchAdminNewOrder(branchAdminId, order, tenancy) {
     return this.createNotification({
@@ -496,8 +489,6 @@ class NotificationService {
       data: { tenancyId: tenancy._id, link: `/tenancies/${tenancy._id}` }
     });
   }
-
-  // ==================== BULK NOTIFICATIONS ====================
 
   static async notifyAllSuperAdmins(notificationData) {
     // Use role-based routing if notification type is mapped
@@ -595,7 +586,6 @@ class NotificationService {
     );
   }
 
-  // ==================== UTILITY METHODS ====================
 
   static async getUserNotifications(userId, options) {
     return Notification.getForUser(userId, options);
@@ -617,7 +607,6 @@ class NotificationService {
     return Notification.getUnreadCount(userId);
   }
 
-  // ==================== PERMISSION & ROLE MANAGEMENT ====================
 
   static async notifyPermissionGranted(adminId, permission, tenancy) {
     return this.createNotification({
@@ -795,7 +784,6 @@ class NotificationService {
     });
   }
 
-  // ==================== INVENTORY MANAGEMENT ====================
 
   static async notifyInventoryRequestSubmitted(superAdminId, request, tenancy) {
     return this.createNotification({
@@ -870,7 +858,6 @@ class NotificationService {
     });
   }
 
-  // ==================== BILLING & SUBSCRIPTION ====================
 
   static async notifySubscriptionExpiring(adminId, tenancy, daysLeft) {
     const urgency = daysLeft <= 3 ? 'error' : daysLeft <= 7 ? 'warning' : 'info';
@@ -964,7 +951,6 @@ class NotificationService {
     });
   }
 
-  // ==================== SECURITY & SYSTEM ====================
 
   static async notifySecurityAlert(userId, alertType, details, tenancy) {
     return this.createNotification({
@@ -1038,7 +1024,6 @@ class NotificationService {
     });
   }
 
-  // ==================== MISSING IMPLEMENTATIONS ====================
 
   static async notifyOrderInProcess(customerId, order, tenancy) {
     return this.createNotification({

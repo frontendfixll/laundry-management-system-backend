@@ -42,7 +42,6 @@ const signupController = {
         billingCycle = 'monthly'
       } = req.body;
 
-      // Validate required fields
       if (!businessName || !ownerName || !email || !phone || !password || !planId) {
         return res.status(400).json({
           success: false,
@@ -50,7 +49,6 @@ const signupController = {
         });
       }
 
-      // Check if email already exists in Users
       const existingUser = await User.findOne({ email: email.toLowerCase() });
       if (existingUser) {
         return res.status(400).json({
@@ -59,7 +57,6 @@ const signupController = {
         });
       }
 
-      // Check if phone already exists in Users
       const existingPhone = await User.findOne({ phone: phone });
       if (existingPhone) {
         return res.status(400).json({
@@ -68,17 +65,14 @@ const signupController = {
         });
       }
 
-      // Check if there's already a pending signup with this email
       const existingPending = await PendingSignup.findOne({
         email: email.toLowerCase(),
         status: 'pending'
       });
       if (existingPending) {
-        // Delete old pending signup
         await PendingSignup.deleteOne({ _id: existingPending._id });
       }
 
-      // Get the billing plan
       const plan = await BillingPlan.findById(planId);
       if (!plan || !plan.isActive) {
         return res.status(400).json({
@@ -87,17 +81,15 @@ const signupController = {
         });
       }
 
-      // Calculate amount
       const price = billingCycle === 'yearly' ? plan.price.yearly : plan.price.monthly;
 
-      // For free plans, skip Stripe and create directly
+      // Free plans skip Stripe
       if (price === 0) {
         return await signupController.createFreeTenancy(req, res, {
           businessName, ownerName, email, phone, password, address, plan, billingCycle
         });
       }
 
-      // Check Stripe configuration
       if (!stripe) {
         return res.status(500).json({
           success: false,
@@ -108,10 +100,8 @@ const signupController = {
       const tax = Math.round(price * 0.18); // 18% GST
       const total = price + tax;
 
-      // Hash password
       const passwordHash = await bcrypt.hash(password, 12);
 
-      // Create pending signup
       const pendingSignup = await PendingSignup.create({
         businessName,
         ownerName,
@@ -132,7 +122,7 @@ const signupController = {
         userAgent: req.get('User-Agent')
       });
 
-      // Create lead for sales tracking (non-blocking)
+      // Create lead + notify sales (non-blocking)
       try {
         const salesUser = await findAvailableSalesUser();
         const lead = await Lead.create({
@@ -154,7 +144,6 @@ const signupController = {
         if (salesUser) {
           await SalesUser.findByIdAndUpdate(salesUser._id, { $inc: { 'performance.leadsAssigned': 1 } });
         }
-        // Notify superadmins + sales user about new signup lead
         const NotificationService = require('../services/notificationService');
         const relayService = require('../services/relayService');
         await NotificationService.notifyAllSuperAdmins({
@@ -178,7 +167,6 @@ const signupController = {
         console.log('Lead creation during signup (non-critical):', leadErr.message);
       }
 
-      // Create Stripe checkout session
       const marketingUrl = process.env.MARKETING_URL || 'http://localhost:3004';
 
       const session = await stripe.checkout.sessions.create({
@@ -209,7 +197,6 @@ const signupController = {
         cancel_url: `${marketingUrl}/signup/${planId}?cancelled=true`,
       });
 
-      // Store Stripe session ID
       pendingSignup.stripeSessionId = session.id;
       pendingSignup.status = 'payment_processing';
       await pendingSignup.save();
@@ -240,7 +227,6 @@ const signupController = {
     try {
       const { businessName, ownerName, email, phone, password, address, plan, billingCycle } = data;
 
-      // Check if user already exists
       let user = await User.findOne({ $or: [{ email: email.toLowerCase() }, { phone: phone }] });
       if (user) {
         return res.status(400).json({
@@ -249,13 +235,11 @@ const signupController = {
         });
       }
 
-      // Generate slug
       const slug = businessName
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-|-$/g, '');
 
-      // Check if slug exists
       let finalSlug = slug;
       let counter = 1;
       while (await Tenancy.findOne({ slug: finalSlug })) {
@@ -263,28 +247,24 @@ const signupController = {
         counter++;
       }
 
-      // Get plan features
       const features = plan.features instanceof Map
         ? Object.fromEntries(plan.features)
         : plan.features || {};
 
-      // Create user first (password will be hashed by User model pre-save hook)
       user = await User.create({
         name: ownerName,
         email: email.toLowerCase(),
         phone,
-        password: password, // Raw password - will be hashed by model
+        password: password, // hashed by User model pre-save
         role: 'admin',
         isVerified: true,
         permissions: User.getDefaultAdminPermissions()
       });
 
-      // Calculate trial end date
       const trialDays = plan.trialDays || 14;
       const trialEndsAt = new Date();
       trialEndsAt.setDate(trialEndsAt.getDate() + trialDays);
 
-      // Create tenancy
       const tenancy = await Tenancy.create({
         name: businessName,
         slug: finalSlug,
@@ -305,11 +285,10 @@ const signupController = {
         status: 'active'
       });
 
-      // Update user with tenancy
       user.tenancy = tenancy._id;
       await user.save();
 
-      // Create lead for sales tracking (non-blocking)
+      // Create lead + notify sales (non-blocking)
       try {
         const salesUser = await findAvailableSalesUser();
         await Lead.create({
@@ -331,7 +310,6 @@ const signupController = {
         });
         if (salesUser) {
           await SalesUser.findByIdAndUpdate(salesUser._id, { $inc: { 'performance.leadsAssigned': 1 } });
-          // Notify assigned sales user
           const relayService = require('../services/relayService');
           await relayService.emitToUser(salesUser._id.toString(), 'notification', {
             title: 'New Free Signup Lead! 🎉',
@@ -344,7 +322,6 @@ const signupController = {
         console.log('Lead creation during free signup (non-critical):', leadErr.message);
       }
 
-      // Notify all superadmins about new free signup
       try {
         const NotificationService = require('../services/notificationService');
         await NotificationService.notifyAllSuperAdmins({
@@ -358,8 +335,6 @@ const signupController = {
       } catch (notifyError) {
         console.error('Failed to notify superadmins about free signup:', notifyError);
       }
-
-      // TODO: Send welcome email
 
       res.status(201).json({
         success: true,
@@ -413,7 +388,6 @@ const signupController = {
         });
       }
 
-      // If already completed, return success
       if (pendingSignup.status === 'completed') {
         return res.json({
           success: true,
@@ -425,7 +399,6 @@ const signupController = {
         });
       }
 
-      // Verify with Stripe
       if (!stripe) {
         return res.status(500).json({
           success: false,
@@ -442,7 +415,6 @@ const signupController = {
         });
       }
 
-      // Create tenancy and user
       const result = await signupController.completePendingSignup(pendingSignup, session);
 
       res.json({
@@ -464,7 +436,6 @@ const signupController = {
    * Complete pending signup - creates tenancy and user
    */
   completePendingSignup: async (pendingSignup, stripeSession) => {
-    // Check if already completed
     if (pendingSignup.status === 'completed' && pendingSignup.tenancy) {
       const existingTenancy = await Tenancy.findById(pendingSignup.tenancy);
       if (existingTenancy) {
@@ -485,14 +456,12 @@ const signupController = {
       }
     }
 
-    // Check if user already exists (in case of retry)
+    // Retry scenario: user already exists
     let user = await User.findOne({ email: pendingSignup.email });
     if (user) {
-      // User already exists, check if tenancy exists
       if (user.tenancy) {
         const existingTenancy = await Tenancy.findById(user.tenancy);
         if (existingTenancy) {
-          // Mark pending signup as completed
           await pendingSignup.markCompleted(existingTenancy._id, user._id);
           return {
             tenancy: {
@@ -512,19 +481,16 @@ const signupController = {
       }
     }
 
-    // Get the plan
     const plan = await BillingPlan.findById(pendingSignup.plan);
     if (!plan) {
       throw new Error('Plan not found');
     }
 
-    // Generate slug
     const slug = pendingSignup.businessName
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-|-$/g, '');
 
-    // Check if slug exists
     let finalSlug = slug;
     let counter = 1;
     while (await Tenancy.findOne({ slug: finalSlug })) {
@@ -532,27 +498,24 @@ const signupController = {
       counter++;
     }
 
-    // Get plan features
     const features = plan.features instanceof Map
       ? Object.fromEntries(plan.features)
       : plan.features || {};
 
-    // Create user if not exists
     if (!user) {
       user = new User({
         name: pendingSignup.ownerName,
         email: pendingSignup.email,
         phone: pendingSignup.phone,
-        password: pendingSignup.passwordHash, // Already hashed
+        password: pendingSignup.passwordHash, // already hashed
         role: 'admin',
         isVerified: true,
         permissions: User.getDefaultAdminPermissions()
       });
-      user.$skipPasswordHash = true; // Skip re-hashing since password is already hashed
+      user.$skipPasswordHash = true; // password is already hashed
       await user.save();
     }
 
-    // Calculate subscription dates
     const startDate = new Date();
     const endDate = new Date();
     if (pendingSignup.billingCycle === 'yearly') {
@@ -561,7 +524,6 @@ const signupController = {
       endDate.setMonth(endDate.getMonth() + 1);
     }
 
-    // Create tenancy
     const tenancy = await Tenancy.create({
       name: pendingSignup.businessName,
       slug: finalSlug,
@@ -582,23 +544,16 @@ const signupController = {
       status: 'active'
     });
 
-    // Update user with tenancy
     user.tenancy = tenancy._id;
     await user.save();
 
-    // Mark pending signup as completed
     await pendingSignup.markCompleted(tenancy._id, user._id);
 
-    // Store payment intent
     if (stripeSession?.payment_intent) {
       pendingSignup.stripePaymentIntentId = stripeSession.payment_intent;
       await pendingSignup.save();
     }
 
-    // TODO: Send welcome email
-    // TODO: Create initial invoice record
-
-    // Notify all superadmins about new signup
     try {
       const NotificationService = require('../services/notificationService');
       await NotificationService.notifyAllSuperAdmins({
