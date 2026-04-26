@@ -240,7 +240,10 @@ const assignOrderToBranch = asyncHandler(async (req, res) => {
     return sendError(res, 'BRANCH_REQUIRED', 'Branch ID is required', 400);
   }
 
-  const order = await Order.findById(orderId);
+  // Tenant isolation: a Tenant A admin must not be able to assign a Tenant B
+  // order by guessing the order ID. Filter the lookup by the caller's tenancy.
+  const tenancyId = req.tenancyId || req.user?.tenancy;
+  const order = await Order.findOne(addTenancyFilter({ _id: orderId }, tenancyId));
   if (!order) {
     return sendError(res, 'ORDER_NOT_FOUND', 'Order not found', 404);
   }
@@ -249,7 +252,7 @@ const assignOrderToBranch = asyncHandler(async (req, res) => {
     return sendError(res, 'INVALID_STATUS', 'Order cannot be assigned at this stage', 400);
   }
 
-  const branch = await Branch.findById(branchId);
+  const branch = await Branch.findOne(addTenancyFilter({ _id: branchId }, tenancyId));
   if (!branch || !branch.isActive) {
     return sendError(res, 'BRANCH_NOT_FOUND', 'Branch not found or inactive', 404);
   }
@@ -281,7 +284,10 @@ const assignOrderToLogistics = asyncHandler(async (req, res) => {
     return sendError(res, 'MISSING_DATA', 'Logistics partner ID and type are required', 400);
   }
 
-  const order = await Order.findById(orderId);
+  // Tenant isolation: scope the order lookup so a Tenant A admin can't assign
+  // a Tenant B order to anyone.
+  const tenancyId = req.tenancyId || req.user?.tenancy;
+  const order = await Order.findOne(addTenancyFilter({ _id: orderId }, tenancyId));
   if (!order) {
     return sendError(res, 'ORDER_NOT_FOUND', 'Order not found', 404);
   }
@@ -2042,8 +2048,11 @@ const updatePaymentStatus = asyncHandler(async (req, res) => {
 // @route   POST /api/admin/fix-delivered-payments
 // @access  Private (Admin/Center Admin)
 const fixDeliveredPayments = asyncHandler(async (req, res) => {
+  // Scope by caller's tenancy — without this, an admin from any tenant
+  // could mark every delivered order across the platform as paid.
+  const tenancyId = req.tenancyId || req.user?.tenancy;
   const result = await Order.updateMany(
-    { status: ORDER_STATUS.DELIVERED, paymentStatus: 'pending' },
+    addTenancyFilter({ status: ORDER_STATUS.DELIVERED, paymentStatus: 'pending' }, tenancyId),
     {
       $set: {
         paymentStatus: 'paid',

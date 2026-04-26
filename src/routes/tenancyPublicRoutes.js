@@ -125,13 +125,30 @@ router.get('/branding/:identifier', async (req, res) => {
   }
 });
 
-// Check if subdomain is available
+// Check if subdomain is available.
+// Reserved list MUST stay in sync with frontend middleware
+// (laundry-management-system-frontend/src/middleware.ts RESERVED_ROUTES) —
+// any name in either list should be in BOTH. A real tenant slug `tenacy`
+// existed in the database before this list was expanded, slipping past the
+// signup check while the frontend middleware still routed it to FYL.
 router.get('/check-subdomain/:subdomain', async (req, res) => {
   try {
     const { subdomain } = req.params;
 
-    // Reserved subdomains
-    const reserved = ['www', 'api', 'admin', 'superadmin', 'app', 'mail', 'ftp', 'cdn'];
+    const reserved = [
+      // Infra / technical
+      'www', 'api', 'app', 'mail', 'ftp', 'cdn', '_next', 'favicon.ico',
+      'images', 'public', 'static',
+      // Routes that must remain global
+      'admin', 'auth', 'branch', 'branch-admin', 'center-admin', 'customer',
+      'support', 'staff', 'dashboard',
+      // Marketing / superadmin / debug
+      'superadmin', 'marketing', 'debug-login', 'role-switcher', 'test-auth',
+      // Public marketing pages
+      'help', 'pricing', 'services', 'track', 'version', 'releases',
+      // Frontend special subdomains
+      'tenacy', 'preview-templates',
+    ];
 
     if (reserved.includes(subdomain.toLowerCase())) {
       return res.json({
@@ -173,9 +190,30 @@ router.get('/list', async (req, res) => {
       .limit(parseInt(limit))
       .lean();
 
+    // Strip base64-encoded inline logos from the list response. Some tenants
+    // store their logo as `data:image/...;base64,...` which can be hundreds
+    // of KB per tenant; multiply by N tenants and the list response balloons
+    // to MBs. URL-based logos (http/https) are kept since they're tiny strings.
+    // Clients can fetch the full logo from /branding/:identifier if they
+    // really need it for a single tenant.
+    const cleaned = tenancies.map(t => {
+      const logoUrl = t?.branding?.logo?.url;
+      if (typeof logoUrl === 'string' && logoUrl.startsWith('data:')) {
+        return {
+          ...t,
+          branding: {
+            ...t.branding,
+            logo: { url: '', publicId: t.branding.logo.publicId || '' },
+            hasInlineLogo: true,
+          },
+        };
+      }
+      return t;
+    });
+
     res.json({
       success: true,
-      data: { tenancies }
+      data: { tenancies: cleaned }
     });
   } catch (error) {
     console.error('List tenancies error:', error);

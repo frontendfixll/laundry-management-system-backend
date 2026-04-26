@@ -117,7 +117,10 @@ const updateService = asyncHandler(async (req, res) => {
 // @route   DELETE /api/admin/services/:id
 // @access  Private (Admin)
 const deleteService = asyncHandler(async (req, res) => {
-  const service = await Service.findById(req.params.id)
+  // Scope the lookup by caller's tenancy. Without this, any admin could
+  // delete services belonging to other tenants by passing their service ID.
+  const tenancyId = req.tenancyId || req.user?.tenancy
+  const service = await Service.findOne({ _id: req.params.id, tenancy: tenancyId })
 
   if (!service) {
     return sendError(res, 'NOT_FOUND', 'Service not found', 404)

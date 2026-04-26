@@ -1,24 +1,38 @@
-// Cookie configuration for authentication
+// Cookie configuration for authentication.
+//
+// `sameSite: 'lax'` (was 'strict') so the cookie still flows on top-level GET
+// navigations from another origin (login redirects, password-reset links).
+// 'strict' blocked these and forced fallback to localStorage Bearer auth,
+// which is XSS-readable and undermined the HttpOnly protection.
+//
+// `domain` is opt-in via env: set `COOKIE_DOMAIN=.laundrylobby.com` in
+// production once the API moves to api.laundrylobby.com so the cookie is
+// shared across `*.laundrylobby.com` (tenant subdomains + superadmin + tenacy).
+// Until then keep it unset — a `Domain=...` cookie set by `*.vercel.app`
+// would simply be rejected by browsers.
 
 const isProduction = process.env.NODE_ENV === 'production'
+const cookieDomain = process.env.COOKIE_DOMAIN || undefined
+
+const baseCookieOptions = {
+  httpOnly: true,           // Not accessible via JavaScript (XSS defense)
+  secure: isProduction,     // HTTPS only in production
+  sameSite: 'lax',          // Permits top-level GET cross-site navigation
+  path: '/',
+  ...(cookieDomain ? { domain: cookieDomain } : {}),
+}
 
 const cookieConfig = {
   // Access token cookie options
   accessToken: {
-    httpOnly: true,           // Not accessible via JavaScript
-    secure: isProduction,     // HTTPS only in production
-    sameSite: isProduction ? 'strict' : 'lax',  // CSRF protection
-    maxAge: 24 * 60 * 60 * 1000,  // 24 hours
-    path: '/'
+    ...baseCookieOptions,
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
   },
-  
+
   // Refresh token cookie options (if needed later)
   refreshToken: {
-    httpOnly: true,
-    secure: isProduction,
-    sameSite: isProduction ? 'strict' : 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000,  // 7 days
-    path: '/'
+    ...baseCookieOptions,
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
   }
 }
 
@@ -49,24 +63,16 @@ const setSuperAdminAuthCookie = (res, token, customMaxAge) => {
   res.cookie(COOKIE_NAMES.SUPERADMIN_TOKEN, token, options)
 }
 
-// Clear auth cookie
+// Clear auth cookie. `clearCookie` only matches cookies set with the same
+// (path, domain, secure, sameSite) tuple, so we mirror the options used at
+// `setAuthCookie` time — otherwise the browser keeps the original cookie.
 const clearAuthCookie = (res) => {
-  res.clearCookie(COOKIE_NAMES.ACCESS_TOKEN, {
-    httpOnly: true,
-    secure: isProduction,
-    sameSite: isProduction ? 'strict' : 'lax',
-    path: '/'
-  })
+  res.clearCookie(COOKIE_NAMES.ACCESS_TOKEN, baseCookieOptions)
 }
 
 // Clear superadmin auth cookie
 const clearSuperAdminAuthCookie = (res) => {
-  res.clearCookie(COOKIE_NAMES.SUPERADMIN_TOKEN, {
-    httpOnly: true,
-    secure: isProduction,
-    sameSite: isProduction ? 'strict' : 'lax',
-    path: '/'
-  })
+  res.clearCookie(COOKIE_NAMES.SUPERADMIN_TOKEN, baseCookieOptions)
 }
 
 // Get token from cookie or header (for backward compatibility)

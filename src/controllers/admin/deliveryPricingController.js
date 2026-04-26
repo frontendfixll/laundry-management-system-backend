@@ -80,8 +80,11 @@ const updateBranchCoordinates = asyncHandler(async (req, res) => {
     }
   }
 
-  const branch = await Branch.findByIdAndUpdate(
-    branchId,
+  // Scope the write by caller's tenancy — without this, an admin from
+  // Tenant A could update coordinates of Tenant B's branches by ID.
+  const tenancyId = req.tenancyId || req.user?.tenancy;
+  const branch = await Branch.findOneAndUpdate(
+    { _id: branchId, tenancy: tenancyId },
     updateData,
     { new: true, runValidators: true }
   );
@@ -109,7 +112,11 @@ const updateBranchCoordinates = asyncHandler(async (req, res) => {
 const getBranchCoordinates = asyncHandler(async (req, res) => {
   const { branchId } = req.params;
 
-  const branch = await Branch.findById(branchId).select('name code coordinates serviceableRadius address');
+  // Scope by caller's tenancy — without this, an admin from Tenant A could
+  // read coordinates for any branch belonging to Tenant B by ID.
+  const tenancyId = req.tenancyId || req.user?.tenancy;
+  const branch = await Branch.findOne({ _id: branchId, tenancy: tenancyId })
+    .select('name code coordinates serviceableRadius address');
 
   if (!branch) {
     return sendError(res, 'Branch not found', 404);
@@ -193,8 +200,11 @@ const updateBranchDeliveryPricing = asyncHandler(async (req, res) => {
     }
   }
 
-  const branch = await Branch.findByIdAndUpdate(
-    branchId,
+  // Scope by caller's tenancy so an admin can't rewrite pricing on
+  // another tenant's branch by passing its ID.
+  const tenancyId = req.tenancyId || req.user?.tenancy;
+  const branch = await Branch.findOneAndUpdate(
+    { _id: branchId, tenancy: tenancyId },
     updateData,
     { new: true }
   );
