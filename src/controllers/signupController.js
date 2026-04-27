@@ -6,6 +6,7 @@ const User = require('../models/User');
 const FeatureDefinition = require('../models/FeatureDefinition');
 const Lead = require('../models/Lead');
 const SalesUser = require('../models/SalesUser');
+const { addTenantDomain } = require('../utils/vercelDomains');
 
 // Helper: find least-loaded active sales user
 async function findAvailableSalesUser() {
@@ -288,6 +289,14 @@ const signupController = {
       user.tenancy = tenancy._id;
       await user.save();
 
+      // Register the tenant subdomain on Vercel so e.g. `<slug>.laundrylobby.com`
+      // gets HTTPS and starts serving immediately. Non-blocking — if Vercel is
+      // down or env isn't configured, signup still succeeds; the subdomain just
+      // won't serve until a backfill runs.
+      addTenantDomain(finalSlug).catch(err =>
+        console.error('[signup] addTenantDomain failed (free plan):', err)
+      );
+
       // Create lead + notify sales (non-blocking)
       try {
         const salesUser = await findAvailableSalesUser();
@@ -546,6 +555,14 @@ const signupController = {
 
     user.tenancy = tenancy._id;
     await user.save();
+
+    // Register the tenant subdomain on Vercel so e.g. `<slug>.laundrylobby.com`
+    // gets HTTPS and starts serving immediately. Non-blocking — if Vercel is
+    // down or env isn't configured, the webhook still succeeds; the subdomain
+    // just won't serve until a backfill runs.
+    addTenantDomain(finalSlug).catch(err =>
+      console.error('[signup] addTenantDomain failed (paid plan):', err)
+    );
 
     await pendingSignup.markCompleted(tenancy._id, user._id);
 
