@@ -227,7 +227,9 @@ const deleteSupportUser = asyncHandler(async (req, res) => {
     return sendError(res, 'USER_HAS_TICKETS', 'Cannot delete user with active assigned tickets', 400);
   }
 
-  await User.findByIdAndDelete(userId);
+  // Re-scope the delete so it's atomic with the tenancy ownership check
+  // performed at the lookup above.
+  await User.findOneAndDelete({ _id: userId, tenancy: tenancyId, role: 'support' });
 
   sendSuccess(res, null, 'Support user deleted successfully');
 });

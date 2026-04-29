@@ -109,137 +109,76 @@ const app = express();
 // Trust proxy for Render/production (needed for rate limiting behind reverse proxy)
 app.set('trust proxy', 1);
 
-// EMERGENCY CORS FIX - Allow all origins temporarily
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  // Reduced logging - only log once per unique origin
-  if (!global.loggedOrigins) global.loggedOrigins = new Set();
-  if (!global.loggedOrigins.has(origin)) {
-    console.log('🌐 CORS: Allowing origin:', origin);
-    global.loggedOrigins.add(origin);
-  }
-
-  // Set CORS headers for all requests
-  res.header('Access-Control-Allow-Origin', origin || '*');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Subdomain, X-Tenancy-ID, X-Tenancy-Slug');
-  res.header('Access-Control-Expose-Headers', 'Set-Cookie');
-  res.header('Access-Control-Max-Age', '86400'); // 24 hours
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
-  next();
-});
-
 // Security middleware - Configure helmet to allow images
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
   crossOriginEmbedderPolicy: false
 }));
 
-// CORS configuration with credentials support for cookies
+// CORS configuration with credentials support for cookies.
+//
+// IMPORTANT: only ONE CORS handler should run. Previous versions stacked three
+// independent middlewares that each echoed `Access-Control-Allow-Origin: *`
+// while also setting `Allow-Credentials: true`. Browsers silently REJECT that
+// combination, so cookies never crossed origin in practice. The `cors()`
+// middleware below is now the single source of truth.
 const allowedOrigins = [
+  // Local dev — every frontend in the workspace
   'http://localhost:3000',
   'http://localhost:3002',
   'http://localhost:3003',
-  'http://localhost:3004', // Marketing frontend
-  'http://localhost:3005', // Sales frontend
-  'http://localhost:3006', // Marketing frontend (alternative port)
-  'http://localhost:3007', // Marketing frontend (alternative port 2)
+  'http://localhost:3004',
+  'http://localhost:3005', // main frontend
+  'http://localhost:3006', // superadmin
+  'http://localhost:3007', // marketing
+  // Env-driven URLs (production hostnames are configured via env)
   process.env.FRONTEND_URL,
   process.env.SUPERADMIN_URL,
   process.env.MARKETING_URL,
   process.env.SALES_FRONTEND_URL,
-  // Allow all Vercel preview deployments
-  /^https:\/\/.*\.vercel\.app$/,
-  // Explicitly allow your frontend URL
-  'https://laundry-management-system-git-828182-deepakfixl2-5120s-projects.vercel.app',
-  // Allow all subdomains of your domain
-  /^https:\/\/[\w-]+\.laundry$/,
-  /^http:\/\/[\w-]+\.laundry$/,
-  // Allow laundrypro.com and laundrylobby.com domains with all subdomains
-  /^https:\/\/[\w-]+\.laundrypro\.com$/,
+  // All Vercel preview deployments under this account
+  /^https:\/\/.*-deepakfixl2-5120s-projects\.vercel\.app$/,
+  // All laundrylobby.com subdomains (covers all tenants + tenacy + www + superadmin)
   /^https:\/\/[\w-]+\.laundrylobby\.com$/,
-  // Allow HTTP subdomains for development
-  /^http:\/\/[\w-]+\.laundrylobby\.com$/,
-  // Wildcard for all laundrylobby.com subdomains (more permissive)
-  /^https:\/\/.*\.laundrylobby\.com$/,
-  // Explicitly allow main domains
-  'https://laundrypro.com',
+  // Apex domain
   'https://laundrylobby.com',
-  'https://laundrylobby.vercel.app',
-  // Allow specific tenant subdomains (for testing)
-  'https://tenacy.laundrylobby.com',
-  'https://test-tenacy.laundrylobby.com',
-  'https://quickwash.laundrylobby.com',
-  'https://cleanpro.laundrylobby.com'
 ].filter(Boolean);
 
+const ALLOW_ALL_ORIGINS_IN_DEV = process.env.NODE_ENV !== 'production'
+
+function isOriginAllowed(origin) {
+  if (!origin) return true // no-Origin requests (curl, server-to-server, mobile apps)
+  return allowedOrigins.some(allowed => {
+    if (typeof allowed === 'string') return allowed === origin
+    if (allowed instanceof RegExp) return allowed.test(origin)
+    return false
+  })
+}
+
 app.use(cors({
-  origin: function (origin, callback) {
-    // TEMPORARY: Allow all origins for debugging
-    // Logging removed to reduce console noise
-    callback(null, true);
-    return;
-
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-
-    console.log('🌐 CORS check for origin:', origin);
-
-    // Check if origin matches allowed patterns
-    const isAllowed = allowedOrigins.some(allowed => {
-      if (typeof allowed === 'string') {
-        const match = allowed === origin;
-        if (match) console.log('✅ CORS allowed (string match):', origin);
-        return match;
-      }
-      if (allowed instanceof RegExp) {
-        const match = allowed.test(origin);
-        if (match) console.log('✅ CORS allowed (regex match):', origin, 'pattern:', allowed);
-        return match;
-      }
-      return false;
-    });
-
-    if (isAllowed) {
-      callback(null, true);
-    } else {
-      console.log('❌ CORS blocked origin:', origin);
-      console.log('📋 Allowed origins:', allowedOrigins.filter(o => typeof o === 'string'));
-      callback(null, false);
+  origin: (origin, callback) => {
+    if (ALLOW_ALL_ORIGINS_IN_DEV || isOriginAllowed(origin)) {
+      return callback(null, true)
     }
+    console.warn('❌ CORS blocked origin:', origin)
+    return callback(new Error(`Origin ${origin} not allowed by CORS policy`))
   },
-  credentials: true,  // Allow cookies to be sent
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With',
+    'Accept',
+    'Origin',
+    'X-Subdomain',
+    'X-Tenancy-ID',
+    'X-Tenancy-Slug',
+  ],
   exposedHeaders: ['Set-Cookie'],
-  optionsSuccessStatus: 200 // Some legacy browsers (IE11, various SmartTVs) choke on 204
+  maxAge: 86400, // cache preflight 24h
+  optionsSuccessStatus: 200,
 }));
-
-// Additional CORS headers for serverless environments
-app.use((req, res, next) => {
-  // TEMPORARY: Allow all origins for debugging
-  const origin = req.headers.origin;
-  // Logging removed to reduce console noise
-
-  res.header('Access-Control-Allow-Origin', origin || '*');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
-  res.header('Access-Control-Expose-Headers', 'Set-Cookie');
-
-  // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    console.log('🔧 Handling OPTIONS preflight request');
-    return res.status(200).end();
-  }
-
-  next();
-});
 
 // Cookie parser middleware
 app.use(cookieParser());

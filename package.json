@@ -1,6 +1,6 @@
 {
   "name": "laundry-backend",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "description": "Laundry Management System Backend",
   "main": "server.js",
   "scripts": {

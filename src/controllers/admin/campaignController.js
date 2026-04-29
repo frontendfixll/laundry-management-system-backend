@@ -287,8 +287,11 @@ const deleteTenantCampaign = async (req, res) => {
         message: 'Cannot delete active campaign that has been used'
       });
     }
-    
-    await Campaign.findByIdAndDelete(campaignId);
+
+    // Re-scope the delete by tenancy so the mutation is atomic with the
+    // ownership check above (prevents a concurrent request from swapping
+    // ownership between the lookup and the delete).
+    await Campaign.findOneAndDelete({ _id: campaignId, tenancy: tenancyId });
     
     // Delete linked banner
     try {

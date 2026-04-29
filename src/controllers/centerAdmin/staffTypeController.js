@@ -121,8 +121,15 @@ const deleteStaffType = asyncHandler(async (req, res) => {
     return sendError(res, 'STAFF_TYPE_NOT_FOUND', 'Staff type not found', 404);
   }
 
-  // Check if staff are assigned to this type
-  const staffCount = await User.countDocuments({ staffType: id, role: 'staff' });
+  // Check if staff are assigned to this type — scope to caller's branch as
+  // defense-in-depth; staffType IDs are unique so the count is already
+  // implicitly correct, but an explicit branch filter prevents future
+  // mistakes if staffType is ever shared across branches.
+  const staffCount = await User.countDocuments({
+    staffType: id,
+    role: 'staff',
+    assignedBranch: branch._id,
+  });
   if (staffCount > 0) {
     return sendError(res, 'STAFF_ASSIGNED', `Cannot delete: ${staffCount} staff member(s) have this type`, 400);
   }
