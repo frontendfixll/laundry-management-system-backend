@@ -174,20 +174,34 @@ router.get('/check-subdomain/:subdomain', async (req, res) => {
   }
 });
 
-// List all active tenancies (for discovery/marketplace - optional)
+// List active tenancies for the public "Find Your Laundry" page.
+// Supports optional ?q= (name/businessName/slug) and ?city= filters.
 router.get('/list', async (req, res) => {
   try {
-    const { city, limit = 20 } = req.query;
+    const { q, city, limit = 20 } = req.query;
 
     const query = { status: 'active', isDeleted: false };
+
+    if (q && String(q).trim()) {
+      // Escape regex special chars so user input can't be a malicious pattern.
+      const safe = String(q).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      query.$or = [
+        { name: { $regex: safe, $options: 'i' } },
+        { businessName: { $regex: safe, $options: 'i' } },
+        { slug: { $regex: safe, $options: 'i' } },
+      ];
+    }
 
     if (city) {
       query['contact.address.city'] = { $regex: city, $options: 'i' };
     }
 
+    const parsedLimit = Math.min(parseInt(limit, 10) || 20, 50);
+
     const tenancies = await Tenancy.find(query)
-      .select('name slug subdomain branding.logo branding.theme.primaryColor contact.address.city')
-      .limit(parseInt(limit))
+      .select('name businessName slug subdomain customDomain branding.logo branding.theme.primaryColor contact.address.city')
+      .sort({ name: 1 })
+      .limit(parsedLimit)
       .lean();
 
     // Strip base64-encoded inline logos from the list response. Some tenants
