@@ -557,9 +557,13 @@ app.use('/api/cron', cronRoutes);
 const marketplaceRoutes = require('./routes/marketplace');
 app.use('/api/marketplace', marketplaceRoutes);
 
-// Customer-app auth routes (Firebase Phone OTP → our JWT)
+// Customer-app auth routes (custom OTP or Firebase ID token → our JWT)
 const customerAppAuthRoutes = require('./routes/customerAppAuthRoutes');
 app.use('/api/customer-app/auth', customerAppAuthRoutes);
+
+// Customer-app authenticated review actions (create/update)
+const customerAppReviewRoutes = require('./routes/customerAppReviewRoutes');
+app.use('/api/customer-app/reviews', customerAppReviewRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
