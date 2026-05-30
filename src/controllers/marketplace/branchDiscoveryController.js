@@ -54,7 +54,23 @@ function parseGeoQuery(req) {
   if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
     return { error: 'lat must be in [-90,90] and lng in [-180,180]' };
   }
-  return { lat, lng, radiusKm, limit };
+
+  // Optional filters
+  const minRatingRaw = parseFloat(req.query.minRating);
+  const minRating = Number.isFinite(minRatingRaw) && minRatingRaw >= 0 && minRatingRaw <= 5
+    ? minRatingRaw
+    : null;
+
+  // Text search over branch name + tenant business name. Trim, cap length,
+  // escape regex metachars so a `.` or `(` in the query doesn't blow up.
+  const qRaw = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 60) : '';
+  const q = qRaw.length >= 2 ? qRaw : null;
+
+  return { lat, lng, radiusKm, limit, minRating, q };
+}
+
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 // GET /api/marketplace/branches/nearby?lat=&lng=&radius=&limit=
@@ -64,23 +80,39 @@ exports.getNearbyBranches = async (req, res) => {
   try {
     const parsed = parseGeoQuery(req);
     if (parsed.error) return res.status(400).json({ success: false, error: parsed.error });
-    const { lat, lng, radiusKm, limit } = parsed;
+    const { lat, lng, radiusKm, limit, minRating, q } = parsed;
 
-    const branches = await Branch.aggregate([
+    // Branch-side $match (applied inside $geoNear's `query` for efficiency)
+    const branchMatch = {
+      marketplaceVisible: true,
+      isActive: true,
+      status: 'active'
+    };
+    if (minRating != null) {
+      branchMatch['metrics.averageRating'] = { $gte: minRating };
+    }
+    if (q) {
+      branchMatch.name = { $regex: escapeRegex(q), $options: 'i' };
+    }
+
+    // If `q` is set we also want to match on the tenant's business name.
+    // $geoNear can only filter on the Branch collection itself, so we do the
+    // tenant-name match after the $lookup using $expr/$or with the branch
+    // name fallback so the text search hits either field.
+    const pipeline = [
       {
         $geoNear: {
           near: { type: 'Point', coordinates: [lng, lat] },
           distanceField: 'distanceMeters',
           maxDistance: radiusKm * 1000,
           spherical: true,
-          query: {
-            marketplaceVisible: true,
-            isActive: true,
-            status: 'active'
-          }
+          // Don't apply branch-name filter here when q is set; apply later
+          // alongside the tenant-name match so either field can satisfy it.
+          query: q
+            ? { marketplaceVisible: true, isActive: true, status: 'active', ...(minRating != null ? { 'metrics.averageRating': { $gte: minRating } } : {}) }
+            : branchMatch
         }
       },
-      { $limit: limit },
       {
         $lookup: {
           from: 'tenancies',
@@ -90,8 +122,28 @@ exports.getNearbyBranches = async (req, res) => {
         }
       },
       { $unwind: { path: '$tenancyDoc', preserveNullAndEmptyArrays: true } },
-      // Drop tenancies that aren't active in the marketplace
-      { $match: { 'tenancyDoc.status': { $in: ['active', undefined, null] } } },
+      { $match: { 'tenancyDoc.status': { $in: ['active', undefined, null] } } }
+    ];
+
+    if (q) {
+      const re = new RegExp(escapeRegex(q), 'i');
+      pipeline.push({
+        $match: {
+          $or: [
+            { name: re },
+            { 'tenancyDoc.name': re },
+            { 'tenancyDoc.branding.businessName': re }
+          ]
+        }
+      });
+    }
+
+    pipeline.push({ $limit: limit });
+
+    const branches = await Branch.aggregate([
+      ...pipeline.slice(0, 1),  // $geoNear must come first
+      { $limit: 200 },          // pre-cap before lookups to keep them cheap
+      ...pipeline.slice(1),
       {
         $project: {
           name: 1,
