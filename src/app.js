@@ -553,6 +553,14 @@ app.use('/api/public/signup', signupPublicRoutes);
 const cronRoutes = require('./routes/cronRoutes');
 app.use('/api/cron', cronRoutes);
 
+// Marketplace routes (public, no auth — for customer mobile app discovery)
+const marketplaceRoutes = require('./routes/marketplace');
+app.use('/api/marketplace', marketplaceRoutes);
+
+// Customer-app auth routes (Firebase Phone OTP → our JWT)
+const customerAppAuthRoutes = require('./routes/customerAppAuthRoutes');
+app.use('/api/customer-app/auth', customerAppAuthRoutes);
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({
