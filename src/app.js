@@ -569,6 +569,10 @@ app.use('/api/customer-app/reviews', customerAppReviewRoutes);
 const customerAppOrderRoutes = require('./routes/customerAppOrderRoutes');
 app.use('/api/customer-app/orders', customerAppOrderRoutes);
 
+// Customer-app saved addresses (reuses Address model, skips email verification)
+const customerAppAddressRoutes = require('./routes/customerAppAddressRoutes');
+app.use('/api/customer-app/addresses', customerAppAddressRoutes);
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({
