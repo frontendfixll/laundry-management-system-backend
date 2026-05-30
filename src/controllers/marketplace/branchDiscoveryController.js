@@ -7,6 +7,7 @@ const Branch = require('../../models/Branch');
 const Tenancy = require('../../models/Tenancy');
 const BranchService = require('../../models/BranchService');
 const Service = require('../../models/Service');
+const ServiceItem = require('../../models/ServiceItem');
 const Review = require('../../models/Review');
 
 // Fields safe to expose publicly. Internal metrics (revenue, customer counts,
@@ -205,6 +206,55 @@ exports.getBranchServices = async (req, res) => {
   } catch (err) {
     console.error('[marketplace] getBranchServices error:', err);
     return res.status(500).json({ success: false, error: 'Failed to fetch branch services' });
+  }
+};
+
+// GET /api/marketplace/branches/:id/items
+// Returns the orderable ServiceItem catalog for this branch's tenancy,
+// grouped by service. This is what the customer app shows in the cart screen.
+exports.getBranchItems = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(400).json({ success: false, error: 'Invalid branch id' });
+    }
+
+    const branch = await Branch.findOne({
+      _id: id,
+      marketplaceVisible: true,
+      isActive: true,
+      status: 'active'
+    }).select('tenancy').lean();
+
+    if (!branch) {
+      return res.status(404).json({ success: false, error: 'Branch not found' });
+    }
+
+    const items = await ServiceItem.find({
+      tenancy: branch.tenancy,
+      isActive: true
+    })
+      .select('name itemId service category basePrice description sortOrder')
+      .sort({ service: 1, category: 1, sortOrder: 1, name: 1 })
+      .lean();
+
+    // Group by service slug for easier rendering on the client
+    const grouped = items.reduce((acc, item) => {
+      const key = item.service || 'other';
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(item);
+      return acc;
+    }, {});
+
+    return res.json({
+      success: true,
+      count: items.length,
+      items,
+      groupedByService: grouped
+    });
+  } catch (err) {
+    console.error('[marketplace] getBranchItems error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to fetch service items' });
   }
 };
 

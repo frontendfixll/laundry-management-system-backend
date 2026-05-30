@@ -565,6 +565,10 @@ app.use('/api/customer-app/auth', customerAppAuthRoutes);
 const customerAppReviewRoutes = require('./routes/customerAppReviewRoutes');
 app.use('/api/customer-app/reviews', customerAppReviewRoutes);
 
+// Customer-app authenticated order actions (place / list / detail)
+const customerAppOrderRoutes = require('./routes/customerAppOrderRoutes');
+app.use('/api/customer-app/orders', customerAppOrderRoutes);
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({

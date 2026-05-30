@@ -8,6 +8,7 @@ const {
   getNearbyBranches,
   getBranchById,
   getBranchServices,
+  getBranchItems,
   getBranchReviews,
   getTenantBySlug
 } = require('../../controllers/marketplace/branchDiscoveryController');
@@ -16,6 +17,7 @@ const {
 router.get('/branches/nearby', getNearbyBranches);
 router.get('/branches/:id', getBranchById);
 router.get('/branches/:id/services', getBranchServices);
+router.get('/branches/:id/items', getBranchItems);
 router.get('/branches/:id/reviews', getBranchReviews);
 
 // Tenant profile
