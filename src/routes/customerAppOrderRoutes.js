@@ -7,7 +7,8 @@ const { protect } = require('../middlewares/auth');
 const {
   createOrder,
   listMyOrders,
-  getMyOrder
+  getMyOrder,
+  cancelOrder
 } = require('../controllers/marketplace/customerOrderController');
 const {
   createCheckoutSession,
@@ -17,6 +18,7 @@ const {
 router.post('/', protect, createOrder);
 router.get('/', protect, listMyOrders);
 router.get('/:id', protect, getMyOrder);
+router.post('/:id/cancel', protect, cancelOrder);
 
 // Payment (online via Stripe Checkout)
 router.post('/:id/checkout-session', protect, createCheckoutSession);

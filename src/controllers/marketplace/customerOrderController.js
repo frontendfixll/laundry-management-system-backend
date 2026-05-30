@@ -8,6 +8,7 @@ const Order = require('../../models/Order');
 const OrderItem = require('../../models/OrderItem');
 const Branch = require('../../models/Branch');
 const ServiceItem = require('../../models/ServiceItem');
+const OrderService = require('../../services/OrderService');
 
 const VALID_PAYMENT_METHODS = ['online', 'cod'];
 const MAX_ITEMS_PER_ORDER = 50;
@@ -260,6 +261,62 @@ exports.listMyOrders = async (req, res) => {
   } catch (err) {
     console.error('[marketplace] listMyOrders error:', err);
     return res.status(500).json({ success: false, error: 'Failed to fetch orders' });
+  }
+};
+
+// POST /api/customer-app/orders/:id/cancel
+// Body (optional): { reason }
+// Honors Order.canBeCancelled() — only placed / assigned_to_branch /
+// assigned_to_logistics_pickup are cancellable.
+exports.cancelOrder = async (req, res) => {
+  try {
+    const userId = req.user?._id;
+    if (!userId) return res.status(401).json({ success: false, error: 'Not authenticated' });
+    if (!isObjectId(req.params.id)) {
+      return res.status(400).json({ success: false, error: 'Invalid order id' });
+    }
+
+    const order = await Order.findOne({ _id: req.params.id, customer: userId });
+    if (!order) return res.status(404).json({ success: false, error: 'Order not found' });
+
+    if (!order.canBeCancelled()) {
+      return res.status(409).json({
+        success: false,
+        error: `Order cannot be cancelled in status '${order.status}'`
+      });
+    }
+
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim().slice(0, 200) : '';
+
+    // OrderService.updateOrderStatus also fires the socket emit to the
+    // customer + tenant admins, so we don't need to do it manually.
+    await OrderService.updateOrderStatus(
+      order._id,
+      'cancelled',
+      userId,
+      reason ? `Cancelled by customer: ${reason}` : 'Cancelled by customer'
+    );
+
+    order.isCancelled = true;
+    order.cancellationReason = reason || 'Cancelled by customer';
+    order.cancelledBy = userId;
+    order.cancelledAt = new Date();
+    await order.save();
+
+    return res.json({
+      success: true,
+      order: {
+        _id: order._id,
+        orderNumber: order.orderNumber,
+        status: order.status,
+        isCancelled: order.isCancelled,
+        cancellationReason: order.cancellationReason,
+        cancelledAt: order.cancelledAt
+      }
+    });
+  } catch (err) {
+    console.error('[marketplace] cancelOrder error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to cancel order' });
   }
 };
 
