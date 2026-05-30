@@ -9,9 +9,17 @@ const {
   listMyOrders,
   getMyOrder
 } = require('../controllers/marketplace/customerOrderController');
+const {
+  createCheckoutSession,
+  confirmPayment
+} = require('../controllers/marketplace/paymentController');
 
 router.post('/', protect, createOrder);
 router.get('/', protect, listMyOrders);
 router.get('/:id', protect, getMyOrder);
+
+// Payment (online via Stripe Checkout)
+router.post('/:id/checkout-session', protect, createCheckoutSession);
+router.post('/:id/confirm-payment', protect, confirmPayment);
 
 module.exports = router;
