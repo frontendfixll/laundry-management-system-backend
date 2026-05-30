@@ -3,7 +3,23 @@ const User = require('../models/User');
 const Branch = require('../models/Branch');
 const NotificationService = require('./notificationService');
 const relayService = require('./relayService');
+const { sendPushToUser } = require('./expoPushService');
 const { ORDER_STATUS, NOTIFICATION_TYPES } = require('../config/constants');
+
+// Customer-facing status labels. Mirrors mobile's utils/orderStatus.ts so
+// push notification copy reads naturally to end users.
+const CUSTOMER_STATUS_LABELS = {
+  placed: 'placed',
+  assigned_to_branch: 'assigned to a branch',
+  assigned_to_logistics_pickup: 'scheduled for pickup',
+  picked: 'picked up',
+  in_process: 'being processed',
+  ready: 'ready',
+  assigned_to_logistics_delivery: 'out for delivery',
+  out_for_delivery: 'out for delivery',
+  delivered: 'delivered',
+  cancelled: 'cancelled'
+};
 
 class OrderService {
   // Update order status with notifications
@@ -43,7 +59,7 @@ class OrderService {
     try {
       console.log(`🔔 Sending real-time notifications for order ${order.orderNumber}: ${oldStatus} → ${newStatus}`);
 
-      // Notify customer
+      // Notify customer via socket relay (foreground updates)
       relayService.emitToUser(order.customer._id.toString(), 'orderStatusUpdated', {
         orderId: order._id,
         orderNumber: order.orderNumber,
@@ -52,6 +68,20 @@ class OrderService {
         message: `Your order #${order.orderNumber} is now ${newStatus}`,
         timestamp: new Date()
       });
+
+      // Also push (background/closed app delivery) — fire-and-forget so a
+      // push failure can never block the order update.
+      const customerLabel = CUSTOMER_STATUS_LABELS[newStatus] || newStatus;
+      sendPushToUser(order.customer._id.toString(), {
+        title: `Order ${order.orderNumber}`,
+        body: `Your order is ${customerLabel}.`,
+        data: {
+          type: 'order_status_updated',
+          orderId: order._id.toString(),
+          orderNumber: order.orderNumber,
+          newStatus
+        }
+      }).catch(err => console.warn('[push] order status push failed:', err.message));
 
       // Notify all admins in tenancy
       if (order.tenancy) {

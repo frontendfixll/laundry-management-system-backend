@@ -573,6 +573,10 @@ app.use('/api/customer-app/orders', customerAppOrderRoutes);
 const customerAppAddressRoutes = require('./routes/customerAppAddressRoutes');
 app.use('/api/customer-app/addresses', customerAppAddressRoutes);
 
+// Customer-app push notification token registration
+const customerAppPushRoutes = require('./routes/customerAppPushRoutes');
+app.use('/api/customer-app/push', customerAppPushRoutes);
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({
