@@ -35,6 +35,11 @@ const serviceItemSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  // Customer-marketplace thumbnail for this item (shirt, kurta, etc.)
+  imageUrl: {
+    type: String,
+    default: ''
+  },
   isActive: {
     type: Boolean,
     default: true

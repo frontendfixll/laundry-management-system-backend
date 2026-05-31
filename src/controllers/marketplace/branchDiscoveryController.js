@@ -25,6 +25,7 @@ const PUBLIC_BRANCH_PROJECTION = {
   isActive: 1,
   status: 1,
   marketplaceVisible: 1,
+  images: 1,
   'metrics.averageRating': 1,
   'metrics.totalOrders': 1,
   createdAt: 1
@@ -157,6 +158,9 @@ exports.getNearbyBranches = async (req, res) => {
           averageRating: { $ifNull: ['$metrics.averageRating', 0] },
           totalOrders: { $ifNull: ['$metrics.totalOrders', 0] },
           contact: { phone: '$contact.phone', whatsapp: '$contact.whatsapp' },
+          // First image (or null) for the list card; full array still available
+          // via the detail endpoint.
+          coverImage: { $arrayElemAt: ['$images.url', 0] },
           tenant: {
             _id: '$tenancyDoc._id',
             name: '$tenancyDoc.name',

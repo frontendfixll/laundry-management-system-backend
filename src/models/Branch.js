@@ -79,6 +79,13 @@ const branchSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+  // Branch photos shown in the customer marketplace. First image is the hero
+  // / card thumbnail; additional images are extra detail-screen shots.
+  images: [{
+    url: { type: String, required: true },
+    alt: { type: String },
+    isPrimary: { type: Boolean, default: false }
+  }],
   // Maximum serviceable distance from this branch (in km)
   serviceableRadius: {
     type: Number,
