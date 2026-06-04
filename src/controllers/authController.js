@@ -1,6 +1,6 @@
 const User = require('../models/User');
 const AdminInvitation = require('../models/AdminInvitation');
-const { hashPassword, comparePassword } = require('../utils/password');
+const { comparePassword } = require('../utils/password');
 const { generateAccessToken, generateEmailVerificationToken, verifyEmailVerificationToken } = require('../utils/jwt');
 const { sendEmail, emailTemplates } = require('../config/email');
 const { setAuthCookie, clearAuthCookie } = require('../utils/cookieConfig');
@@ -30,13 +30,11 @@ const register = async (req, res) => {
       }
     }
 
-    const hashedPassword = await hashPassword(password);
-
     const userData = {
       name,
       email,
       phone,
-      password: hashedPassword,
+      password, // hashed once by User model's pre-save hook
       isEmailVerified: false
     };
 
