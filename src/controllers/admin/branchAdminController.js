@@ -14,8 +14,8 @@ const {
 // @access  Private (Admin - Tenancy level)
 const getBranchAdmins = asyncHandler(async (req, res) => {
   const tenancyId = req.tenancyId || req.user?.tenancy;
-  const { page, limit, skip } = getPagination(req.query);
-  const { branchId, search, isActive } = req.query;
+  const { page: pageParam, limit: limitParam, branchId, search, isActive } = req.query;
+  const { page, limit, skip } = getPagination(pageParam, limitParam);
 
   // Build query
   let query = { 
