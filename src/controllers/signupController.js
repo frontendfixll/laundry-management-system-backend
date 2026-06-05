@@ -6,6 +6,7 @@ const User = require('../models/User');
 const FeatureDefinition = require('../models/FeatureDefinition');
 const Lead = require('../models/Lead');
 const SalesUser = require('../models/SalesUser');
+const SubscriptionPromo = require('../models/SubscriptionPromo');
 const { addTenantDomain } = require('../utils/vercelDomains');
 
 // Helper: find least-loaded active sales user
@@ -27,6 +28,41 @@ const stripe = stripeSecretKey ? require('stripe')(stripeSecretKey) : null;
 const signupController = {
 
   /**
+   * Validate a promo code without redeeming it.
+   * POST /api/public/signup/validate-promo
+   */
+  validatePromo: async (req, res) => {
+    try {
+      const code = String(req.body.code || '').toUpperCase().trim();
+      const promo = await SubscriptionPromo.findOne({ code }).populate(
+        'grantsPlanId',
+        'name displayName price trialDays'
+      );
+      if (!promo) {
+        return res.status(404).json({ success: false, message: 'Invalid promo code' });
+      }
+      const redeem = promo.isRedeemable();
+      if (!redeem.ok) {
+        return res.status(400).json({ success: false, message: redeem.reason });
+      }
+      return res.json({
+        success: true,
+        data: {
+          code: promo.code,
+          plan: promo.grantsPlanId,
+          trialDays: promo.trialDays,
+          billingCycle: promo.billingCycle,
+          remainingRedemptions:
+            promo.maxRedemptions != null ? promo.maxRedemptions - promo.usedCount : null,
+        },
+      });
+    } catch (err) {
+      console.error('validatePromo error:', err);
+      return res.status(500).json({ success: false, message: 'Failed to validate promo' });
+    }
+  },
+
+  /**
    * Initiate signup - creates pending signup and Stripe checkout session
    * POST /api/public/signup/initiate
    */
@@ -40,7 +76,8 @@ const signupController = {
         password,
         address,
         planId,
-        billingCycle = 'monthly'
+        billingCycle = 'monthly',
+        promoCode,
       } = req.body;
 
       if (!businessName || !ownerName || !email || !phone || !password || !planId) {
@@ -48,6 +85,25 @@ const signupController = {
           success: false,
           message: 'All fields are required: businessName, ownerName, email, phone, password, planId'
         });
+      }
+
+      // Resolve promo (optional). When valid, overrides planId/trialDays and routes through
+      // the free-tenancy path regardless of the resolved plan's normal price — promo = free trial.
+      let promo = null;
+      let promoPlan = null;
+      if (promoCode) {
+        promo = await SubscriptionPromo.findOne({ code: String(promoCode).toUpperCase().trim() });
+        if (!promo) {
+          return res.status(400).json({ success: false, message: 'Invalid promo code' });
+        }
+        const redeem = promo.isRedeemable();
+        if (!redeem.ok) {
+          return res.status(400).json({ success: false, message: redeem.reason });
+        }
+        promoPlan = await BillingPlan.findById(promo.grantsPlanId);
+        if (!promoPlan || !promoPlan.isActive) {
+          return res.status(400).json({ success: false, message: 'Promo target plan is unavailable' });
+        }
       }
 
       const existingUser = await User.findOne({ email: email.toLowerCase() });
@@ -79,6 +135,29 @@ const signupController = {
         return res.status(400).json({
           success: false,
           message: 'Invalid or inactive plan selected'
+        });
+      }
+
+      // Promo path: skip Stripe, override plan + trial, atomically reserve a redemption slot.
+      if (promo && promoPlan) {
+        const filter = { _id: promo._id, isActive: true };
+        if (promo.maxRedemptions != null) {
+          filter.usedCount = { $lt: promo.maxRedemptions };
+        }
+        const claimed = await SubscriptionPromo.findOneAndUpdate(
+          filter,
+          { $inc: { usedCount: 1 } },
+          { new: true }
+        );
+        if (!claimed) {
+          return res.status(400).json({ success: false, message: 'Promo redemption limit reached' });
+        }
+        const promoCycle = promo.billingCycle || billingCycle;
+        const planForFree = { ...promoPlan.toObject(), trialDays: promo.trialDays };
+        return await signupController.createFreeTenancy(req, res, {
+          businessName, ownerName, email, phone, password, address,
+          plan: planForFree, billingCycle: promoCycle,
+          promoCode: promo.code,
         });
       }
 
@@ -226,7 +305,7 @@ const signupController = {
    */
   createFreeTenancy: async (req, res, data) => {
     try {
-      const { businessName, ownerName, email, phone, password, address, plan, billingCycle } = data;
+      const { businessName, ownerName, email, phone, password, address, plan, billingCycle, promoCode } = data;
 
       let user = await User.findOne({ $or: [{ email: email.toLowerCase() }, { phone: phone }] });
       if (user) {
@@ -248,9 +327,27 @@ const signupController = {
         counter++;
       }
 
-      const features = plan.features instanceof Map
+      const rawFeatures = plan.features instanceof Map
         ? Object.fromEntries(plan.features)
         : plan.features || {};
+
+      // Map _management variants -> canonical sidebar keys so a plan that uses
+      // either naming convention still surfaces in the tenant UI.
+      const aliasMap = {
+        customer_management: 'customers',
+        branch_management: 'branches',
+        branch_admin_rbac: 'branch_admins',
+        inventory_management: 'inventory',
+        service_management: 'services',
+        logistics_management: 'logistics',
+        payment_management: 'payments',
+      };
+      const features = { ...rawFeatures };
+      for (const [legacy, canonical] of Object.entries(aliasMap)) {
+        if (rawFeatures[legacy] !== undefined && features[canonical] === undefined) {
+          features[canonical] = rawFeatures[legacy];
+        }
+      }
 
       user = await User.create({
         name: ownerName,
@@ -347,7 +444,9 @@ const signupController = {
 
       res.status(201).json({
         success: true,
-        message: 'Account created successfully',
+        message: promoCode
+          ? `Account created — promo ${promoCode} applied (${plan.displayName}, ${trialDays}-day trial)`
+          : 'Account created successfully',
         data: {
           tenancy: {
             id: tenancy._id,
@@ -359,6 +458,12 @@ const signupController = {
             id: user._id,
             email: user.email,
             name: user.name
+          },
+          subscription: {
+            plan: plan.name,
+            status: 'trial',
+            trialEndsAt,
+            ...(promoCode ? { promoApplied: promoCode } : {}),
           },
           loginUrl: `${process.env.FRONTEND_URL || 'https://tenacy.laundrylobby.com'}/auth/login`
         }

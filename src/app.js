@@ -399,6 +399,7 @@ app.use('/api/admin/blog', tenantBlogRoutes);
 app.use('/api/sales/auth', salesAuthRoutes);
 app.use('/api/sales/leads', salesLeadRoutes);
 app.use('/api/sales/subscriptions', salesSubscriptionRoutes);
+app.use('/api/sales/promos', require('./routes/salesSubscriptionPromoRoutes'));
 app.use('/api/sales/payments', salesPaymentRoutes);
 app.use('/api/sales/analytics', salesAnalyticsRoutes);
 app.use('/api/sales/upgrades', upgradeRoutes);

@@ -56,6 +56,13 @@ const verifyValidation = [
     .notEmpty().withMessage('Session ID is required')
 ];
 
+// POST /api/public/signup/validate-promo - Check a promo code without redeeming
+router.post('/validate-promo',
+  [body('code').trim().notEmpty().withMessage('Code is required')],
+  handleValidation,
+  signupController.validatePromo
+);
+
 // POST /api/public/signup/initiate - Start signup flow
 router.post('/initiate', initiateValidation, handleValidation, signupController.initiateSignup);
 
