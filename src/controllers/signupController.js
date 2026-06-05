@@ -330,24 +330,8 @@ const signupController = {
       const rawFeatures = plan.features instanceof Map
         ? Object.fromEntries(plan.features)
         : plan.features || {};
-
-      // Map _management variants -> canonical sidebar keys so a plan that uses
-      // either naming convention still surfaces in the tenant UI.
-      const aliasMap = {
-        customer_management: 'customers',
-        branch_management: 'branches',
-        branch_admin_rbac: 'branch_admins',
-        inventory_management: 'inventory',
-        service_management: 'services',
-        logistics_management: 'logistics',
-        payment_management: 'payments',
-      };
-      const features = { ...rawFeatures };
-      for (const [legacy, canonical] of Object.entries(aliasMap)) {
-        if (rawFeatures[legacy] !== undefined && features[canonical] === undefined) {
-          features[canonical] = rawFeatures[legacy];
-        }
-      }
+      const { normalizeFeatures } = require('../utils/featureAliases');
+      const features = normalizeFeatures(rawFeatures);
 
       user = await User.create({
         name: ownerName,
