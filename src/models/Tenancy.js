@@ -311,6 +311,17 @@ tenancySchema.pre('save', function (next) {
   next();
 });
 
+// Pre-save: normalize subscription.features so legacy `_management` keys
+// and missing canonical sidebar gates don't half-hide the tenant UI.
+tenancySchema.pre('save', function (next) {
+  if (this.isModified('subscription.features') && this.subscription?.features) {
+    const { normalizeFeatures } = require('../utils/featureAliases');
+    this.subscription.features = normalizeFeatures(this.subscription.features);
+    this.markModified('subscription.features');
+  }
+  next();
+});
+
 // Method to check if subscription is active
 tenancySchema.methods.isSubscriptionActive = function () {
   const sub = this.subscription;
