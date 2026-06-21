@@ -10,7 +10,7 @@ const Branch = require('../../models/Branch');
 const ServiceItem = require('../../models/ServiceItem');
 const Coupon = require('../../models/Coupon');
 const { getOrCreateWallet, debitWallet } = require('./customerWalletController');
-const OrderService = require('../../services/OrderService');
+const OrderService = require('../../services/orderService');
 
 const VALID_PAYMENT_METHODS = ['online', 'cod'];
 const MAX_ITEMS_PER_ORDER = 50;
