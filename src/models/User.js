@@ -319,7 +319,16 @@ const userSchema = new mongoose.Schema({
   referralRewardClaimed: {
     type: Boolean,
     default: false
-  }
+  },
+  // Expo push notification tokens — array because a user may have the app
+  // on multiple devices (phone + tablet). Tokens look like
+  // "ExponentPushToken[xxxxxxxx]" and are obtained via expo-notifications.
+  pushTokens: [{
+    token: { type: String, required: true },
+    platform: { type: String, enum: ['ios', 'android', 'web'] },
+    registeredAt: { type: Date, default: Date.now },
+    lastUsedAt: { type: Date, default: Date.now }
+  }]
 }, {
   timestamps: true
 });

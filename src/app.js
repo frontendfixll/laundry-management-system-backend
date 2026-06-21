@@ -493,6 +493,34 @@ app.use('/api/public/signup', signupPublicRoutes);
 const cronRoutes = require('./routes/cronRoutes');
 app.use('/api/cron', cronRoutes);
 
+// Marketplace routes (public, no auth — for customer mobile app discovery)
+const marketplaceRoutes = require('./routes/marketplace');
+app.use('/api/marketplace', marketplaceRoutes);
+
+// Customer-app auth routes (custom OTP or Firebase ID token → our JWT)
+const customerAppAuthRoutes = require('./routes/customerAppAuthRoutes');
+app.use('/api/customer-app/auth', customerAppAuthRoutes);
+
+// Customer-app authenticated review actions (create/update)
+const customerAppReviewRoutes = require('./routes/customerAppReviewRoutes');
+app.use('/api/customer-app/reviews', customerAppReviewRoutes);
+
+// Customer-app authenticated order actions (place / list / detail)
+const customerAppOrderRoutes = require('./routes/customerAppOrderRoutes');
+app.use('/api/customer-app/orders', customerAppOrderRoutes);
+
+// Customer-app saved addresses (reuses Address model, skips email verification)
+const customerAppAddressRoutes = require('./routes/customerAppAddressRoutes');
+app.use('/api/customer-app/addresses', customerAppAddressRoutes);
+
+// Customer-app push notification token registration
+const customerAppPushRoutes = require('./routes/customerAppPushRoutes');
+app.use('/api/customer-app/push', customerAppPushRoutes);
+
+// Customer-app engagement: notifications feed, loyalty, wallet, referral
+const customerAppEngagementRoutes = require('./routes/customerAppEngagementRoutes');
+app.use('/api/customer-app', customerAppEngagementRoutes);
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({

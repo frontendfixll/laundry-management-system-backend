@@ -53,6 +53,39 @@ const branchSchema = new mongoose.Schema({
       max: [180, 'Longitude must be between -180 and 180']
     }
   },
+  // GeoJSON Point for $geoNear / $near queries (customer marketplace discovery)
+  // Format: { type: 'Point', coordinates: [longitude, latitude] }  ← lng first, then lat
+  location: {
+    type: {
+      type: String,
+      enum: ['Point'],
+      default: 'Point'
+    },
+    coordinates: {
+      type: [Number],
+      validate: {
+        validator: function (v) {
+          if (!v || v.length === 0) return true;
+          return v.length === 2 &&
+            v[0] >= -180 && v[0] <= 180 &&
+            v[1] >= -90 && v[1] <= 90;
+        },
+        message: 'location.coordinates must be [longitude, latitude]'
+      }
+    }
+  },
+  // Marketplace visibility flag (allow tenants to opt out of customer-app discovery)
+  marketplaceVisible: {
+    type: Boolean,
+    default: true
+  },
+  // Branch photos shown in the customer marketplace. First image is the hero
+  // / card thumbnail; additional images are extra detail-screen shots.
+  images: [{
+    url: { type: String, required: true },
+    alt: { type: String },
+    isPrimary: { type: Boolean, default: false }
+  }],
   // Maximum serviceable distance from this branch (in km)
   serviceableRadius: {
     type: Number,
@@ -257,6 +290,21 @@ const branchSchema = new mongoose.Schema({
 branchSchema.index({ code: 1 });
 branchSchema.index({ 'serviceAreas.pincode': 1 });
 branchSchema.index({ isActive: 1 });
+// Geospatial index for customer marketplace "find nearest branches" queries
+branchSchema.index({ location: '2dsphere' });
+// Compound index for filtering visible+active branches in marketplace
+branchSchema.index({ marketplaceVisible: 1, isActive: 1, status: 1 });
+
+// Keep GeoJSON location in sync with coordinates.latitude/longitude
+// Source of truth stays coordinates.* (existing admin UI writes there); location is derived
+branchSchema.pre('save', function (next) {
+  const lat = this.coordinates?.latitude ?? this.address?.coordinates?.lat;
+  const lng = this.coordinates?.longitude ?? this.address?.coordinates?.lng;
+  if (typeof lat === 'number' && typeof lng === 'number') {
+    this.location = { type: 'Point', coordinates: [lng, lat] };
+  }
+  next();
+});
 
 // Check if branch is operational today
 branchSchema.methods.isOperationalToday = function() {
