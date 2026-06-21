@@ -578,6 +578,10 @@ app.use('/api/customer-app/addresses', customerAppAddressRoutes);
 const customerAppPushRoutes = require('./routes/customerAppPushRoutes');
 app.use('/api/customer-app/push', customerAppPushRoutes);
 
+// Customer-app engagement: notifications feed, loyalty, wallet, referral
+const customerAppEngagementRoutes = require('./routes/customerAppEngagementRoutes');
+app.use('/api/customer-app', customerAppEngagementRoutes);
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({

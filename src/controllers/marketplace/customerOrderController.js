@@ -8,6 +8,8 @@ const Order = require('../../models/Order');
 const OrderItem = require('../../models/OrderItem');
 const Branch = require('../../models/Branch');
 const ServiceItem = require('../../models/ServiceItem');
+const Coupon = require('../../models/Coupon');
+const { getOrCreateWallet, debitWallet } = require('./customerWalletController');
 const OrderService = require('../../services/OrderService');
 
 const VALID_PAYMENT_METHODS = ['online', 'cod'];
@@ -60,7 +62,9 @@ exports.createOrder = async (req, res) => {
       pickupDate,
       pickupTimeSlot,
       paymentMethod,
-      specialInstructions
+      specialInstructions,
+      couponCode,
+      useWallet
     } = req.body || {};
 
     // --- Validate top-level fields ---
@@ -159,15 +163,42 @@ exports.createOrder = async (req, res) => {
       };
     });
 
+    // --- Optional coupon (scoped to the branch's tenancy) ---
+    let appliedCoupon = null;
+    let couponDiscount = 0;
+    if (couponCode && typeof couponCode === 'string' && couponCode.trim()) {
+      const coupon = await Coupon.findValidCoupon(branch.tenancy, couponCode.trim());
+      if (!coupon) {
+        return res.status(400).json({ success: false, error: 'Invalid or expired coupon code' });
+      }
+      const check = coupon.canBeUsedBy(req.user._id, subtotal);
+      if (!check.valid) {
+        return res.status(400).json({ success: false, error: check.message || 'Coupon cannot be applied' });
+      }
+      couponDiscount = coupon.calculateDiscount(subtotal);
+      appliedCoupon = coupon;
+    }
+
     const pricing = {
       subtotal,
       expressCharge: 0,
       deliveryCharge: 0,
       discount: 0,
-      couponDiscount: 0,
+      couponDiscount,
       tax: 0,
-      total: subtotal
+      total: Math.max(0, subtotal - couponDiscount)
     };
+
+    // --- Optional wallet redemption (platform-level customer wallet) ---
+    let walletApplied = 0;
+    if (useWallet) {
+      const wallet = await getOrCreateWallet(req.user._id);
+      walletApplied = Math.min(Math.round(wallet.balance), pricing.total);
+      if (walletApplied > 0) {
+        pricing.walletApplied = walletApplied;
+        pricing.total = Math.max(0, pricing.total - walletApplied);
+      }
+    }
 
     // --- Create Order + OrderItems atomically ---
     const session = await mongoose.startSession();
@@ -207,6 +238,27 @@ exports.createOrder = async (req, res) => {
       await session.endSession();
     }
 
+    // Record coupon usage (best-effort — the order already exists).
+    if (appliedCoupon) {
+      try {
+        await appliedCoupon.recordUsage(req.user._id, createdOrder._id, couponDiscount);
+      } catch (e) {
+        console.error('[marketplace] coupon recordUsage failed:', e?.message);
+      }
+    }
+
+    // Debit the wallet for the redeemed amount (best-effort, ledgered).
+    if (walletApplied > 0) {
+      try {
+        await debitWallet(req.user._id, walletApplied, 'order_redeem', {
+          orderId: createdOrder._id,
+          description: `Redeemed on order ${createdOrder.orderNumber}`,
+        });
+      } catch (e) {
+        console.error('[marketplace] wallet debit failed:', e?.message);
+      }
+    }
+
     return res.status(201).json({
       success: true,
       order: {
@@ -224,6 +276,43 @@ exports.createOrder = async (req, res) => {
   } catch (err) {
     console.error('[marketplace] createOrder error:', err);
     return res.status(500).json({ success: false, error: 'Failed to create order' });
+  }
+};
+
+// POST /api/customer-app/orders/validate-coupon  { branchId, code, orderValue }
+// Pre-checkout coupon preview. Resolves the coupon against the branch's tenancy
+// so platform-level customers don't need to know the tenancyId.
+exports.validateOrderCoupon = async (req, res) => {
+  try {
+    const userId = req.user?._id;
+    if (!userId) return res.status(401).json({ success: false, error: 'Not authenticated' });
+
+    const { branchId, code, orderValue } = req.body || {};
+    if (!isObjectId(branchId)) return res.status(400).json({ success: false, error: 'Invalid branchId' });
+    if (!code || typeof code !== 'string' || !code.trim()) {
+      return res.status(400).json({ success: false, error: 'Coupon code is required' });
+    }
+
+    const branch = await Branch.findById(branchId).select('tenancy');
+    if (!branch) return res.status(404).json({ success: false, error: 'Branch not found' });
+
+    const coupon = await Coupon.findValidCoupon(branch.tenancy, code.trim());
+    if (!coupon) return res.status(400).json({ success: false, error: 'Invalid or expired coupon code' });
+
+    const value = Number(orderValue) || 0;
+    const check = coupon.canBeUsedBy(userId, value);
+    if (!check.valid) return res.status(400).json({ success: false, error: check.message || 'Coupon cannot be applied' });
+
+    const discount = coupon.calculateDiscount(value);
+    return res.json({
+      success: true,
+      coupon: { code: coupon.code, name: coupon.name, type: coupon.type, value: coupon.value },
+      discount,
+      finalAmount: Math.max(0, value - discount)
+    });
+  } catch (err) {
+    console.error('[marketplace] validateOrderCoupon error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to validate coupon' });
   }
 };
 

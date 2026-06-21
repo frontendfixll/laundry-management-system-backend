@@ -8,7 +8,8 @@ const {
   createOrder,
   listMyOrders,
   getMyOrder,
-  cancelOrder
+  cancelOrder,
+  validateOrderCoupon
 } = require('../controllers/marketplace/customerOrderController');
 const {
   createCheckoutSession,
@@ -16,6 +17,7 @@ const {
 } = require('../controllers/marketplace/paymentController');
 
 router.post('/', protect, createOrder);
+router.post('/validate-coupon', protect, validateOrderCoupon);
 router.get('/', protect, listMyOrders);
 router.get('/:id', protect, getMyOrder);
 router.post('/:id/cancel', protect, cancelOrder);

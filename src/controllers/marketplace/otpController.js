@@ -18,6 +18,7 @@ const User = require('../../models/User');
 const OtpVerification = require('../../models/OtpVerification');
 const { generateAccessToken } = require('../../utils/jwt');
 const { sendOtpSms } = require('../../services/smsService');
+const { applyReferralOnSignup } = require('./customerReferralController');
 
 const SEND_COOLDOWN_MS = 60 * 1000;        // 60s between sends
 const HOURLY_SEND_LIMIT = 5;               // max 5 sends per hour per phone
@@ -126,6 +127,7 @@ exports.verifyOtp = async (req, res) => {
     const phone = normalizePhone(req.body?.phone);
     const code = String(req.body?.code || '').trim();
     const name = req.body?.name?.trim();
+    const referralCode = req.body?.referralCode;
 
     if (!phone || !isValidIndianMobile(phone)) {
       return res.status(400).json({ success: false, error: 'Invalid phone number' });
@@ -182,6 +184,7 @@ exports.verifyOtp = async (req, res) => {
       .sort({ tenancy: 1 })
       .select('+password');
 
+    let isNewUser = false;
     if (!user) {
       const safeEmail = `${phone}@customer.laundrylobby.app`;
       const randomPassword = crypto.randomBytes(24).toString('hex');
@@ -194,11 +197,21 @@ exports.verifyOtp = async (req, res) => {
         phoneVerified: true,
         tenancy: undefined
       });
+      isNewUser = true;
     } else if (!user.phoneVerified || (name && (!user.name || user.name.startsWith('Customer ')))) {
       const updates = { phoneVerified: true };
       if (name && (!user.name || user.name.startsWith('Customer '))) updates.name = name;
       await User.updateOne({ _id: user._id }, { $set: updates });
       Object.assign(user, updates);
+    }
+
+    // Apply a referral code for brand-new users (best-effort, credits wallets).
+    if (isNewUser && referralCode) {
+      try {
+        await applyReferralOnSignup(user._id, referralCode);
+      } catch (e) {
+        console.error('[otp] applyReferralOnSignup failed:', e?.message);
+      }
     }
 
     const token = generateAccessToken(

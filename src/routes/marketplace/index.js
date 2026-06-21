@@ -12,6 +12,10 @@ const {
   getBranchReviews,
   getTenantBySlug
 } = require('../../controllers/marketplace/branchDiscoveryController');
+const { getMarketplaceBanners } = require('../../controllers/marketplace/marketplaceContentController');
+
+// Promo banners (home carousel)
+router.get('/banners', getMarketplaceBanners);
 
 // Branch discovery
 router.get('/branches/nearby', getNearbyBranches);
