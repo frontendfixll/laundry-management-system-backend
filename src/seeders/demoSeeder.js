@@ -57,26 +57,50 @@ async function seed() {
 
     console.log('🗑️  Wiping existing demo data…');
     const tid = existing._id;
-    await Promise.all([
-      OrderItem.deleteMany({ order: { $in: await Order.find({ tenancy: tid }).distinct('_id') } }),
-      Order.deleteMany({ tenancy: tid }),
-      BranchService.deleteMany({ tenancy: tid }),
-      ServicePrice.deleteMany({ tenancy: tid }),
-      Service.deleteMany({ tenancy: tid }),
-      Branch.deleteMany({ tenancy: tid }),
-      User.deleteMany({ tenancy: tid }),
-      Tenancy.deleteOne({ _id: tid }),
-    ]);
+    const orderIds = await Order.find({ tenancy: tid }).distinct('_id');
+    await OrderItem.deleteMany({ order: { $in: orderIds } });
+    await Order.deleteMany({ tenancy: tid });
+    await BranchService.deleteMany({ tenancy: tid });
+    await ServicePrice.deleteMany({ tenancy: tid });
+    await Service.deleteMany({ tenancy: tid });
+    await Branch.deleteMany({ tenancy: tid });
+    await Tenancy.deleteOne({ _id: tid });
+    // Delete demo users last (after tenancy gone, no FK issues)
+    await User.deleteMany({ email: /^(admin|branch|customer\d+)@demo\.com$/ });
     console.log('✅ Wiped');
   }
 
-  // ── 1. Tenancy ──────────────────────────────────────────────────────────
+  // ── 1. Admin User (created first so Tenancy.owner can reference it) ──────
+  console.log('\n👤 Creating admin user first…');
+
+  const adminUser = await User.create({
+    name: 'Demo Admin',
+    email: 'admin@demo.com',
+    password: DEMO_PASS,
+    role: 'admin',
+    isActive: true,
+    isEmailVerified: true,
+    phone: '9876500001',
+    permissions: {
+      orders:      { view: true, create: true, update: true, delete: true, assign: true, cancel: true, process: true, export: true },
+      staff:       { view: true, create: true, update: true, delete: true, assignShift: true, manageAttendance: true, export: true },
+      inventory:   { view: true, create: true, update: true, delete: true, restock: true, writeOff: true, export: true },
+      services:    { view: true, create: true, update: true, delete: true, toggle: true, updatePricing: true, export: true },
+      customers:   { view: true, create: true, update: true, delete: true, export: true },
+      logistics:   { view: true, create: true, update: true, delete: true, assign: true, track: true, export: true },
+      tickets:     { view: true, create: true, update: true, delete: true, assign: true, resolve: true, escalate: true, export: true },
+    },
+  });
+  console.log(`   ✅ Admin user created: ${adminUser.email}`);
+
+  // ── 2. Tenancy (owner = adminUser) ──────────────────────────────────────
   console.log('\n🏢 Creating demo tenancy…');
   const tenancy = await Tenancy.create({
     name: 'LaundryLobby Demo',
     slug: 'demo',
     subdomain: 'demo',
     status: 'active',
+    owner: adminUser._id,
     branding: {
       businessName: 'LaundryLobby Demo',
       tagline: 'Experience world-class laundry management',
@@ -94,7 +118,7 @@ async function seed() {
     },
     contact: {
       email: 'demo@laundrylobby.com',
-      phone: '+91 98765 43210',
+      phone: '9876543210',
       address: {
         line1: '12, MG Road',
         city: 'Delhi',
@@ -135,29 +159,12 @@ async function seed() {
   });
   console.log(`   ✅ Tenancy created: ${tenancy.slug} (${tenancy._id})`);
 
-  // ── 2. Admin User ────────────────────────────────────────────────────────
-  console.log('\n👤 Creating users…');
+  // Link admin back to tenancy
+  adminUser.tenancy = tenancy._id;
+  await adminUser.save();
+  console.log(`   ✅ Admin linked to tenancy`);
 
-  const adminUser = await User.create({
-    name: 'Demo Admin',
-    email: 'admin@demo.com',
-    password: DEMO_PASS,
-    role: 'admin',
-    tenancy: tenancy._id,
-    isActive: true,
-    isEmailVerified: true,
-    phone: '+91 98765 00001',
-    permissions: {
-      orders:      { view: true, create: true, update: true, delete: true, assign: true, cancel: true, process: true, export: true },
-      staff:       { view: true, create: true, update: true, delete: true, assignShift: true, manageAttendance: true, export: true },
-      inventory:   { view: true, create: true, update: true, delete: true, restock: true, writeOff: true, export: true },
-      services:    { view: true, create: true, update: true, delete: true, toggle: true, updatePricing: true, export: true },
-      customers:   { view: true, create: true, update: true, delete: true, export: true },
-      logistics:   { view: true, create: true, update: true, delete: true, assign: true, track: true, export: true },
-      tickets:     { view: true, create: true, update: true, delete: true, assign: true, resolve: true, escalate: true, export: true },
-    },
-  });
-  console.log(`   ✅ Admin: ${adminUser.email}`);
+  console.log('\n👤 Creating remaining users…');
 
   // Branch admin user (assigned to branch below)
   const branchAdminUser = await User.create({
@@ -168,7 +175,7 @@ async function seed() {
     tenancy: tenancy._id,
     isActive: true,
     isEmailVerified: true,
-    phone: '+91 98765 00002',
+    phone: '9876500002',
   });
   console.log(`   ✅ Branch Admin: ${branchAdminUser.email}`);
 
@@ -186,7 +193,7 @@ async function seed() {
       tenancy: tenancy._id,
       isActive: true,
       isEmailVerified: true,
-      phone: `+91 9876500${String(i + 10).padStart(3, '0')}`,
+      phone: `987650${String(i + 10).padStart(4, '0')}`,
     });
     customers.push(c);
     console.log(`   ✅ Customer: ${c.email}`);
@@ -206,11 +213,12 @@ async function seed() {
       state: 'Delhi',
       pincode: '110001',
     },
-    contact: { phone: '+91 11 2345 6789', email: 'central@demo.com' },
+    contact: { phone: '9811234567', email: 'central@demo.com' },
     coordinates: { latitude: 28.6315, longitude: 77.2167 },
     location: { type: 'Point', coordinates: [77.2167, 28.6315] },
     isActive: true,
     capacity: { maxOrdersPerDay: 100 },
+    createdBy: adminUser._id,
   });
   console.log(`   ✅ Branch: ${branch1.name}`);
 
@@ -224,11 +232,12 @@ async function seed() {
       state: 'Delhi',
       pincode: '110024',
     },
-    contact: { phone: '+91 11 9876 5432', email: 'east@demo.com' },
+    contact: { phone: '9899876543', email: 'east@demo.com' },
     coordinates: { latitude: 28.5674, longitude: 77.2432 },
     location: { type: 'Point', coordinates: [77.2432, 28.5674] },
     isActive: true,
     capacity: { maxOrdersPerDay: 80 },
+    createdBy: adminUser._id,
   });
   console.log(`   ✅ Branch: ${branch2.name}`);
 
@@ -379,14 +388,14 @@ async function seed() {
       pickupTimeSlot:  pick(TIME_SLOTS),
       pickupAddress: {
         name:         customer.name,
-        phone:        customer.phone,
+        phone:        '9876543210',
         addressLine1: `${i + 10}, Demo Street`,
         city:         'New Delhi',
         pincode:      '110001',
       },
       deliveryAddress: {
         name:         customer.name,
-        phone:        customer.phone,
+        phone:        '9876543210',
         addressLine1: `${i + 10}, Demo Street`,
         city:         'New Delhi',
         pincode:      '110001',
