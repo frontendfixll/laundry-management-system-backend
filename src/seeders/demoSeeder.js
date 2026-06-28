@@ -176,6 +176,30 @@ async function seed() {
 
   console.log('\n👤 Creating remaining users…');
 
+  const allTrue = (actions) => Object.fromEntries(actions.map(a => [a, true]));
+  const branchPerms = {
+    orders:       allTrue(['view','create','update','delete','assign','cancel','process','export']),
+    staff:        allTrue(['view','create','update','delete','assignShift','manageAttendance','export']),
+    inventory:    allTrue(['view','create','update','delete','restock','writeOff','export']),
+    services:     allTrue(['view','create','update','delete','toggle','updatePricing','export']),
+    customers:    allTrue(['view','create','update','delete','export']),
+    logistics:    allTrue(['view','create','update','delete','assign','track','export']),
+    tickets:      allTrue(['view','create','update','delete','assign','resolve','escalate','export']),
+    performance:  allTrue(['view','create','update','delete','export']),
+    analytics:    allTrue(['view','export']),
+    settings:     allTrue(['view','create','update','delete']),
+    coupons:      allTrue(['view','create','update','delete','export']),
+    campaigns:    allTrue(['view','create','update','delete','export']),
+    banners:      allTrue(['view','create','update','delete']),
+    loyalty:      allTrue(['view','create','update','delete','export']),
+    referrals:    allTrue(['view','create','update','delete','export']),
+    wallet:       allTrue(['view','create','update','delete','export']),
+    branding:     allTrue(['view','create','update','delete']),
+    branches:     allTrue(['view','create','update','delete','export']),
+    branchAdmins: allTrue(['view','create','update','delete']),
+    support:      allTrue(['view','create','update','delete','assign','manage','export']),
+  };
+
   // Branch admin user (assigned to branch below)
   const branchAdminUser = await User.create({
     name: 'Demo Branch Manager',
@@ -186,6 +210,7 @@ async function seed() {
     isActive: true,
     isEmailVerified: true,
     phone: '9876500002',
+    permissions: branchPerms,
   });
   console.log(`   ✅ Branch Admin: ${branchAdminUser.email}`);
 
