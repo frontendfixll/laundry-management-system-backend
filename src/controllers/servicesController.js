@@ -1,4 +1,5 @@
 const Branch = require('../models/Branch');
+const Tenancy = require('../models/Tenancy');
 const Service = require('../models/Service');
 const { 
   sendSuccess, 
@@ -125,9 +126,16 @@ const getServiceTypes = asyncHandler(async (req, res) => {
 // @route   GET /api/services/branches
 // @access  Public
 const getBranches = asyncHandler(async (req, res) => {
-  const branches = await Branch.find({ 
-    isActive: true 
-  })
+  const query = { isActive: true };
+
+  // Filter by tenant when tenantSlug is provided (required for multi-tenant isolation)
+  const tenantSlug = req.query.tenantSlug || req.headers['x-tenant-slug'];
+  if (tenantSlug) {
+    const tenancy = await Tenancy.findOne({ slug: tenantSlug, status: 'active' }).select('_id');
+    if (tenancy) query.tenancy = tenancy._id;
+  }
+
+  const branches = await Branch.find(query)
   .select('name code address phone coordinates serviceableRadius serviceAreas')
   .sort({ name: 1 })
   .lean();
