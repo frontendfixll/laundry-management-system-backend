@@ -66,7 +66,7 @@ async function seed() {
     await Branch.deleteMany({ tenancy: tid });
     await Tenancy.deleteOne({ _id: tid });
     // Delete demo users last (after tenancy gone, no FK issues)
-    await User.deleteMany({ email: /^(admin|branch|customer\d+)@demo\.com$/ });
+    await User.deleteMany({ email: /^(admin|branch|support|customer\d+)@demo\.com$/ });
     console.log('✅ Wiped');
   }
 
@@ -188,6 +188,19 @@ async function seed() {
     phone: '9876500002',
   });
   console.log(`   ✅ Branch Admin: ${branchAdminUser.email}`);
+
+  // Support user
+  const supportUser = await User.create({
+    name: 'Demo Support',
+    email: 'support@demo.com',
+    password: DEMO_PASS,
+    role: 'support',
+    tenancy: tenancy._id,
+    isActive: true,
+    isEmailVerified: true,
+    phone: '9876500003',
+  });
+  console.log(`   ✅ Support: ${supportUser.email}`);
 
   // 5 customers
   const customerNames = [
@@ -439,6 +452,7 @@ async function seed() {
   console.log('  Role            Email                   Password');
   console.log('  Admin           admin@demo.com          Demo@123');
   console.log('  Branch Manager  branch@demo.com         Demo@123');
+  console.log('  Support         support@demo.com        Demo@123');
   console.log('  Customer        customer1@demo.com      Demo@123');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
