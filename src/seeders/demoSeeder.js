@@ -144,16 +144,26 @@ async function seed() {
       endDate: new Date(Date.now() + 305 * 24 * 60 * 60 * 1000),
       billingCycle: 'yearly',
       features: {
-        campaigns: true,
-        loyalty_points: true,
-        analytics: true,
-        multi_branch: true,
-        custom_domain: true,
-        sms_notifications: true,
-        max_orders: 10000,
-        max_staff: 50,
-        max_customers: 5000,
-        max_branches: 10,
+        // Core laundry
+        wash_fold: true, dry_cleaning: true, ironing: true,
+        express_delivery: true, subscription_orders: true,
+        // Platform sidebar pages
+        orders: true, customers: true, inventory: true,
+        services: true, branches: true, branch_admins: true,
+        logistics: true, tickets: true, reviews: true,
+        refunds: true, payments: true, settings: true,
+        // Marketing
+        campaigns: true, coupons: true, discounts: true,
+        banners: true, wallet: true, referral_program: true,
+        loyalty_points: true, advanced_analytics: true, api_access: true,
+        // Branding
+        custom_branding: true, custom_logo: true,
+        custom_domain: true, white_label: true,
+        // Support
+        priority_support: true, dedicated_manager: true, platform_support: true,
+        // Limits
+        max_orders: 10000, max_staff: 100,
+        max_customers: 10000, max_branches: 20,
       },
     },
   });
